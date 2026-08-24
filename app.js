@@ -235,6 +235,26 @@ function showAuthGate(onSignedIn) {
     gate.style.display = "none";
     onSignedIn(data.session);
   });
+
+  const googleBtn = document.getElementById("auth-gate-google");
+  if (googleBtn) {
+    googleBtn.addEventListener("click", async () => {
+      googleBtn.disabled = true;
+      status.classList.remove("err");
+      status.textContent = "Redirecting to Google…";
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin + window.location.pathname },
+      });
+      if (error) {
+        status.textContent = error.message;
+        status.classList.add("err");
+        googleBtn.disabled = false;
+      }
+      // On success the browser navigates away to Google, then back here —
+      // boot()'s requireAuth() picks up the new session on reload.
+    });
+  }
 }
 
 async function loadStateFromSupabase(userId) {
