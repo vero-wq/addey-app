@@ -4141,31 +4141,7 @@ function renderWellness() {
   const bonusStats = computeBonusCycleStats(state.veronikasPrize, today);
   renderQuarterlyProgress(panel, today, bonusStats);
   renderBonusPrize(panel, today, bonusStats);
-  renderWellnessPastDayEditor(panel, today);
   renderWellnessHistory(panel, today);
-}
-
-// A missed day shouldn't quietly read as "didn't do it" forever — this
-// lets her go back and fill in (or correct) any past day's log, so a day
-// she was just busy and forgot to log doesn't misrepresent what actually
-// happened. Also reachable per-entry from History via its own Edit button.
-function renderWellnessPastDayEditor(panel, today) {
-  const card = el(`
-    <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <strong style="margin-right:auto;">Fix a past day</strong>
-      <input type="date" class="wellness-past-date-input" max="${today}" style="max-width:160px;" />
-      <button type="button" class="btn-ghost wellness-past-date-btn">Edit day</button>
-    </div>
-  `);
-  const dateInput = card.querySelector(".wellness-past-date-input");
-  const btn = card.querySelector(".wellness-past-date-btn");
-  const openForInput = () => {
-    if (!dateInput.value) return;
-    openWellnessDayEditor(dateInput.value, () => renderWellness());
-  };
-  btn.addEventListener("click", openForInput);
-  dateInput.addEventListener("change", openForInput);
-  panel.appendChild(card);
 }
 
 // Shared editor for a single day's wellness log, whether that's a day with
