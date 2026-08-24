@@ -4141,7 +4141,103 @@ function renderWellness() {
   const bonusStats = computeBonusCycleStats(state.veronikasPrize, today);
   renderQuarterlyProgress(panel, today, bonusStats);
   renderBonusPrize(panel, today, bonusStats);
+  renderWellnessPastDayEditor(panel, today);
   renderWellnessHistory(panel, today);
+}
+
+// A missed day shouldn't quietly read as "didn't do it" forever — this
+// lets her go back and fill in (or correct) any past day's log, so a day
+// she was just busy and forgot to log doesn't misrepresent what actually
+// happened. Also reachable per-entry from History via its own Edit button.
+function renderWellnessPastDayEditor(panel, today) {
+  const card = el(`
+    <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <strong style="margin-right:auto;">Fix a past day</strong>
+      <input type="date" class="wellness-past-date-input" max="${today}" style="max-width:160px;" />
+      <button type="button" class="btn-ghost wellness-past-date-btn">Edit day</button>
+    </div>
+  `);
+  const dateInput = card.querySelector(".wellness-past-date-input");
+  const btn = card.querySelector(".wellness-past-date-btn");
+  const openForInput = () => {
+    if (!dateInput.value) return;
+    openWellnessDayEditor(dateInput.value, () => renderWellness());
+  };
+  btn.addEventListener("click", openForInput);
+  dateInput.addEventListener("change", openForInput);
+  panel.appendChild(card);
+}
+
+// Shared editor for a single day's wellness log, whether that's a day with
+// no data at all yet or one that just needs a correction. Reuses the same
+// selects/notes as Today's card so editing history never feels like a
+// different, lesser feature.
+function openWellnessDayEditor(dateStr, onClose) {
+  let entry = state.wellness.find((l) => l.logDate === dateStr);
+  if (!entry) {
+    entry = { id: nextId(), logDate: dateStr };
+    state.wellness.push(entry);
+  }
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box wellness-editor-box">
+        <div class="info-modal-header">
+          <h3>${escapeHtml(dateStr)}</h3>
+          <button type="button" class="icon-btn info-modal-close wellness-editor-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="info-modal-body">
+          <div class="wellness-editor-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;"></div>
+          <div class="wellness-editor-notes" style="margin-top:12px;display:flex;flex-direction:column;gap:10px;"></div>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+            <button type="button" class="btn-primary wellness-editor-done" style="padding:8px 18px;border-radius:8px;border:none;">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+  const grid = overlay.querySelector(".wellness-editor-grid");
+  Object.entries(WELLNESS_ENUM_FIELDS).forEach(([key, { label, options }]) => {
+    grid.appendChild(
+      wellnessSelect(key, label, options, entry[key] || "", (val) => {
+        entry[key] = val;
+        scheduleSave();
+      })
+    );
+  });
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    grid.appendChild(
+      wellnessSelect(key, label, ["Yes", "No"], entry[key] || "", (val) => {
+        entry[key] = val;
+        scheduleSave();
+      })
+    );
+  });
+  const notesWrap = overlay.querySelector(".wellness-editor-notes");
+  WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
+    const field = el(`<div></div>`);
+    field.appendChild(el(`<label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">${escapeHtml(label)}</label>`));
+    const input = document.createElement("input");
+    input.type = "text";
+    input.style.width = "100%";
+    input.style.boxSizing = "border-box";
+    input.value = entry[key] || "";
+    input.addEventListener("change", () => {
+      entry[key] = input.value || null;
+      scheduleSave();
+    });
+    field.appendChild(input);
+    notesWrap.appendChild(field);
+  });
+  const close = () => {
+    overlay.remove();
+    if (onClose) onClose();
+  };
+  overlay.querySelector(".wellness-editor-close").addEventListener("click", close);
+  overlay.querySelector(".wellness-editor-done").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
 }
 
 // ------------------------------------------------------------------
@@ -4550,15 +4646,20 @@ function renderWellnessHistory(panel, today) {
         const notesHtml = WELLNESS_NOTE_FIELDS.filter(([k]) => l[k])
           .map(([k, label]) => `<div class="wellness-history-note"><span class="muted">${escapeHtml(label)}</span> ${escapeHtml(l[k])}</div>`)
           .join("");
-        monthDetails.appendChild(el(`
+        const entryEl = el(`
           <div class="wellness-history-entry">
             <div class="row wellness-history-row">
               <div style="flex:1;">${l.logDate}</div>
               <div>${badges || '<span class="muted">&mdash;</span>'}</div>
+              <button type="button" class="wellness-history-edit-btn" title="Edit ${escapeHtml(l.logDate)}" aria-label="Edit ${escapeHtml(l.logDate)}">Edit</button>
             </div>
             ${notesHtml}
           </div>
-        `));
+        `);
+        entryEl.querySelector(".wellness-history-edit-btn").addEventListener("click", () => {
+          openWellnessDayEditor(l.logDate, () => renderWellness());
+        });
+        monthDetails.appendChild(entryEl);
       });
       yearDetails.appendChild(monthDetails);
     });
