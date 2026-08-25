@@ -3892,6 +3892,14 @@ const WELLNESS_NOTE_FIELDS = [
   ["adjustment", "One adjustment to make"],
 ];
 
+// Which space "fulfills" each pillar on Home's Today tiles — a fixed
+// starting point for now (matches what's actually in use today). This is
+// meant to become editable from Settings once Pillar Mapping ships there;
+// until then it's just a display label, not a real link to that sheet.
+const PILLAR_SOURCE_LABELS = {
+  spiritualAnchor: "Bible",
+};
+
 function wellnessColorClass(field, value) {
   if (!value) return "";
   if (field === "foodQuality") return value === "Good" ? "good" : value === "Poor" ? "bad" : "mid";
@@ -4073,14 +4081,22 @@ function wellnessSelect(field, label, options, currentValue, onChange) {
   return wrap;
 }
 
+// Finds today's wellness log, creating a blank one if this is the first
+// touch of the day. Shared by the Wellness page and Home's pillar tiles so
+// both are always reading and writing the exact same row.
+function ensureTodaysWellnessEntry(today) {
+  let entry = state.wellness.find((l) => l.logDate === today);
+  if (!entry) {
+    entry = { id: nextId(), logDate: today };
+    state.wellness.push(entry);
+  }
+  return entry;
+}
+
 function renderWellness() {
   const panel = document.getElementById("panel-wellness");
   const today = todayISO();
-  let todays = state.wellness.find((l) => l.logDate === today);
-  if (!todays) {
-    todays = { id: nextId(), logDate: today };
-    state.wellness.push(todays);
-  }
+  const todays = ensureTodaysWellnessEntry(today);
 
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">Daily Wellness</h2>`));
@@ -4340,25 +4356,13 @@ function renderHome() {
 
   panel.appendChild(el(`<div class="home-greeting">Good ${homeGreetingTime()}</div>`));
 
-  const goToWellness = () => activateTab("wellness");
-
   if (prize.quote) {
     const quoteCard = el(`<div class="card"></div>`);
     quoteCard.appendChild(el(`<div class="home-quote-text">${escapeHtml(prize.quote)}</div>`));
     panel.appendChild(quoteCard);
   }
 
-  const wellness = computeWellnessProgress(today);
-  panel.appendChild(
-    buildProgressCard(
-      "Wellness Progress",
-      wellness.pct,
-      `<strong>${wellness.stats.goodCount} of ${wellness.stats.totalCount}</strong> good days so far this cycle<br/>${wellness.prize.cycleStartDate} &mdash; ${wellness.stats.endDate}`,
-      wellness.tones,
-      "Last 14 days",
-      goToWellness
-    )
-  );
+  panel.appendChild(renderHomeHero(today));
 
   const workoutSheetEntry = Object.entries(state.customSheets).find(([, s]) => s.templateKey === "workout" && s.workoutSchemaV === 1);
   if (workoutSheetEntry) {
@@ -4378,30 +4382,126 @@ function renderHome() {
     }
   }
 
-  const bonusCard = el(`<div class="card"></div>`);
-  const bonusHeader = el(`
-    <div class="home-card-header">
-      <div style="font-weight:600;">My Bonus to Myself</div>
-      <button type="button" class="mini-link">Open &rarr;</button>
-    </div>
-  `);
-  bonusHeader.querySelector(".mini-link").addEventListener("click", goToWellness);
-  bonusCard.appendChild(bonusHeader);
-  const bonusTeaser = el(`<div class="home-bonus-teaser"></div>`);
-  const bonusPhoto = prize.itemPhoto
-    ? el(`<img src="${prize.itemPhoto}" />`)
-    : el(`<div class="home-bonus-photo-placeholder">No photo yet</div>`);
-  bonusTeaser.appendChild(bonusPhoto);
-  bonusTeaser.appendChild(el(`
-    <div class="home-bonus-teaser-text">
-      <div class="home-bonus-teaser-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
-      <div class="home-bonus-teaser-sub">${wellness.stats.reached ? "Ready to claim" : `Unlocks ${wellness.stats.endDate}`}</div>
+  panel.appendChild(renderDiscoverShelf());
+
+  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a space below to add it.</div>`));
+}
+
+// The new front door: wellness ring + reward + today's four pillars, all in
+// one card, so Wellness no longer needs its own bottom-bar slot — Home
+// *is* Wellness plus the reward now. Tapping an unfilled pillar logs a
+// quick "Yes" for today; tapping one that's already done reopens the full
+// day editor in case it needs correcting. "See full wellness history"
+// still reaches the original Wellness page (cycle settings, history,
+// notes) — that page didn't go away, it's just not pinned to the bar.
+function renderHomeHero(today) {
+  const todaysEntry = ensureTodaysWellnessEntry(today);
+  const wellness = computeWellnessProgress(today);
+  const prize = wellness.prize;
+
+  const hero = el(`<div class="card"></div>`);
+
+  hero.appendChild(el(`
+    <div class="home-hero-top">
+      <div class="home-streak-ring" style="background:conic-gradient(var(--accent) ${wellness.pct}%, var(--border) ${wellness.pct}% 100%);">
+        <div class="home-streak-ring-inner">${wellness.pct}%</div>
+      </div>
+      <div>
+        <div class="home-hero-eyebrow">This cycle's progress</div>
+        <div class="home-streak-caption"><strong>${wellness.stats.goodCount} of ${wellness.stats.totalCount}</strong> good days &middot; ${wellness.stats.reached ? "ready to claim" : `${wellness.stats.endDate} target`}</div>
+      </div>
     </div>
   `));
-  bonusCard.appendChild(bonusTeaser);
-  panel.appendChild(bonusCard);
 
-  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Home is a quiet summary — tap into any card, or a sheet below, for the full view.</div>`));
+  const prizeStrip = el(`<div class="home-hero-prize-strip"></div>`);
+  const thumb = prize.itemPhoto
+    ? el(`<img class="home-hero-prize-thumb" src="${prize.itemPhoto}" />`)
+    : el(`<div class="home-hero-prize-thumb">No photo</div>`);
+  prizeStrip.appendChild(thumb);
+  prizeStrip.appendChild(el(`
+    <div class="home-hero-prize-text">
+      <div class="home-hero-prize-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
+      <div class="home-hero-prize-sub">${wellness.stats.reached ? "Ready to claim" : `Unlocks ${wellness.stats.endDate}`}</div>
+    </div>
+  `));
+  prizeStrip.addEventListener("click", () => activateTab("wellness"));
+  hero.appendChild(prizeStrip);
+
+  hero.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
+  const grid = el(`<div class="home-hero-pillars"></div>`);
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    const done = todaysEntry[key] === "Yes";
+    const source = PILLAR_SOURCE_LABELS[key];
+    const tile = el(`
+      <button type="button" class="home-pillar${done ? " done" : ""}">
+        <span class="home-pillar-icon ${done ? "on" : "off"}">${done ? checkSvg : ""}</span>
+        <span class="home-pillar-label">${escapeHtml(label)}</span>
+        ${source ? `<span class="home-pillar-source">via ${escapeHtml(source)}</span>` : ""}
+      </button>
+    `);
+    tile.addEventListener("click", () => {
+      if (done) {
+        openWellnessDayEditor(today, () => renderHome());
+      } else {
+        todaysEntry[key] = "Yes";
+        scheduleSave();
+        renderHome();
+      }
+    });
+    grid.appendChild(tile);
+  });
+  hero.appendChild(grid);
+
+  const historyLink = el(`<button type="button" class="home-hero-history-link">See full wellness history &rarr;</button>`);
+  historyLink.addEventListener("click", () => activateTab("wellness"));
+  hero.appendChild(historyLink);
+
+  return hero;
+}
+
+// What used to be a fixed "Home" slot on the bottom bar is now free, since
+// Wellness moved in here — this shelf is how a space actually gets added,
+// separate from the bar itself. Only shows spaces not already added; once
+// one gets added it disappears from here and (space permitting) shows up
+// in the bar or the overflow menu instead, same as adding from Settings
+// always has.
+function renderDiscoverShelf() {
+  const wrap = el(`<div></div>`);
+  const addedTemplateKeys = new Set(Object.values(state.customSheets).map((cs) => cs.templateKey));
+  const candidates = SHEET_GALLERY.filter((tpl) => !addedTemplateKeys.has(tpl.key)).slice(0, 2);
+  if (!candidates.length) return wrap;
+
+  const activeSpaces = state.sheets.filter((s) => s.visible && s.id !== "wellness").length;
+  wrap.appendChild(el(`
+    <div class="home-shelf-label">
+      Discover more spaces
+      <span class="home-shelf-sub">${activeSpaces} space${activeSpaces === 1 ? "" : "s"} active</span>
+    </div>
+  `));
+  const row = el(`<div class="home-shelf-row"></div>`);
+  candidates.forEach((tpl) => {
+    const tile = el(`
+      <button type="button" class="home-shelf-tile">
+        <span class="home-shelf-tile-icon">${iconSvg(tpl.icon)}</span>
+        <span class="home-shelf-tile-label">${escapeHtml(tpl.label)}</span>
+        <span class="home-shelf-tile-cta">+ Add</span>
+      </button>
+    `);
+    tile.addEventListener("click", () => {
+      addSheetFromTemplate(tpl);
+      renderHome();
+    });
+    row.appendChild(tile);
+  });
+  const seeAll = el(`
+    <button type="button" class="home-shelf-tile home-shelf-tile-seeall">
+      <span class="home-shelf-tile-label">See all spaces</span>
+    </button>
+  `);
+  seeAll.addEventListener("click", () => activateTab("settings"));
+  row.appendChild(seeAll);
+  wrap.appendChild(row);
+  return wrap;
 }
 
 function homeGreetingTime() {
@@ -4714,6 +4814,11 @@ async function boot() {
   state.paycheckSettings ||= { amount: 0, frequency: "semimonthly" };
   state.portfolioChoice ||= "yours";
   state.selectedInvestmentAccount ||= "rrsp";
+  // Plan/account info — nothing reads this for gating yet, but every
+  // account gets a real shape here from the start so that logic has
+  // something safe to check once it exists, instead of treating a missing
+  // field as either plan by accident.
+  state.account ||= { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false };
 
   // Settings — sheet order/visibility, plus any sheets added from the gallery.
   state.deletedBuiltinSheets ||= [];
@@ -4727,6 +4832,18 @@ async function boot() {
       state.sheets.push({ id, kind: "builtin", visible: true });
     }
   });
+  // One-time: Home now shows the wellness ring, the reward, and today's
+  // pillars directly, so Wellness no longer needs its own bottom-bar slot —
+  // hide it exactly the way the eye toggle in Settings already can, which
+  // frees that slot for an actual space. The Wellness page itself is
+  // untouched and still reachable from Home's "See full wellness history"
+  // link; this only ever runs once, so turning it back on visible from
+  // Settings afterward sticks normally.
+  if (!state.homeAbsorbsWellnessV1Applied) {
+    const wellnessSheet = state.sheets.find((s) => s.id === "wellness");
+    if (wellnessSheet) wellnessSheet.visible = false;
+    state.homeAbsorbsWellnessV1Applied = true;
+  }
   state.customSheets ||= {};
   // One-time upgrade: any Capsule Wardrobe sheet added before it had
   // real category/color/season/price data (just a plain checklist of
