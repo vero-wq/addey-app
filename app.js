@@ -377,8 +377,6 @@ function activateTab(tab) {
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeCircle) homeCircle.classList.toggle("active", tab === "home");
   if (tab === "home") renderHome();
-  const settingsNavBtn = document.getElementById("settings-nav-btn");
-  if (settingsNavBtn) settingsNavBtn.classList.toggle("active", tab === "settings" || tab === "appearance");
   state.activeTab = tab;
   scheduleSave();
   // Auto-growing textareas measure scrollHeight, which is 0 while their
@@ -495,8 +493,6 @@ function initTabs() {
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeRow) homeRow.addEventListener("click", () => activateTab("home"));
   if (homeCircle) homeCircle.addEventListener("click", () => activateTab("home"));
-  const settingsNavBtn = document.getElementById("settings-nav-btn");
-  if (settingsNavBtn) settingsNavBtn.addEventListener("click", () => activateTab("settings"));
   const validTabs = state.sheets
     .filter((s) => s.visible)
     .map((s) => s.id)
@@ -562,17 +558,22 @@ function renderAccountAvatar() {
   if (btn) btn.textContent = accountInitial();
 }
 
-// Account is about identity and money — who you are, how you sign in, how
-// you pay. It deliberately does NOT list spaces anymore (that used to
-// duplicate Settings and the new Home "Your Spaces" grid); Settings owns
-// all app-content, Account only owns things Settings has no business with.
+// "You" — the single destination behind the avatar, replacing both the old
+// hamburger and the old Account sheet. One icon, one flat list: spaces/app
+// content up top (the stuff you'll open most from here), identity/billing
+// below, Sign out last. Matches the reference apps Veronika pointed to
+// (Etsy's "You" tab, Slack's account sheet) rather than splitting settings
+// and account across two separate top-right icons.
 function openAccountSheet() {
   const acct = state.account || { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false };
+  const statusPill = acct.isFounder
+    ? "Founder account &middot; full access to everything"
+    : `${escapeHtml(acct.planLabel || "Free")} plan`;
   const overlay = el(`
     <div class="modal-overlay">
-      <div class="modal-box info-modal-box account-modal-box">
+      <div class="modal-box info-modal-box account-modal-box you-page">
         <div class="info-modal-header">
-          <h3>Account</h3>
+          <h3>You</h3>
           <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
         </div>
         <div class="account-modal-header-row">
@@ -582,25 +583,42 @@ function openAccountSheet() {
             <div class="account-plan-badge${acct.isFounder ? " founder" : ""}">${escapeHtml(acct.planLabel || "Free")}</div>
           </div>
         </div>
-        <div class="account-section">
-          <div class="account-section-label">Profile</div>
-          <button type="button" class="account-btn" id="account-password-btn">
-            <span>Email &amp; password</span>
-            <span>&rsaquo;</span>
-          </button>
-        </div>
-        <div class="account-section">
-          <div class="account-section-label">Plan &amp; Billing</div>
-          <button type="button" class="account-btn" id="account-billing-btn">
-            <span>Plan &amp; Billing<span class="account-btn-sub">${escapeHtml(acct.planLabel || "Free")}</span></span>
-            <span>&rsaquo;</span>
-          </button>
-        </div>
-        <div class="account-section">
-          <button type="button" class="account-btn danger" id="account-signout-btn">
-            <span>Sign out</span>
-          </button>
-        </div>
+        <div class="you-status-pill">${statusPill}</div>
+
+        <button type="button" class="you-list-row" id="you-myspaces-row">
+          ${iconSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>')}
+          <span>My Spaces</span>
+        </button>
+        <button type="button" class="you-list-row" id="you-gallery-row">
+          ${iconSvg('<path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/>')}
+          <span>Gallery</span>
+        </button>
+        <button type="button" class="you-list-row" id="you-pillars-row">
+          ${iconSvg('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>')}
+          <span>Pillar Mapping</span>
+        </button>
+        <button type="button" class="you-list-row" id="you-appearance-row">
+          ${iconSvg('<circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>')}
+          <span>Appearance</span>
+        </button>
+
+        <div class="you-list-divider"></div>
+
+        <button type="button" class="you-list-row" id="account-password-btn">
+          ${iconSvg('<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/>')}
+          <span>Email &amp; password</span>
+        </button>
+        <button type="button" class="you-list-row" id="account-billing-btn">
+          ${iconSvg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>')}
+          <span>Plan &amp; Billing</span>
+        </button>
+
+        <div class="you-list-divider"></div>
+
+        <button type="button" class="you-list-row danger" id="account-signout-btn">
+          ${iconSvg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line>')}
+          <span>Sign out</span>
+        </button>
       </div>
     </div>
   `);
@@ -608,6 +626,27 @@ function openAccountSheet() {
   overlay.querySelector(".info-modal-close").addEventListener("click", close);
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
+  });
+  overlay.querySelector("#you-myspaces-row").addEventListener("click", () => {
+    close();
+    settingsSubTab = "mine";
+    activateTab("settings");
+  });
+  overlay.querySelector("#you-gallery-row").addEventListener("click", () => {
+    close();
+    settingsSubTab = "gallery";
+    activateTab("settings");
+  });
+  overlay.querySelector("#you-pillars-row").addEventListener("click", () => {
+    close();
+    infoModal(
+      "Pillar Mapping",
+      el(`<p class="muted" style="font-size:13px;margin:0;line-height:1.5;">Choosing what feeds each of your four pillars is coming soon. For now, Spiritual anchor is set to Bible — the rest log directly on Home.</p>`)
+    );
+  });
+  overlay.querySelector("#you-appearance-row").addEventListener("click", () => {
+    close();
+    activateTab("appearance");
   });
   overlay.querySelector("#account-password-btn").addEventListener("click", () => {
     close();
