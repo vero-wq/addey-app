@@ -160,6 +160,7 @@ const QURAN_SEED_ITEMS = [{"reading": "Surah Al-Fatiha (1:1–7) to Surah Al-Baq
 let state = null;
 let saveTimer = null;
 let currentUserId = null;
+let currentUserEmail = null;
 
 // ------------------------------------------------------------------
 // Supabase — the real backend. The app's data now lives in the
@@ -423,7 +424,7 @@ function sheetLabel(sheet) {
 // Settings and Appearance. On desktop every visible sheet just flows
 // straight into the one sidebar list, in original order, since there's
 // room for all of them — the left/right split only matters on mobile.
-const MOBILE_PINNED_COUNT = 4;
+const MOBILE_PINNED_COUNT = 5;
 
 function renderNav() {
   const leftNav = document.getElementById("tabs-nav-left");
@@ -491,6 +492,9 @@ function ensureCustomPanels() {
 
 function initTabs() {
   rebuildNav();
+  renderAccountAvatar();
+  const avatarBtn = document.getElementById("account-avatar-btn");
+  if (avatarBtn) avatarBtn.addEventListener("click", () => openAccountSheet());
   const homeRow = document.getElementById("home-tab-row");
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeRow) homeRow.addEventListener("click", () => activateTab("home"));
@@ -564,6 +568,87 @@ function confirmModal(title, message, confirmLabel, onConfirm) {
   });
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+// ------------------------------------------------------------------
+// Account — profile sheet behind the top-right avatar. Sign out lives
+// only here, deliberately, so it's never one accidental tap away from
+// the everyday nav (Settings/Appearance in the hamburger menu are about
+// the app's spaces, not the account itself).
+// ------------------------------------------------------------------
+function accountInitial() {
+  const source = currentUserEmail || "";
+  return source ? source[0].toUpperCase() : "?";
+}
+
+function renderAccountAvatar() {
+  const btn = document.getElementById("account-avatar-btn");
+  if (btn) btn.textContent = accountInitial();
+}
+
+function openAccountSheet() {
+  const acct = state.account || { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false };
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3>Account</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="account-modal-header-row">
+          <div class="account-avatar-lg">${accountInitial()}</div>
+          <div>
+            <div class="account-email">${escapeHtml(currentUserEmail || "")}</div>
+            <div class="account-plan-badge${acct.isFounder ? " founder" : ""}">${escapeHtml(acct.planLabel || "Free")}</div>
+          </div>
+        </div>
+        <div class="account-section">
+          <div class="account-section-label">Spaces</div>
+          <button type="button" class="account-btn" id="account-manage-spaces-btn">
+            <span>Manage your spaces</span>
+            <span>&rsaquo;</span>
+          </button>
+        </div>
+        <div class="account-section">
+          <div class="account-section-label">Subscription</div>
+          ${
+            acct.isFounder
+              ? `<div class="account-note">You're on a founder account — full access, every space, no subscription needed.</div>`
+              : `<button type="button" class="account-btn" id="account-manage-sub-btn" disabled>
+                  <span>Manage subscription</span>
+                  <span>&rsaquo;</span>
+                </button>`
+          }
+        </div>
+        <div class="account-section">
+          <button type="button" class="account-btn danger" id="account-signout-btn">
+            <span>Sign out</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.querySelector("#account-manage-spaces-btn").addEventListener("click", () => {
+    close();
+    activateTab("settings");
+  });
+  const signOutBtn = overlay.querySelector("#account-signout-btn");
+  signOutBtn.addEventListener("click", async () => {
+    signOutBtn.disabled = true;
+    signOutBtn.querySelector("span").textContent = "Signing out…";
+    try {
+      await sb.auth.signOut();
+    } catch (err) {
+      console.error("Sign out failed:", err);
+    }
+    location.reload();
   });
   document.body.appendChild(overlay);
 }
@@ -4751,6 +4836,7 @@ async function boot() {
   // known, since the data itself lives behind that identity now.
   const session = await requireAuth();
   currentUserId = session.user.id;
+  currentUserEmail = session.user.email || "";
 
   // Load this account's row. The signup trigger on the database side
   // creates it automatically the moment someone creates an account, so
