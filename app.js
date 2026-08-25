@@ -377,12 +377,8 @@ function activateTab(tab) {
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeCircle) homeCircle.classList.toggle("active", tab === "home");
   if (tab === "home") renderHome();
-  const menuBtn = document.getElementById("main-menu-btn");
-  if (menuBtn) menuBtn.classList.toggle("active", tab === "settings" || tab === "appearance");
-  const settingsItem = document.getElementById("menu-item-settings");
-  if (settingsItem) settingsItem.classList.toggle("active", tab === "settings");
-  const appearanceItem = document.getElementById("menu-item-appearance");
-  if (appearanceItem) appearanceItem.classList.toggle("active", tab === "appearance");
+  const settingsNavBtn = document.getElementById("settings-nav-btn");
+  if (settingsNavBtn) settingsNavBtn.classList.toggle("active", tab === "settings" || tab === "appearance");
   state.activeTab = tab;
   scheduleSave();
   // Auto-growing textareas measure scrollHeight, which is 0 while their
@@ -424,7 +420,7 @@ function sheetLabel(sheet) {
 // Settings and Appearance. On desktop every visible sheet just flows
 // straight into the one sidebar list, in original order, since there's
 // room for all of them — the left/right split only matters on mobile.
-const MOBILE_PINNED_COUNT = 5;
+const MOBILE_PINNED_COUNT = 4;
 
 function renderNav() {
   const leftNav = document.getElementById("tabs-nav-left");
@@ -499,30 +495,8 @@ function initTabs() {
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeRow) homeRow.addEventListener("click", () => activateTab("home"));
   if (homeCircle) homeCircle.addEventListener("click", () => activateTab("home"));
-  const menuBtn = document.getElementById("main-menu-btn");
-  const menuDropdown = document.getElementById("main-menu-dropdown");
-  if (menuBtn && menuDropdown) {
-    menuBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      menuDropdown.classList.toggle("open");
-    });
-    document.addEventListener("click", () => menuDropdown.classList.remove("open"));
-    menuDropdown.addEventListener("click", (e) => e.stopPropagation());
-  }
-  const settingsItem = document.getElementById("menu-item-settings");
-  if (settingsItem) {
-    settingsItem.addEventListener("click", () => {
-      activateTab("settings");
-      menuDropdown?.classList.remove("open");
-    });
-  }
-  const appearanceItem = document.getElementById("menu-item-appearance");
-  if (appearanceItem) {
-    appearanceItem.addEventListener("click", () => {
-      activateTab("appearance");
-      menuDropdown?.classList.remove("open");
-    });
-  }
+  const settingsNavBtn = document.getElementById("settings-nav-btn");
+  if (settingsNavBtn) settingsNavBtn.addEventListener("click", () => activateTab("settings"));
   const validTabs = state.sheets
     .filter((s) => s.visible)
     .map((s) => s.id)
@@ -588,6 +562,10 @@ function renderAccountAvatar() {
   if (btn) btn.textContent = accountInitial();
 }
 
+// Account is about identity and money — who you are, how you sign in, how
+// you pay. It deliberately does NOT list spaces anymore (that used to
+// duplicate Settings and the new Home "Your Spaces" grid); Settings owns
+// all app-content, Account only owns things Settings has no business with.
 function openAccountSheet() {
   const acct = state.account || { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false };
   const overlay = el(`
@@ -605,22 +583,18 @@ function openAccountSheet() {
           </div>
         </div>
         <div class="account-section">
-          <div class="account-section-label">Spaces</div>
-          <button type="button" class="account-btn" id="account-manage-spaces-btn">
-            <span>Manage your spaces</span>
+          <div class="account-section-label">Profile</div>
+          <button type="button" class="account-btn" id="account-password-btn">
+            <span>Email &amp; password</span>
             <span>&rsaquo;</span>
           </button>
         </div>
         <div class="account-section">
-          <div class="account-section-label">Subscription</div>
-          ${
-            acct.isFounder
-              ? `<div class="account-note">You're on a founder account — full access, every space, no subscription needed.</div>`
-              : `<button type="button" class="account-btn" id="account-manage-sub-btn" disabled>
-                  <span>Manage subscription</span>
-                  <span>&rsaquo;</span>
-                </button>`
-          }
+          <div class="account-section-label">Plan &amp; Billing</div>
+          <button type="button" class="account-btn" id="account-billing-btn">
+            <span>Plan &amp; Billing<span class="account-btn-sub">${escapeHtml(acct.planLabel || "Free")}</span></span>
+            <span>&rsaquo;</span>
+          </button>
         </div>
         <div class="account-section">
           <button type="button" class="account-btn danger" id="account-signout-btn">
@@ -635,9 +609,13 @@ function openAccountSheet() {
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
-  overlay.querySelector("#account-manage-spaces-btn").addEventListener("click", () => {
+  overlay.querySelector("#account-password-btn").addEventListener("click", () => {
     close();
-    activateTab("settings");
+    openChangePasswordModal();
+  });
+  overlay.querySelector("#account-billing-btn").addEventListener("click", () => {
+    close();
+    openBillingModal();
   });
   const signOutBtn = overlay.querySelector("#account-signout-btn");
   signOutBtn.addEventListener("click", async () => {
@@ -649,6 +627,124 @@ function openAccountSheet() {
       console.error("Sign out failed:", err);
     }
     location.reload();
+  });
+  document.body.appendChild(overlay);
+}
+
+// Reached only from Account → "Email & password". Email changes go through
+// Supabase's confirmation-email flow, which isn't wired up yet, so for now
+// this only handles the password half — real and functional, not a stub.
+function openChangePasswordModal() {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3>Email &amp; password</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="account-section" style="border-top:none;padding-top:4px;">
+          <div class="account-section-label">Email</div>
+          <div class="account-note">${escapeHtml(currentUserEmail || "")}</div>
+        </div>
+        <div class="account-section">
+          <div class="account-section-label">New password</div>
+          <input type="password" class="text-input" id="account-new-password" placeholder="At least 8 characters" style="width:100%;margin-bottom:8px;" />
+          <input type="password" class="text-input" id="account-confirm-password" placeholder="Confirm new password" style="width:100%;" />
+        </div>
+        <div class="account-password-status" id="account-password-status" style="font-size:12.5px;min-height:16px;margin:2px 2px 4px;"></div>
+        <div class="account-section" style="border-top:none;padding-top:0;">
+          <button type="button" class="account-btn" id="account-password-save" style="justify-content:center;background:var(--accent-dark);color:#fff;border-color:var(--accent-dark);">
+            <span>Save new password</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  const status = overlay.querySelector("#account-password-status");
+  const saveBtn = overlay.querySelector("#account-password-save");
+  saveBtn.addEventListener("click", async () => {
+    const pw = overlay.querySelector("#account-new-password").value;
+    const confirm = overlay.querySelector("#account-confirm-password").value;
+    status.style.color = "var(--muted)";
+    if (pw.length < 8) {
+      status.style.color = "#8C3F2B";
+      status.textContent = "Password needs to be at least 8 characters.";
+      return;
+    }
+    if (pw !== confirm) {
+      status.style.color = "#8C3F2B";
+      status.textContent = "Passwords don't match.";
+      return;
+    }
+    saveBtn.disabled = true;
+    status.textContent = "Saving…";
+    try {
+      const { error } = await sb.auth.updateUser({ password: pw });
+      if (error) throw error;
+      status.style.color = "var(--good)";
+      status.textContent = "Password updated.";
+      setTimeout(close, 900);
+    } catch (err) {
+      console.error("Password update failed:", err);
+      status.style.color = "#8C3F2B";
+      status.textContent = "Couldn't update password — try again.";
+      saveBtn.disabled = false;
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
+// Reached only from Account → "Plan & Billing". This is the one place
+// price, payment method, and plan changes live — a founder account has
+// nothing to manage here since access was granted directly, but the shape
+// below is what a real subscriber will see once billing is connected.
+function openBillingModal() {
+  const acct = state.account || { plan: "free", planLabel: "Free", isFounder: false };
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3>Plan &amp; Billing</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        ${
+          acct.isFounder
+            ? `<div class="account-section" style="border-top:none;padding-top:4px;">
+                <div class="account-section-label">Current plan</div>
+                <div class="account-note" style="border-color:var(--accent);background:var(--bg);">
+                  <strong style="color:var(--text);">Founder — Full Access</strong><br/>
+                  Granted personally — every space, no subscription, nothing to manage here.
+                </div>
+              </div>`
+            : `<div class="account-section" style="border-top:none;padding-top:4px;">
+                <div class="account-section-label">Current plan</div>
+                <div class="account-note"><strong style="color:var(--text);">${escapeHtml(acct.planLabel || "Free")}</strong></div>
+              </div>
+              <div class="account-section">
+                <button type="button" class="account-btn" disabled>
+                  <span>Change plan</span>
+                  <span>&rsaquo;</span>
+                </button>
+              </div>
+              <div class="account-section">
+                <button type="button" class="account-btn danger" disabled>
+                  <span>Cancel subscription</span>
+                </button>
+              </div>
+              <div class="account-note" style="margin-top:2px;">Billing isn't connected yet — these will work once real subscriptions launch.</div>`
+        }
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
   });
   document.body.appendChild(overlay);
 }
@@ -1044,6 +1140,21 @@ function renderSettings() {
   });
   galleryPanel.appendChild(gallery);
   panel.appendChild(galleryPanel);
+
+  // Appearance lives on its own panel/tab technically, but belongs to
+  // Settings conceptually (it's app-content, not identity) — this row keeps
+  // it reachable from here instead of needing its own top-level nav slot.
+  const appearanceSection = el(`
+    <div class="account-section">
+      <div class="account-section-label">Appearance</div>
+      <button type="button" class="account-btn" id="settings-appearance-btn">
+        <span>Theme<span class="account-btn-sub">${escapeHtml(THEMES.find((t) => t.key === (state.theme || "cream"))?.name || "Cream")}</span></span>
+        <span>&rsaquo;</span>
+      </button>
+    </div>
+  `);
+  appearanceSection.querySelector("#settings-appearance-btn").addEventListener("click", () => activateTab("appearance"));
+  panel.appendChild(appearanceSection);
 }
 
 function renderChecklistSheet(id) {
@@ -4448,6 +4559,7 @@ function renderHome() {
   }
 
   panel.appendChild(renderHomeHero(today));
+  panel.appendChild(renderYourSpaces());
 
   const workoutSheetEntry = Object.entries(state.customSheets).find(([, s]) => s.templateKey === "workout" && s.workoutSchemaV === 1);
   if (workoutSheetEntry) {
@@ -4542,6 +4654,50 @@ function renderHomeHero(today) {
   hero.appendChild(historyLink);
 
   return hero;
+}
+
+// Every real space you've added, all in one tappable grid — regardless of
+// whether it made the cut for the bottom bar. The bar only has room for
+// MOBILE_PINNED_COUNT before things start feeling cramped, so this is the
+// actual complete map: the small dot marks which ones are also pinned
+// below. "Manage" goes to the same place adding/removing/reordering always
+// has (Settings), just reachable from Home now instead of only the corner
+// menu.
+function renderYourSpaces() {
+  const wrap = el(`<div></div>`);
+  const visible = state.sheets.filter((s) => s.visible && s.id !== "wellness");
+  if (!visible.length) return wrap;
+
+  const pinnedIds = new Set(visible.slice(0, MOBILE_PINNED_COUNT).map((s) => s.id));
+
+  wrap.appendChild(el(`
+    <div class="home-shelf-label">
+      Your spaces
+      <span class="home-shelf-sub">${visible.length} added</span>
+    </div>
+  `));
+  const grid = el(`<div class="home-yourspaces-grid"></div>`);
+  visible.forEach((s) => {
+    const tile = el(`
+      <button type="button" class="home-yourspaces-tile">
+        ${pinnedIds.has(s.id) ? `<span class="home-yourspaces-tile-pin"></span>` : ""}
+        <span class="home-yourspaces-tile-icon">${iconSvg(sheetIcon(s))}</span>
+        <span class="home-yourspaces-tile-label">${escapeHtml(sheetLabel(s))}</span>
+      </button>
+    `);
+    tile.addEventListener("click", () => activateTab(s.id));
+    grid.appendChild(tile);
+  });
+  const manage = el(`
+    <button type="button" class="home-yourspaces-tile manage">
+      <span class="home-yourspaces-tile-icon">${iconSvg('<path d="M4 7h16M4 12h16M4 17h16"/>')}</span>
+      <span class="home-yourspaces-tile-label">Manage</span>
+    </button>
+  `);
+  manage.addEventListener("click", () => activateTab("settings"));
+  grid.appendChild(manage);
+  wrap.appendChild(grid);
+  return wrap;
 }
 
 // What used to be a fixed "Home" slot on the bottom bar is now free, since
