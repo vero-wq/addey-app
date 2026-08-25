@@ -144,6 +144,40 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
   display: none;
 }
 .menu-dropdown.open { display: block; }
+
+.account-avatar-btn {
+  width: 32px; height: 32px; border-radius: 50%; border: none; flex-shrink: 0;
+  background: var(--accent); color: var(--text-inverse); font-family: "Source Serif 4", Georgia, serif;
+  font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  position: relative; cursor: pointer;
+}
+.account-avatar-btn:hover { background: var(--accent-dark); }
+.account-modal-box { width: 340px; max-width: 92vw; }
+.account-modal-header-row { display: flex; align-items: center; gap: 14px; padding: 4px 0 18px; }
+.account-avatar-lg {
+  width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: var(--text-inverse);
+  font-family: "Source Serif 4", Georgia, serif; font-size: 20px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.account-email { font-weight: 600; font-size: 14.5px; word-break: break-all; }
+.account-plan-badge {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 5px; padding: 3px 9px;
+  border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--bg); color: var(--accent-dark);
+}
+.account-plan-badge.founder { background: var(--accent-dark); color: var(--text-inverse); }
+.account-section { border-top: 1px solid var(--border); padding: 14px 0; }
+.account-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
+.account-note { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.account-btn {
+  width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 13px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.account-btn:hover { background: var(--bg); }
+.account-btn[disabled] { opacity: 0.5; cursor: default; }
+.account-btn[disabled]:hover { background: var(--surface); }
+.account-btn.danger { color: #8C3F2B; }
+.account-btn.danger:hover { background: #F1DAD3; border-color: #E0B6A8; }
 .menu-item {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
   font-size: 14px; color: var(--text); cursor: pointer; background: none; border: none;
@@ -968,6 +1002,7 @@ td input:hover { border-color: var(--border); }
       </div>
       <div class="topbar-right">
         <span id="save-indicator" class="save-indicator"></span>
+        <button class="account-avatar-btn" id="account-avatar-btn" title="Account"></button>
         <div class="menu-btn-wrap">
           <button class="menu-btn" id="main-menu-btn" title="Menu">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
