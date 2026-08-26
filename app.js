@@ -639,10 +639,7 @@ function openAccountSheet() {
   });
   overlay.querySelector("#you-pillars-row").addEventListener("click", () => {
     close();
-    infoModal(
-      "Pillar Mapping",
-      el(`<p class="muted" style="font-size:13px;margin:0;line-height:1.5;">Choosing what feeds each of your four pillars is coming soon. For now, Spiritual anchor is set to Bible — the rest log directly on Home.</p>`)
-    );
+    openPillarMappingModal();
   });
   overlay.querySelector("#you-appearance-row").addEventListener("click", () => {
     close();
@@ -1215,6 +1212,7 @@ function renderChecklistSheet(id) {
     `);
     row.querySelector(".checkbox").addEventListener("click", () => {
       item.done = !item.done;
+      if (item.done) item.completedDate = todayISO();
       scheduleSave();
       renderChecklistSheet(id);
     });
@@ -1691,6 +1689,7 @@ function renderQuranSheet(id) {
     `);
     row.querySelector(".checkbox").addEventListener("click", () => {
       item.done = !item.done;
+      if (item.done) item.completedDate = todayISO();
       scheduleSave();
       renderQuranSheet(id);
     });
@@ -4071,6 +4070,7 @@ function renderBible() {
       chip.addEventListener("click", () => {
         const original = state.bible.find((x) => x.id === c.id);
         original.done = !original.done;
+        if (original.done) original.completedDate = todayISO();
         scheduleSave();
         renderBible();
       });
@@ -4127,13 +4127,139 @@ const WELLNESS_NOTE_FIELDS = [
   ["adjustment", "One adjustment to make"],
 ];
 
-// Which space "fulfills" each pillar on Home's Today tiles — a fixed
-// starting point for now (matches what's actually in use today). This is
-// meant to become editable from Settings once Pillar Mapping ships there;
-// until then it's just a display label, not a real link to that sheet.
-const PILLAR_SOURCE_LABELS = {
-  spiritualAnchor: "Bible",
-};
+// Which space(s) "fulfill" each pillar — editable from the "You" page's
+// Pillar Mapping screen. Real, not just a label: if you log something
+// today in a mapped space, that pillar marks itself done automatically.
+// Tapping a pillar on Home still works manually too, for anything a
+// mapped space can't see (a trip to church, meditating without logging
+// it anywhere) — this is additive, not a replacement for the tap.
+// state.pillarSourceMap holds {pillarKey: [sheetId, ...]}.
+function pillarSourceLabel(key) {
+  const ids = state.pillarSourceMap?.[key] || [];
+  const labels = ids
+    .map((id) => {
+      if (id === "bible") {
+        const sheet = state.sheets.find((s) => s.id === "bible" && s.visible);
+        return sheet ? sheetLabel(sheet) : null;
+      }
+      const sheet = state.sheets.find((s) => s.id === id && s.visible);
+      return sheet ? sheetLabel(sheet) : null;
+    })
+    .filter(Boolean);
+  return labels.length ? labels.join(", ") : null;
+}
+
+// Spaces whose "done" items carry a completedDate — the only ones we can
+// honestly say "you were active here today" for. Books (ratings, not a
+// done date) and Workout/Wardrobe (their own richer shapes) aren't
+// included yet; a plain checklist space (Bible, Quran, or a gallery
+// checklist like Meals) is.
+const PILLAR_INELIGIBLE_TEMPLATE_KEYS = new Set(["wardrobe", "books", "workout"]);
+function pillarEligibleSheets() {
+  const results = [];
+  const bibleSheet = state.sheets.find((s) => s.id === "bible" && s.visible);
+  if (bibleSheet) results.push({ id: "bible", label: sheetLabel(bibleSheet) });
+  state.sheets.forEach((s) => {
+    if (s.kind !== "custom" || !s.visible) return;
+    const cs = state.customSheets[s.id];
+    if (cs && Array.isArray(cs.items) && !PILLAR_INELIGIBLE_TEMPLATE_KEYS.has(cs.templateKey)) {
+      results.push({ id: s.id, label: sheetLabel(s) });
+    }
+  });
+  return results;
+}
+
+// Did she log something today in this particular space? Used to
+// auto-complete a pillar without needing a manual tap.
+function sheetActiveToday(sheetId, today) {
+  if (sheetId === "bible") {
+    return state.bible.some((r) => r.done && r.completedDate === today);
+  }
+  const cs = state.customSheets[sheetId];
+  if (!cs || !Array.isArray(cs.items)) return false;
+  return cs.items.some((i) => i.done && i.completedDate === today);
+}
+
+// Runs on every Home render: for each pillar with mapped spaces, if
+// there's real activity today in any of them and the pillar isn't marked
+// yet, mark it — additive to (never overriding) a manual tap or a manual
+// correction made in the day editor.
+function applyPillarAutoDetection(todaysEntry, today) {
+  let changed = false;
+  WELLNESS_YESNO_FIELDS.forEach(([key]) => {
+    if (todaysEntry[key] === "Yes") return;
+    const ids = state.pillarSourceMap?.[key] || [];
+    if (ids.some((id) => sheetActiveToday(id, today))) {
+      todaysEntry[key] = "Yes";
+      changed = true;
+    }
+  });
+  if (changed) scheduleSave();
+}
+
+// Reached from the "You" page. One checkbox list per pillar — pick zero or
+// more spaces that count toward it. Checking a box doesn't retroactively
+// mark today done; it just means from now on, logging something there
+// today will. Tapping the pillar on Home always still works too.
+function openPillarMappingModal() {
+  const eligible = pillarEligibleSheets();
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3>Pillar Mapping</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <p class="muted" style="font-size:12.5px;line-height:1.5;margin:0 0 14px;">
+          Pick which spaces count toward each pillar — log something there today and it marks itself done. You can still tap a pillar on Home to log it yourself, for anything that isn't tracked in a space (a trip to church, meditating without logging it).
+        </p>
+        <div id="pillar-mapping-sections"></div>
+      </div>
+    </div>
+  `);
+  const sectionsWrap = overlay.querySelector("#pillar-mapping-sections");
+
+  function renderSections() {
+    sectionsWrap.innerHTML = "";
+    WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+      const section = el(`<div class="account-section"></div>`);
+      section.appendChild(el(`<div class="account-section-label">${escapeHtml(label)}</div>`));
+      if (!eligible.length) {
+        section.appendChild(el(`<div class="account-note">No trackable spaces yet — stays manual on Home.</div>`));
+      } else {
+        eligible.forEach((sp) => {
+          const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
+          const row = el(`
+            <label class="you-list-row" style="cursor:pointer;">
+              <input type="checkbox" ${checked ? "checked" : ""} style="width:16px;height:16px;flex-shrink:0;margin:0;" />
+              <span>${escapeHtml(sp.label)}</span>
+            </label>
+          `);
+          row.querySelector("input").addEventListener("change", (e) => {
+            const set = new Set(state.pillarSourceMap[key] || []);
+            if (e.target.checked) set.add(sp.id);
+            else set.delete(sp.id);
+            state.pillarSourceMap[key] = Array.from(set);
+            scheduleSave();
+          });
+          section.appendChild(row);
+        });
+      }
+      sectionsWrap.appendChild(section);
+    });
+  }
+  renderSections();
+
+  const close = () => {
+    overlay.remove();
+    renderHome();
+  };
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
+}
 
 function wellnessColorClass(field, value) {
   if (!value) return "";
@@ -4586,41 +4712,14 @@ function renderHome() {
   if (!panel) return;
   panel.innerHTML = "";
 
-  const prize = state.veronikasPrize;
   const today = todayISO();
 
   panel.appendChild(el(`<div class="home-greeting">Good ${homeGreetingTime()}</div>`));
 
-  if (prize.quote) {
-    const quoteCard = el(`<div class="card"></div>`);
-    quoteCard.appendChild(el(`<div class="home-quote-text">${escapeHtml(prize.quote)}</div>`));
-    panel.appendChild(quoteCard);
-  }
-
   panel.appendChild(renderHomeHero(today));
   panel.appendChild(renderYourSpaces());
 
-  const workoutSheetEntry = Object.entries(state.customSheets).find(([, s]) => s.templateKey === "workout" && s.workoutSchemaV === 1);
-  if (workoutSheetEntry) {
-    const [workoutSheetId, workoutSheet] = workoutSheetEntry;
-    const workoutStats = computeWorkoutProgressStats(workoutSheet);
-    if (workoutStats) {
-      panel.appendChild(
-        buildProgressCard(
-          "Workout Progress",
-          workoutStats.weekPct,
-          `<strong>${workoutStats.weekDone} of ${workoutStats.weekTotal}</strong> days worked out this week<br/>${workoutStats.weekLabel}`,
-          workoutStats.tones,
-          "Last 14 training days",
-          () => activateTab(workoutSheetId)
-        )
-      );
-    }
-  }
-
-  panel.appendChild(renderDiscoverShelf());
-
-  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a space below to add it.</div>`));
+  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a space below to open it.</div>`));
 }
 
 // The new front door: wellness ring + reward + today's four pillars, all in
@@ -4632,6 +4731,7 @@ function renderHome() {
 // notes) — that page didn't go away, it's just not pinned to the bar.
 function renderHomeHero(today) {
   const todaysEntry = ensureTodaysWellnessEntry(today);
+  applyPillarAutoDetection(todaysEntry, today);
   const wellness = computeWellnessProgress(today);
   const prize = wellness.prize;
 
@@ -4649,25 +4749,26 @@ function renderHomeHero(today) {
     </div>
   `));
 
-  const prizeStrip = el(`<div class="home-hero-prize-strip"></div>`);
-  const thumb = prize.itemPhoto
-    ? el(`<img class="home-hero-prize-thumb" src="${prize.itemPhoto}" />`)
-    : el(`<div class="home-hero-prize-thumb">No photo</div>`);
-  prizeStrip.appendChild(thumb);
-  prizeStrip.appendChild(el(`
-    <div class="home-hero-prize-text">
+  const prizeBanner = el(`<div class="home-hero-prize-banner"></div>`);
+  if (prize.itemPhoto) {
+    prizeBanner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
+  } else {
+    prizeBanner.appendChild(el(`<div class="home-hero-prize-banner-noimg">No photo yet — tap to add one</div>`));
+  }
+  prizeBanner.appendChild(el(`
+    <div class="home-hero-prize-scrim">
       <div class="home-hero-prize-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
       <div class="home-hero-prize-sub">${wellness.stats.reached ? "Ready to claim" : `Unlocks ${wellness.stats.endDate}`}</div>
     </div>
   `));
-  prizeStrip.addEventListener("click", () => activateTab("wellness"));
-  hero.appendChild(prizeStrip);
+  prizeBanner.addEventListener("click", () => activateTab("wellness"));
+  hero.appendChild(prizeBanner);
 
   hero.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
   const grid = el(`<div class="home-hero-pillars"></div>`);
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
     const done = todaysEntry[key] === "Yes";
-    const source = PILLAR_SOURCE_LABELS[key];
+    const source = pillarSourceLabel(key);
     const tile = el(`
       <button type="button" class="home-pillar${done ? " done" : ""}">
         <span class="home-pillar-icon ${done ? "on" : "off"}">${done ? checkSvg : ""}</span>
@@ -4695,92 +4796,78 @@ function renderHomeHero(today) {
   return hero;
 }
 
-// Every real space you've added, all in one tappable grid — regardless of
-// whether it made the cut for the bottom bar. The bar only has room for
-// MOBILE_PINNED_COUNT before things start feeling cramped, so this is the
-// actual complete map: the small dot marks which ones are also pinned
-// below. "Manage" goes to the same place adding/removing/reordering always
-// has (Settings), just reachable from Home now instead of only the corner
-// menu.
+// One card for everything space-related on Home: your added spaces (collapsed
+// to a quiet icon preview by default, expandable to the full grid in place)
+// plus a single line at the bottom pointing to the Gallery for adding more.
+// Nothing here adds a space directly — tapping the gallery line just opens
+// Settings on the Gallery sub-tab so you can browse and decide there.
+let homeYourSpacesExpanded = false; // resets each session, not persisted
+
 function renderYourSpaces() {
-  const wrap = el(`<div></div>`);
+  const wrap = el(`<div class="card"></div>`);
   const visible = state.sheets.filter((s) => s.visible && s.id !== "wellness");
-  if (!visible.length) return wrap;
 
-  const pinnedIds = new Set(visible.slice(0, MOBILE_PINNED_COUNT).map((s) => s.id));
-
-  wrap.appendChild(el(`
-    <div class="home-shelf-label">
-      Your spaces
-      <span class="home-shelf-sub">${visible.length} added</span>
-    </div>
-  `));
-  const grid = el(`<div class="home-yourspaces-grid"></div>`);
-  visible.forEach((s) => {
-    const tile = el(`
-      <button type="button" class="home-yourspaces-tile">
-        ${pinnedIds.has(s.id) ? `<span class="home-yourspaces-tile-pin"></span>` : ""}
-        <span class="home-yourspaces-tile-icon">${iconSvg(sheetIcon(s))}</span>
-        <span class="home-yourspaces-tile-label">${escapeHtml(sheetLabel(s))}</span>
-      </button>
-    `);
-    tile.addEventListener("click", () => activateTab(s.id));
-    grid.appendChild(tile);
-  });
-  const manage = el(`
-    <button type="button" class="home-yourspaces-tile manage">
-      <span class="home-yourspaces-tile-icon">${iconSvg('<path d="M4 7h16M4 12h16M4 17h16"/>')}</span>
-      <span class="home-yourspaces-tile-label">Manage</span>
+  const head = el(`
+    <button type="button" class="home-yourspaces-head">
+      <span class="home-yourspaces-head-left">
+        <span class="home-yourspaces-title">Your spaces</span>
+        <span class="home-yourspaces-count">${visible.length} added</span>
+      </span>
+      <span class="home-yourspaces-chevron${homeYourSpacesExpanded ? " open" : ""}">${chevronSvg}</span>
     </button>
   `);
-  manage.addEventListener("click", () => activateTab("settings"));
-  grid.appendChild(manage);
-  wrap.appendChild(grid);
-  return wrap;
-}
-
-// What used to be a fixed "Home" slot on the bottom bar is now free, since
-// Wellness moved in here — this shelf is how a space actually gets added,
-// separate from the bar itself. Only shows spaces not already added; once
-// one gets added it disappears from here and (space permitting) shows up
-// in the bar or the overflow menu instead, same as adding from Settings
-// always has.
-function renderDiscoverShelf() {
-  const wrap = el(`<div></div>`);
-  const addedTemplateKeys = new Set(Object.values(state.customSheets).map((cs) => cs.templateKey));
-  const candidates = SHEET_GALLERY.filter((tpl) => !addedTemplateKeys.has(tpl.key)).slice(0, 2);
-  if (!candidates.length) return wrap;
-
-  const activeSpaces = state.sheets.filter((s) => s.visible && s.id !== "wellness").length;
-  wrap.appendChild(el(`
-    <div class="home-shelf-label">
-      Discover more spaces
-      <span class="home-shelf-sub">${activeSpaces} space${activeSpaces === 1 ? "" : "s"} active</span>
-    </div>
-  `));
-  const row = el(`<div class="home-shelf-row"></div>`);
-  candidates.forEach((tpl) => {
-    const tile = el(`
-      <button type="button" class="home-shelf-tile">
-        <span class="home-shelf-tile-icon">${iconSvg(tpl.icon)}</span>
-        <span class="home-shelf-tile-label">${escapeHtml(tpl.label)}</span>
-        <span class="home-shelf-tile-cta">+ Add</span>
-      </button>
-    `);
-    tile.addEventListener("click", () => {
-      addSheetFromTemplate(tpl);
-      renderHome();
-    });
-    row.appendChild(tile);
+  head.addEventListener("click", () => {
+    homeYourSpacesExpanded = !homeYourSpacesExpanded;
+    renderHome();
   });
-  const seeAll = el(`
-    <button type="button" class="home-shelf-tile home-shelf-tile-seeall">
-      <span class="home-shelf-tile-label">See all spaces</span>
+  wrap.appendChild(head);
+
+  if (visible.length) {
+    if (homeYourSpacesExpanded) {
+      const grid = el(`<div class="home-yourspaces-grid"></div>`);
+      visible.forEach((s) => {
+        const tile = el(`
+          <button type="button" class="home-yourspaces-tile">
+            <span class="home-yourspaces-tile-icon">${iconSvg(sheetIcon(s))}</span>
+            <span class="home-yourspaces-tile-label">${escapeHtml(sheetLabel(s))}</span>
+          </button>
+        `);
+        tile.addEventListener("click", () => activateTab(s.id));
+        grid.appendChild(tile);
+      });
+      wrap.appendChild(grid);
+    } else {
+      const previewRow = el(`<div class="home-yourspaces-preview-row"></div>`);
+      const previewCount = Math.min(4, visible.length);
+      visible.slice(0, previewCount).forEach((s) => {
+        const dot = el(`<button type="button" class="home-yourspaces-preview-dot">${iconSvg(sheetIcon(s))}</button>`);
+        dot.addEventListener("click", (e) => {
+          e.stopPropagation();
+          activateTab(s.id);
+        });
+        previewRow.appendChild(dot);
+      });
+      const remaining = visible.length - previewCount;
+      previewRow.appendChild(
+        el(`<span class="home-yourspaces-preview-more">${remaining > 0 ? `+${remaining} more · ` : ""}tap to view all</span>`)
+      );
+      wrap.appendChild(previewRow);
+    }
+  }
+
+  const galleryLink = el(`
+    <button type="button" class="home-yourspaces-gallery-link">
+      Add more spaces from the gallery ${chevronSvg}
     </button>
   `);
-  seeAll.addEventListener("click", () => activateTab("settings"));
-  row.appendChild(seeAll);
-  wrap.appendChild(row);
+  galleryLink.style.setProperty("--chevron-rotate", "-90deg");
+  galleryLink.querySelector("svg").style.transform = "rotate(-90deg)";
+  galleryLink.addEventListener("click", () => {
+    settingsSubTab = "gallery";
+    activateTab("settings");
+  });
+  wrap.appendChild(galleryLink);
+
   return wrap;
 }
 
@@ -5126,6 +5213,18 @@ async function boot() {
     state.homeAbsorbsWellnessV1Applied = true;
   }
   state.customSheets ||= {};
+  // Pillar Mapping — which spaces auto-complete each pillar. Defaults to
+  // Bible for Spiritual anchor once, the first time someone has a Bible
+  // sheet, since that matched what was already in use; everything else
+  // starts unmapped (manual-only) until she picks something in the "You"
+  // page's Pillar Mapping screen.
+  state.pillarSourceMap ||= { movement: [], spiritualAnchor: [], sleepProtected: [], socialConnection: [] };
+  if (!state.pillarSourceMapDefaultApplied) {
+    if (state.sheets.some((s) => s.id === "bible" && s.visible) && !state.pillarSourceMap.spiritualAnchor.length) {
+      state.pillarSourceMap.spiritualAnchor = ["bible"];
+    }
+    state.pillarSourceMapDefaultApplied = true;
+  }
   // One-time upgrade: any Capsule Wardrobe sheet added before it had
   // real category/color/season/price data (just a plain checklist of
   // placeholder items like "Tops", "Bottoms"...) gets replaced with the
