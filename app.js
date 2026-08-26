@@ -6,7 +6,7 @@ const checkSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 // state.customSheets holds the data for the gallery-added ones.
 // ------------------------------------------------------------------
 const BUILTIN_SHEET_META = {
-  todo: { label: "To-Do", icon: `<path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>` },
+  todo: { label: "Lists", icon: `<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path>` },
   budget: { label: "Budget", icon: `<line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>` },
   investments: { label: "Investments", icon: `<polyline points="3 17 9 11 13 15 21 6"></polyline><polyline points="15 6 21 6 21 12"></polyline>` },
   bible: {
@@ -489,6 +489,8 @@ function initTabs() {
   renderAccountAvatar();
   const avatarBtn = document.getElementById("account-avatar-btn");
   if (avatarBtn) avatarBtn.addEventListener("click", () => openAccountSheet());
+  const brandBtn = document.getElementById("brand-home-btn");
+  if (brandBtn) brandBtn.addEventListener("click", () => activateTab("home"));
   const homeRow = document.getElementById("home-tab-row");
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeRow) homeRow.addEventListener("click", () => activateTab("home"));
@@ -505,7 +507,7 @@ function initTabs() {
 function renderAll() {
   ensureCustomPanels();
   renderHome();
-  renderTodo();
+  renderLists();
   renderBudget();
   renderInvestments();
   renderBible();
@@ -944,7 +946,10 @@ function removeCustomSheet(id) {
 // Removing one wipes its underlying data for good, not just its tab.
 function removeBuiltinSheet(id) {
   if (isPinnedSheet(id)) return;
-  if (id === "todo") state.todos = [];
+  if (id === "todo") {
+    state.lists = [];
+    state.activeListId = null;
+  }
   if (id === "budget") {
     state.budget = [];
     state.goals = [];
@@ -1249,6 +1254,9 @@ function renderChecklistSheet(id) {
 // ------------------------------------------------------------------
 const editSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>`;
 const chevronSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+const chevronRightSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>`;
+const backArrowSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"></polyline></svg>`;
+const trashSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
 
 // A curated palette for the dot — separate from the free-text Color
 // description, so "Gold + Diamonds" or "Same as Blazer" can still get an
@@ -2558,168 +2566,329 @@ function renderWorkoutSheet(sheetId) {
 }
 
 // ------------------------------------------------------------------
-// To-Do
+// Lists — one home for every running list, not just tasks. Each list is
+// either a plain checklist (Groceries, Packing — no priority, just a
+// name and a checkbox) or a task list (priority dots, same as the old
+// single To-Do). The overview shows every list with its own icon/color;
+// tapping one drills into it, same tab, no separate nav entry needed.
 // ------------------------------------------------------------------
-const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", ""];
+const LIST_ICON_CHOICES = [
+  { key: "checklist", svg: `<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>` },
+  { key: "cart", svg: `<path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M3 3h2l1 3"/>` },
+  { key: "gift", svg: `<path d="M20 12V8a2 2 0 00-2-2H6a2 2 0 00-2 2v4M4 12l1.5 8h13L20 12M4 12h16M9 6V4h6v2"/>` },
+  { key: "plane", svg: `<path d="M3 11l18-7-7 18-3-8-8-3z"/>` },
+  { key: "clock", svg: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>` },
+];
+const LIST_COLOR_CHOICES = ["#8C3F2B", "#55694A", "#8B6BAE", "#4E7C93", "#C9A24A"];
+const LIST_PRIORITY_CYCLE = ["1. High", "2. Medium", "3. Low"];
 
-// Drag-and-drop reordering — constrained to the same day, since the list is
-// always grouped by day; renumbers sortOrder for that day's items afterward
-// so the new order sticks across filters and reloads.
-let draggedTodoId = null;
-function reorderTodoItem(draggedId, targetId, before) {
-  const draggedIdx = state.todos.findIndex((t) => t.id === draggedId);
-  const targetIdx = state.todos.findIndex((t) => t.id === targetId);
-  if (draggedIdx < 0 || targetIdx < 0) return;
-  const day = state.todos[draggedIdx].day || "";
-  if ((state.todos[targetIdx].day || "") !== day) return;
-  const [item] = state.todos.splice(draggedIdx, 1);
-  const newTargetIdx = state.todos.findIndex((t) => t.id === targetId);
-  const insertAt = before ? newTargetIdx : newTargetIdx + 1;
-  state.todos.splice(insertAt, 0, item);
-  let counter = 0;
-  state.todos.filter((t) => (t.day || "") === day).forEach((t) => (t.sortOrder = counter++));
-  scheduleSave();
-  renderTodo();
+function listIconSvg(key) {
+  return (LIST_ICON_CHOICES.find((i) => i.key === key) || LIST_ICON_CHOICES[0]).svg;
+}
+function listPriorityClass(priority) {
+  return priority?.includes("High") ? "high" : priority?.includes("Low") ? "low" : "medium";
+}
+function activeList() {
+  return state.lists.find((l) => l.id === state.activeListId) || null;
 }
 
-function renderTodo() {
+function renderLists() {
   const panel = document.getElementById("panel-todo");
-  state.todoFilterDay ||= "all";
-  state.todoFilterPriority ||= "all";
-
-  let sorted = [...state.todos].sort((a, b) => {
-    const dayDiff = DAY_ORDER.indexOf(a.day || "") - DAY_ORDER.indexOf(b.day || "");
-    if (dayDiff !== 0) return dayDiff;
-    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-  });
-  if (state.todoFilterDay === "none") sorted = sorted.filter((t) => !t.day);
-  else if (state.todoFilterDay !== "all") sorted = sorted.filter((t) => t.day === state.todoFilterDay);
-  if (state.todoFilterPriority !== "all") sorted = sorted.filter((t) => t.priority === state.todoFilterPriority);
-
   panel.innerHTML = "";
-  panel.appendChild(el(`<h2 class="section-title serif">To-Do</h2>`));
+  const list = activeList();
+  if (list) panel.appendChild(renderListDetail(list));
+  else panel.appendChild(renderListsOverview());
+}
 
-  const card = el(`<div class="card"></div>`);
+function renderListsOverview() {
+  const wrap = el(`<div></div>`);
+  wrap.appendChild(el(`<h2 class="section-title serif">Lists</h2>`));
 
-  const headerRow = el(`
-    <div class="row todo-row todo-header-row">
-      <div class="todo-col-check"></div>
-      <div class="muted todo-col-label" style="grid-area:task;">Task</div>
-      <select class="todo-filter-day todo-col-day"></select>
-      <select class="todo-filter-priority todo-col-priority"></select>
-      <div class="todo-col-actions"></div>
+  state.lists.forEach((list) => {
+    const openCount = list.items.filter((i) => !i.done).length;
+    const sub = list.style === "checklist" ? `${list.items.length} item${list.items.length === 1 ? "" : "s"}` : `${openCount} open`;
+    const card = el(`
+      <button type="button" class="list-card">
+        <span class="list-card-icon" style="background:${list.color};">${iconSvg(listIconSvg(list.icon))}</span>
+        <span class="list-card-body">
+          <span class="list-card-name">${escapeHtml(list.name)}</span>
+          <span class="list-card-sub">${escapeHtml(sub)}</span>
+        </span>
+        <span class="list-card-chevron">${chevronRightSvg}</span>
+      </button>
+    `);
+    card.addEventListener("click", () => {
+      state.activeListId = list.id;
+      scheduleSave();
+      renderLists();
+    });
+    wrap.appendChild(card);
+  });
+
+  const newListBtn = el(`
+    <button type="button" class="new-list-tile">
+      <span class="new-list-tile-icon">${iconSvg('<path d="M12 5v14M5 12h14"/>')}</span>
+      <span class="new-list-tile-label">New list</span>
+    </button>
+  `);
+  newListBtn.addEventListener("click", () => openNewListModal());
+  wrap.appendChild(newListBtn);
+
+  return wrap;
+}
+
+function openNewListModal() {
+  let icon = LIST_ICON_CHOICES[0].key;
+  let color = LIST_COLOR_CHOICES[0];
+  let style = "task";
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box account-modal-box">
+        <h3>New List</h3>
+        <div class="field-label">Name</div>
+        <input type="text" class="list-name-input" placeholder="e.g. Packing — Bali" style="width:100%;box-sizing:border-box;" />
+        <div class="field-label">Icon</div>
+        <div class="icon-grid"></div>
+        <div class="field-label">Color</div>
+        <div class="color-grid"></div>
+        <div class="field-label">Style</div>
+        <div class="style-toggle">
+          <button type="button" class="style-choice" data-value="checklist">Simple checklist</button>
+          <button type="button" class="style-choice selected" data-value="task">Task list (priority)</button>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost modal-cancel">Cancel</button>
+          <button type="button" class="btn-primary modal-confirm">Create list</button>
+        </div>
+      </div>
     </div>
   `);
-  const dayFilterOptions = [
-    { value: "all", text: "All days" },
-    ...DAY_ORDER.slice(0, 7).map((d) => ({ value: d, text: d })),
-    { value: "none", text: "No day" },
-  ];
-  const dayFilterSelect = headerRow.querySelector(".todo-filter-day");
-  dayFilterOptions.forEach((o) => dayFilterSelect.appendChild(el(`<option value="${o.value}">${o.text}</option>`)));
-  dayFilterSelect.value = state.todoFilterDay;
-  dayFilterSelect.addEventListener("change", (e) => {
-    state.todoFilterDay = e.target.value;
-    scheduleSave();
-    renderTodo();
-  });
 
-  const priorityFilterOptions = [
-    { value: "all", text: "All priorities" },
-    { value: "1. High", text: "High" },
-    { value: "2. Medium", text: "Medium" },
-    { value: "3. Low", text: "Low" },
-  ];
-  const priorityFilterSelect = headerRow.querySelector(".todo-filter-priority");
-  priorityFilterOptions.forEach((o) => priorityFilterSelect.appendChild(el(`<option value="${o.value}">${o.text}</option>`)));
-  priorityFilterSelect.value = state.todoFilterPriority;
-  priorityFilterSelect.addEventListener("change", (e) => {
-    state.todoFilterPriority = e.target.value;
-    scheduleSave();
-    renderTodo();
-  });
-  card.appendChild(headerRow);
-
-  if (sorted.length === 0) card.appendChild(el(`<div class="muted" style="padding:10px 0;">Nothing matches these filters.</div>`));
-  // Only show day-group headers when the list actually mixes days —
-  // filtered down to one day (or "no day"), the list is already
-  // homogeneous and a repeated header would just be noise.
-  const showDayHeaders = state.todoFilterDay === "all";
-  let lastDayKey = undefined;
-  sorted.forEach((t) => {
-    const dayKey = t.day || "";
-    if (showDayHeaders && dayKey !== lastDayKey) {
-      lastDayKey = dayKey;
-      card.appendChild(el(`<div class="todo-day-header">${escapeHtml(dayKey || "Any day")}</div>`));
-    }
-    card.appendChild(todoRow(t));
-  });
-  panel.appendChild(card);
-
-  const form = el(`
-    <form class="add-form">
-      <input name="task" placeholder="New task" required />
-      <select name="priority">
-        <option value="1. High">High</option>
-        <option value="2. Medium" selected>Medium</option>
-        <option value="3. Low">Low</option>
-      </select>
-      <select name="day">
-        <option value="">Any day</option>
-        ${DAY_ORDER.slice(0, 7).map((d) => `<option value="${d}">${d}</option>`).join("")}
-      </select>
-      <button class="btn-primary" type="submit">Add</button>
-    </form>
-  `);
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    state.todos.push({
-      id: nextId(),
-      task: fd.get("task"),
-      priority: fd.get("priority"),
-      day: fd.get("day") || null,
-      done: false,
-      sortOrder: state.todos.length,
+  const iconGrid = overlay.querySelector(".icon-grid");
+  LIST_ICON_CHOICES.forEach((choice) => {
+    const btn = el(`<button type="button" class="icon-choice${choice.key === icon ? " selected" : ""}">${iconSvg(choice.svg)}</button>`);
+    btn.addEventListener("click", () => {
+      icon = choice.key;
+      iconGrid.querySelectorAll(".icon-choice").forEach((b) => b.classList.toggle("selected", b === btn));
     });
-    scheduleSave();
-    renderTodo();
+    iconGrid.appendChild(btn);
   });
-  panel.appendChild(form);
+
+  const colorGrid = overlay.querySelector(".color-grid");
+  LIST_COLOR_CHOICES.forEach((c) => {
+    const btn = el(`<button type="button" class="color-choice${c === color ? " selected" : ""}" style="background:${c};"></button>`);
+    btn.addEventListener("click", () => {
+      color = c;
+      colorGrid.querySelectorAll(".color-choice").forEach((b) => b.classList.toggle("selected", b === btn));
+    });
+    colorGrid.appendChild(btn);
+  });
+
+  overlay.querySelectorAll(".style-choice").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      style = btn.dataset.value;
+      overlay.querySelectorAll(".style-choice").forEach((b) => b.classList.toggle("selected", b === btn));
+    });
+  });
+
+  const nameInput = overlay.querySelector(".list-name-input");
+  const submit = () => {
+    const name = nameInput.value.trim();
+    if (!name) {
+      nameInput.focus();
+      return;
+    }
+    const newList = { id: "list_" + nextId(), name, icon, color, style, items: [] };
+    state.lists.push(newList);
+    state.activeListId = newList.id;
+    scheduleSave();
+    overlay.remove();
+    renderLists();
+  };
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    }
+  });
+  overlay.querySelector(".modal-cancel").addEventListener("click", () => overlay.remove());
+  overlay.querySelector(".modal-confirm").addEventListener("click", submit);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+  nameInput.focus();
 }
 
-function todoRow(t) {
+let draggedListItemId = null;
+function reorderListItem(list, draggedId, targetId, before) {
+  const draggedIdx = list.items.findIndex((i) => i.id === draggedId);
+  const targetIdx = list.items.findIndex((i) => i.id === targetId);
+  if (draggedIdx < 0 || targetIdx < 0) return;
+  const [item] = list.items.splice(draggedIdx, 1);
+  const newTargetIdx = list.items.findIndex((i) => i.id === targetId);
+  const insertAt = before ? newTargetIdx : newTargetIdx + 1;
+  list.items.splice(insertAt, 0, item);
+  list.items.forEach((i, idx) => (i.sortOrder = idx));
+  scheduleSave();
+  renderLists();
+}
+
+function renderListDetail(list) {
+  const wrap = el(`<div></div>`);
+
+  const topRow = el(`
+    <div class="list-detail-topbar">
+      <button type="button" class="list-back-btn">${backArrowSvg}</button>
+      <h2 class="section-title serif list-detail-title" style="margin:0;" title="Double-click to rename">${escapeHtml(list.name)}</h2>
+      <button type="button" class="list-delete-btn" title="Delete this list">${trashSvg}</button>
+    </div>
+  `);
+  topRow.querySelector(".list-back-btn").addEventListener("click", () => {
+    state.activeListId = null;
+    scheduleSave();
+    renderLists();
+  });
+  topRow.querySelector(".list-delete-btn").addEventListener("click", () => {
+    confirmModal("Delete list?", `Delete "${list.name}" and everything in it? This can't be undone.`, "Delete", () => {
+      state.lists = state.lists.filter((l) => l.id !== list.id);
+      state.activeListId = null;
+      scheduleSave();
+      renderLists();
+    });
+  });
+  const titleEl = topRow.querySelector(".list-detail-title");
+  titleEl.addEventListener("dblclick", () => {
+    const input = el(`<input type="text" class="list-edit-name" value="${escapeHtml(list.name)}" style="font-size:20px;width:100%;box-sizing:border-box;" />`);
+    topRow.replaceChild(input, titleEl);
+    input.focus();
+    input.select();
+    const commit = () => {
+      list.name = input.value.trim() || list.name;
+      scheduleSave();
+      renderLists();
+    };
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+      if (e.key === "Escape") renderLists();
+    });
+  });
+  wrap.appendChild(topRow);
+
+  const sorted = [...list.items].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const card = el(`<div class="card"></div>`);
+  if (!sorted.length) card.appendChild(el(`<div class="muted" style="padding:10px 0;">Nothing here yet.</div>`));
+  sorted.forEach((item) => card.appendChild(listItemRow(list, item)));
+  wrap.appendChild(card);
+
+  const addBtn = el(`<button type="button" class="btn-primary todo-add-btn">+ Add item</button>`);
+  addBtn.addEventListener("click", () => {
+    addBtn.replaceWith(listAddComposer(list));
+  });
+  wrap.appendChild(addBtn);
+
+  return wrap;
+}
+
+// Expands right in place where the new item will land — no popup. Shows
+// priority dots only for a task-style list; a checklist skips straight
+// to Save since it has nothing else to pick.
+function listAddComposer(list) {
+  const box = el(`
+    <div class="inline-composer">
+      <input type="text" class="inline-composer-input" placeholder="${list.style === "task" ? "New task…" : "New item…"}" />
+      <div class="inline-composer-row">
+        <div class="inline-pri-picks"></div>
+        <div class="inline-composer-actions">
+          <button type="button" class="inline-btn cancel">Cancel</button>
+          <button type="button" class="inline-btn save">Add</button>
+        </div>
+      </div>
+    </div>
+  `);
+  let priority = "2. Medium";
+  if (list.style === "task") {
+    const picks = box.querySelector(".inline-pri-picks");
+    LIST_PRIORITY_CYCLE.forEach((p) => {
+      const dot = el(`<button type="button" class="inline-pri-dot priority-${listPriorityClass(p)}${p === priority ? " sel" : ""}"></button>`);
+      dot.addEventListener("click", () => {
+        priority = p;
+        picks.querySelectorAll(".inline-pri-dot").forEach((d) => d.classList.toggle("sel", d === dot));
+      });
+      picks.appendChild(dot);
+    });
+  }
+  const input = box.querySelector(".inline-composer-input");
+  const restoreAddBtn = () => {
+    const addBtn = el(`<button type="button" class="btn-primary todo-add-btn">+ Add item</button>`);
+    addBtn.addEventListener("click", () => box.replaceWith(listAddComposer(list)));
+    box.replaceWith(addBtn);
+  };
+  const submit = () => {
+    const task = input.value.trim();
+    if (!task) {
+      input.focus();
+      return;
+    }
+    list.items.push({
+      id: nextId(),
+      task,
+      priority: list.style === "task" ? priority : undefined,
+      done: false,
+      sortOrder: list.items.length,
+    });
+    scheduleSave();
+    renderLists();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    }
+    if (e.key === "Escape") restoreAddBtn();
+  });
+  box.querySelector(".cancel").addEventListener("click", restoreAddBtn);
+  box.querySelector(".save").addEventListener("click", submit);
+  setTimeout(() => input.focus(), 0);
+  return box;
+}
+
+function listItemRow(list, item) {
   const row = el(`
-    <div class="row todo-row" draggable="true" data-item-id="${t.id}">
+    <div class="row todo-row" draggable="true" data-item-id="${item.id}">
       <span class="todo-drag-handle">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.6"></circle><circle cx="8" cy="12" r="1.6"></circle><circle cx="8" cy="18" r="1.6"></circle><circle cx="16" cy="6" r="1.6"></circle><circle cx="16" cy="12" r="1.6"></circle><circle cx="16" cy="18" r="1.6"></circle></svg>
       </span>
-      <div class="checkbox todo-col-check ${t.done ? "checked" : ""}">${checkSvg}</div>
+      <div class="checkbox todo-col-check ${item.done ? "checked" : ""}">${checkSvg}</div>
       <div class="todo-task-label" style="cursor:pointer;" title="Double-click to edit">
-        <span class="${t.done ? "strike" : ""}">${escapeHtml(t.task)}</span>
+        <span class="${item.done ? "strike" : ""}">${escapeHtml(item.task)}</span>
       </div>
-      <select class="todo-col-day"></select>
-      <select class="todo-col-priority"></select>
-      <button class="remove-btn todo-col-actions" title="Delete">&times;</button>
+      ${
+        list.style === "task"
+          ? `<button type="button" class="todo-priority-dot priority-${listPriorityClass(item.priority)}" title="Tap to change priority"></button>`
+          : `<span class="todo-priority-dot" style="background:none;visibility:hidden;"></span>`
+      }
+      <button class="remove-btn todo-col-actions" title="Delete">${trashSvg}</button>
     </div>
   `);
 
   row.addEventListener("dragstart", (e) => {
-    draggedTodoId = t.id;
+    draggedListItemId = item.id;
     row.classList.add("dragging");
     e.dataTransfer.effectAllowed = "move";
     try {
-      e.dataTransfer.setData("text/plain", String(t.id));
+      e.dataTransfer.setData("text/plain", String(item.id));
     } catch (err) {
       // Some browsers require this call to not throw even if unused.
     }
   });
   row.addEventListener("dragend", () => {
-    draggedTodoId = null;
+    draggedListItemId = null;
     document.querySelectorAll(".todo-row").forEach((r) => r.classList.remove("dragging", "drag-over-top", "drag-over-bottom"));
   });
   row.addEventListener("dragover", (e) => {
-    if (draggedTodoId == null || draggedTodoId === t.id) return;
+    if (draggedListItemId == null || draggedListItemId === item.id) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     const rect = row.getBoundingClientRect();
@@ -2732,65 +2901,52 @@ function todoRow(t) {
   });
   row.addEventListener("drop", (e) => {
     e.preventDefault();
-    if (draggedTodoId == null || draggedTodoId === t.id) return;
+    if (draggedListItemId == null || draggedListItemId === item.id) return;
     const rect = row.getBoundingClientRect();
     const before = e.clientY - rect.top < rect.height / 2;
-    reorderTodoItem(draggedTodoId, t.id, before);
+    reorderListItem(list, draggedListItemId, item.id, before);
   });
 
   row.querySelector(".checkbox").addEventListener("click", () => {
-    t.done = !t.done;
+    item.done = !item.done;
     scheduleSave();
-    renderTodo();
+    renderLists();
   });
   row.querySelector(".remove-btn").addEventListener("click", () => {
-    state.todos = state.todos.filter((x) => x.id !== t.id);
-    scheduleSave();
-    renderTodo();
+    confirmModal("Delete item?", `Delete "${item.task}"? This can't be undone.`, "Delete", () => {
+      list.items = list.items.filter((x) => x.id !== item.id);
+      scheduleSave();
+      renderLists();
+    });
   });
 
-  const daySelect = row.querySelector(".todo-col-day");
-  [{ value: "", text: "Any day" }, ...DAY_ORDER.slice(0, 7).map((d) => ({ value: d, text: d }))].forEach((o) =>
-    daySelect.appendChild(el(`<option value="${o.value}">${o.text}</option>`))
-  );
-  daySelect.value = t.day || "";
-  daySelect.addEventListener("change", (e) => {
-    t.day = e.target.value || null;
-    scheduleSave();
-    renderTodo();
-  });
-
-  const prioritySelect = row.querySelector(".todo-col-priority");
-  [
-    { value: "1. High", text: "High" },
-    { value: "2. Medium", text: "Medium" },
-    { value: "3. Low", text: "Low" },
-  ].forEach((o) => prioritySelect.appendChild(el(`<option value="${o.value}">${o.text}</option>`)));
-  prioritySelect.value = t.priority || "2. Medium";
-  prioritySelect.className = `todo-col-priority priority-${prioritySelect.value.includes("High") ? "high" : prioritySelect.value.includes("Medium") ? "medium" : "low"}`;
-  prioritySelect.addEventListener("change", (e) => {
-    t.priority = e.target.value;
-    scheduleSave();
-    renderTodo();
-  });
+  const priorityDot = row.querySelector(".todo-priority-dot");
+  if (priorityDot) {
+    priorityDot.addEventListener("click", () => {
+      const idx = LIST_PRIORITY_CYCLE.indexOf(item.priority || "2. Medium");
+      item.priority = LIST_PRIORITY_CYCLE[(idx + 1) % LIST_PRIORITY_CYCLE.length];
+      scheduleSave();
+      renderLists();
+    });
+  }
 
   const taskLabel = row.querySelector(".todo-task-label");
   taskLabel.addEventListener("dblclick", () => {
-    const input = el(`<input type="text" class="todo-edit-task" value="${escapeHtml(t.task)}" style="width:100%;box-sizing:border-box;" />`);
+    const input = el(`<input type="text" class="todo-edit-task" value="${escapeHtml(item.task)}" style="width:100%;box-sizing:border-box;" />`);
     row.replaceChild(input, taskLabel);
     input.focus();
     input.select();
     const commit = () => {
-      t.task = input.value.trim() || t.task;
+      item.task = input.value.trim() || item.task;
       scheduleSave();
-      renderTodo();
+      renderLists();
     };
     input.addEventListener("blur", commit);
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") input.blur();
       if (e.key === "Escape") {
         input.removeEventListener("blur", commit);
-        renderTodo();
+        renderLists();
       }
     });
   });
@@ -4149,24 +4305,50 @@ function pillarSourceLabel(key) {
   return labels.length ? labels.join(", ") : null;
 }
 
-// Spaces whose "done" items carry a completedDate — the only ones we can
-// honestly say "you were active here today" for. Books (ratings, not a
-// done date) and Workout/Wardrobe (their own richer shapes) aren't
-// included yet; a plain checklist space (Bible, Quran, or a gallery
-// checklist like Meals) is.
-const PILLAR_INELIGIBLE_TEMPLATE_KEYS = new Set(["wardrobe", "books", "workout"]);
-function pillarEligibleSheets() {
+// Which spaces actually make sense as a source for a given pillar — curated
+// per pillar rather than one generic "any checklist" list, so Movement only
+// ever offers Workout Log, Spiritual anchor only ever offers Bible/Quran,
+// and Sleep protected / Social connection offer nothing until a space that
+// fits them exists. This is deliberately conceptual, not the same as
+// "can we detect activity here" (see sheetActiveToday below) — Workout Log
+// belongs under Movement even though its week/day data can't yet be
+// checked against today's date automatically.
+function pillarCandidateSheets(key) {
   const results = [];
-  const bibleSheet = state.sheets.find((s) => s.id === "bible" && s.visible);
-  if (bibleSheet) results.push({ id: "bible", label: sheetLabel(bibleSheet) });
-  state.sheets.forEach((s) => {
-    if (s.kind !== "custom" || !s.visible) return;
-    const cs = state.customSheets[s.id];
-    if (cs && Array.isArray(cs.items) && !PILLAR_INELIGIBLE_TEMPLATE_KEYS.has(cs.templateKey)) {
-      results.push({ id: s.id, label: sheetLabel(s) });
+  if (key === "spiritualAnchor") {
+    const bibleSheet = state.sheets.find((s) => s.id === "bible" && s.visible);
+    if (bibleSheet) results.push({ id: "bible", label: sheetLabel(bibleSheet) });
+    state.sheets.forEach((s) => {
+      if (s.kind !== "custom" || !s.visible) return;
+      const cs = state.customSheets[s.id];
+      if (cs && cs.templateKey === "quran") results.push({ id: s.id, label: sheetLabel(s) });
+    });
+  } else if (key === "movement") {
+    state.sheets.forEach((s) => {
+      if (s.kind !== "custom" || !s.visible) return;
+      const cs = state.customSheets[s.id];
+      if (cs && cs.templateKey === "workout") results.push({ id: s.id, label: sheetLabel(s) });
+    });
+  }
+  // sleepProtected, socialConnection: no space maps to these yet.
+  return results;
+}
+
+// When a pillar has exactly one space that fits it and nothing's chosen
+// yet, just pick it — no manual step needed for a "choice" that isn't
+// really a choice. Leaves anything already set alone, and leaves pillars
+// with zero or multiple candidates for the modal to handle.
+function ensurePillarSourceDefaults() {
+  let changed = false;
+  WELLNESS_YESNO_FIELDS.forEach(([key]) => {
+    if ((state.pillarSourceMap[key] || []).length) return;
+    const candidates = pillarCandidateSheets(key);
+    if (candidates.length === 1) {
+      state.pillarSourceMap[key] = [candidates[0].id];
+      changed = true;
     }
   });
-  return results;
+  if (changed) scheduleSave();
 }
 
 // Did she log something today in this particular space? Used to
@@ -4202,7 +4384,6 @@ function applyPillarAutoDetection(todaysEntry, today) {
 // mark today done; it just means from now on, logging something there
 // today will. Tapping the pillar on Home always still works too.
 function openPillarMappingModal() {
-  const eligible = pillarEligibleSheets();
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box info-modal-box account-modal-box">
@@ -4211,7 +4392,7 @@ function openPillarMappingModal() {
           <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
         </div>
         <p class="muted" style="font-size:12.5px;line-height:1.5;margin:0 0 14px;">
-          Pick which spaces count toward each pillar — log something there today and it marks itself done. You can still tap a pillar on Home to log it yourself, for anything that isn't tracked in a space (a trip to church, meditating without logging it).
+          Each pillar only shows the spaces that actually fit it. Log something there today and it marks itself done. You can still tap a pillar on Home to log it yourself, for anything that isn't tracked in a space (a trip to church, meditating without logging it).
         </p>
         <div id="pillar-mapping-sections"></div>
       </div>
@@ -4220,14 +4401,32 @@ function openPillarMappingModal() {
   const sectionsWrap = overlay.querySelector("#pillar-mapping-sections");
 
   function renderSections() {
+    ensurePillarSourceDefaults();
     sectionsWrap.innerHTML = "";
     WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+      const candidates = pillarCandidateSheets(key);
       const section = el(`<div class="account-section"></div>`);
       section.appendChild(el(`<div class="account-section-label">${escapeHtml(label)}</div>`));
-      if (!eligible.length) {
-        section.appendChild(el(`<div class="account-note">No trackable spaces yet — stays manual on Home.</div>`));
+
+      if (!candidates.length) {
+        section.appendChild(el(`<div class="account-note">No spaces connected for this pillar yet — log it manually from Home.</div>`));
+      } else if (candidates.length === 1) {
+        const sp = candidates[0];
+        const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
+        const row = el(`
+          <label class="you-list-row" style="cursor:pointer;">
+            <input type="checkbox" ${checked ? "checked" : ""} style="width:16px;height:16px;flex-shrink:0;margin:0;" />
+            <span>${escapeHtml(sp.label)}</span>
+          </label>
+        `);
+        row.querySelector("input").addEventListener("change", (e) => {
+          state.pillarSourceMap[key] = e.target.checked ? [sp.id] : [];
+          scheduleSave();
+        });
+        section.appendChild(row);
+        section.appendChild(el(`<div class="account-note">Only one space fits here, so it's selected automatically.</div>`));
       } else {
-        eligible.forEach((sp) => {
+        candidates.forEach((sp) => {
           const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
           const row = el(`
             <label class="you-list-row" style="cursor:pointer;">
@@ -4731,6 +4930,7 @@ function renderHome() {
 // notes) — that page didn't go away, it's just not pinned to the bar.
 function renderHomeHero(today) {
   const todaysEntry = ensureTodaysWellnessEntry(today);
+  ensurePillarSourceDefaults();
   applyPillarAutoDetection(todaysEntry, today);
   const wellness = computeWellnessProgress(today);
   const prize = wellness.prize;
@@ -5141,6 +5341,32 @@ async function boot() {
       t.day = null;
     });
     state.todoDaysCleared = true;
+  }
+  // One-time: the single flat To-Do array becomes the first list in the
+  // new "Lists" space, so nothing gets lost when it stops being the only
+  // list you can have. A brand-new account with no history gets the same
+  // starter list, just empty, so Lists never opens to a totally bare
+  // "+ New list" screen with nothing familiar in it.
+  state.lists ||= [];
+  state.activeListId ??= null;
+  if (!state.listsMigrationApplied) {
+    if (state.todos.length || !state.lists.length) {
+      state.lists.unshift({
+        id: "list_" + nextId(),
+        name: "To-Do",
+        icon: "checklist",
+        color: "#8C3F2B",
+        style: "task",
+        items: state.todos.map((t) => ({
+          id: t.id,
+          task: t.task,
+          priority: t.priority || "2. Medium",
+          done: !!t.done,
+          sortOrder: t.sortOrder ?? 0,
+        })),
+      });
+    }
+    state.listsMigrationApplied = true;
   }
   state.budget ||= [];
   state.budget.forEach((b) => (b.hidden ??= false));
