@@ -14,8 +14,9 @@ const BUILTIN_SHEET_META = {
     icon: `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M13 7v9M10.2 9.6h5.6"></path>`,
   },
   wellness: { label: "Wellness", icon: `<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path>` },
+  sleep: { label: "Sleep", icon: `<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>` },
 };
-const BUILTIN_SHEET_ORDER = ["todo", "budget", "investments", "bible", "wellness"];
+const BUILTIN_SHEET_ORDER = ["todo", "budget", "investments", "bible", "sleep", "wellness"];
 
 const SHEET_GALLERY = [
   {
@@ -511,6 +512,7 @@ function renderAll() {
   renderBudget();
   renderInvestments();
   renderBible();
+  renderSleep();
   renderWellness();
   Object.keys(state.customSheets).forEach((id) => renderCustomSheet(id));
   renderAppearance();
@@ -957,6 +959,7 @@ function removeBuiltinSheet(id) {
   if (id === "investments") state.investmentAccounts = [];
   if (id === "bible") state.bible = [];
   if (id === "wellness") state.wellness = [];
+  if (id === "sleep") state.sleepLogs = [];
   // Mark it as deliberately deleted, not just "missing" — otherwise boot()'s
   // own backfill (which re-adds any built-in sheet id it doesn't find, to
   // heal an old/incomplete save) would silently bring it right back on
@@ -4329,8 +4332,11 @@ function pillarCandidateSheets(key) {
       const cs = state.customSheets[s.id];
       if (cs && cs.templateKey === "workout") results.push({ id: s.id, label: sheetLabel(s) });
     });
+  } else if (key === "sleepProtected") {
+    const sleepSheet = state.sheets.find((s) => s.id === "sleep" && s.visible);
+    if (sleepSheet) results.push({ id: "sleep", label: sheetLabel(sleepSheet) });
   }
-  // sleepProtected, socialConnection: no space maps to these yet.
+  // socialConnection: no space maps to this yet.
   return results;
 }
 
@@ -4356,6 +4362,11 @@ function ensurePillarSourceDefaults() {
 function sheetActiveToday(sheetId, today) {
   if (sheetId === "bible") {
     return state.bible.some((r) => r.done && r.completedDate === today);
+  }
+  if (sheetId === "sleep") {
+    return (state.sleepLogs || []).some(
+      (e) => (e.pm && e.pm.completedDate === today) || (e.am && e.am.completedDate === today)
+    );
   }
   const cs = state.customSheets[sheetId];
   if (!cs || !Array.isArray(cs.items)) return false;
@@ -4651,6 +4662,327 @@ function ensureTodaysWellnessEntry(today) {
     state.wellness.push(entry);
   }
   return entry;
+}
+
+// ------------------------------------------------------------------
+// Sleep — a wind-down check-in the night before, a quick quality log the
+// next morning, and (once there's enough real data) a trend report that
+// looks for patterns across the two. The two halves merge into one
+// "night" record keyed by the evening's date; a missed night just means
+// that date has no record, it never resets the count toward unlocking
+// the report. Once 10 nights are logged the report turns on and keeps
+// recomputing over a rolling window, so it's a living read on current
+// habits, not a one-time reward.
+// ------------------------------------------------------------------
+const SLEEP_MOOD_META = {
+  calm: { emoji: "😌", label: "Calm" },
+  woundup: { emoji: "😕", label: "Wound up" },
+  anxious: { emoji: "😟", label: "Anxious" },
+};
+const SLEEP_QUALITY_META = {
+  rough: { emoji: "😩", label: "Rough", score: 1 },
+  okay: { emoji: "😌", label: "Okay", score: 2 },
+  great: { emoji: "😴", label: "Great", score: 3 },
+};
+const SLEEP_HABITS = [
+  ["noCaffeine", "No caffeine after 2pm"],
+  ["phoneOff", "Phone off by target time"],
+  ["noAlcohol", "No alcohol tonight"],
+];
+const SLEEP_NIGHTS_TO_UNLOCK = 10;
+const SLEEP_TREND_WINDOW = 30;
+
+// Real record for a given night's date — creates it in state the first
+// time something is actually saved against it. Never call this just to
+// read a value; use sleepPeek for that, so opening the tab doesn't
+// silently write empty draft entries into state.
+function sleepEntryForDate(dateStr) {
+  let entry = state.sleepLogs.find((e) => e.date === dateStr);
+  if (!entry) {
+    entry = { id: nextId(), date: dateStr, pm: null, am: null };
+    state.sleepLogs.push(entry);
+  }
+  return entry;
+}
+
+// Read-only look at a night's date for rendering — returns a blank shape
+// if nothing's been saved yet, without creating anything.
+function sleepPeek(dateStr) {
+  return state.sleepLogs.find((e) => e.date === dateStr) || { date: dateStr, pm: null, am: null };
+}
+
+// A "logged night" is one with a completed morning entry — that's the
+// data point the progress counter and trend report both run on.
+function sleepLoggedNights() {
+  return state.sleepLogs
+    .filter((e) => e.am && e.am.completedDate)
+    .slice()
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+// Plain-language patterns over the most recent logged nights (capped at
+// SLEEP_TREND_WINDOW so it stays a read on current habits, not a lifetime
+// average). Returns null until there's enough data to say anything real;
+// each individual insight only appears once there's enough of a sample
+// on both sides of it to be worth mentioning.
+function computeSleepTrend() {
+  const nights = sleepLoggedNights();
+  if (nights.length < SLEEP_NIGHTS_TO_UNLOCK) return null;
+  const windowNights = nights.slice(0, SLEEP_TREND_WINDOW);
+  const insights = [];
+
+  const noCaffNights = windowNights.filter((n) => n.pm && n.pm.noCaffeine);
+  if (noCaffNights.length >= 3) {
+    const greatCount = noCaffNights.filter((n) => n.am.quality === "great").length;
+    insights.push({
+      icon: "☕",
+      tone: "good",
+      text: `Nights with <b>no late caffeine</b>, you slept "Great" <b>${greatCount} of ${noCaffNights.length}</b> times`,
+      pct: Math.round((greatCount / noCaffNights.length) * 100),
+    });
+  }
+
+  const withMovementFlag = windowNights.map((n) => ({
+    n,
+    moved: state.wellness.find((w) => w.logDate === n.date)?.movement === "Yes",
+  }));
+  const movedNights = withMovementFlag.filter((x) => x.moved);
+  const restNights = withMovementFlag.filter((x) => !x.moved);
+  if (movedNights.length >= 3 && restNights.length >= 3) {
+    const avgScore = (arr) => arr.reduce((s, x) => s + SLEEP_QUALITY_META[x.n.am.quality].score, 0) / arr.length;
+    const movedAvg = avgScore(movedNights);
+    const restAvg = avgScore(restNights);
+    if (restAvg > 0) {
+      const diffPct = Math.round(((movedAvg - restAvg) / restAvg) * 100);
+      if (Math.abs(diffPct) >= 5) {
+        insights.push({
+          icon: "🧘",
+          tone: diffPct >= 0 ? "good" : "bad",
+          text:
+            diffPct >= 0
+              ? `Sleep quality was <b>${diffPct}% higher</b> the night after you moved`
+              : `Sleep quality was <b>${Math.abs(diffPct)}% lower</b> the night after you moved`,
+          pct: Math.min(100, Math.abs(diffPct) + 40),
+        });
+      }
+    }
+  }
+
+  const anxiousNights = windowNights.filter((n) => n.pm && n.pm.mood === "anxious" && n.am.hours != null);
+  const calmerNights = windowNights.filter((n) => (!n.pm || n.pm.mood !== "anxious") && n.am.hours != null);
+  if (anxiousNights.length >= 3 && calmerNights.length >= 3) {
+    const avgHours = (arr) => arr.reduce((s, x) => s + x.am.hours, 0) / arr.length;
+    const diff = avgHours(calmerNights) - avgHours(anxiousNights);
+    if (Math.abs(diff) >= 0.3) {
+      insights.push({
+        icon: "😟",
+        tone: "bad",
+        text: `On "Anxious" nights, you slept about <b>${diff.toFixed(1)} fewer hours</b> on average`,
+        pct: Math.min(100, Math.round(Math.abs(diff) * 30) + 30),
+      });
+    }
+  }
+
+  return { basedOn: windowNights.length, insights };
+}
+
+function renderSleepWindDownCard(today) {
+  const view = sleepPeek(today);
+  const pm = view.pm || { mood: null, note: "", noCaffeine: false, phoneOff: false, noAlcohol: false, completedDate: null };
+  const isSaved = pm.completedDate === today;
+
+  const withPm = (mutate) => {
+    const entry = sleepEntryForDate(today);
+    entry.pm ||= { mood: null, note: "", noCaffeine: false, phoneOff: false, noAlcohol: false, completedDate: null };
+    mutate(entry.pm);
+    scheduleSave();
+    return entry.pm;
+  };
+
+  const card = el(`<div class="card sleep-card"></div>`);
+  card.appendChild(el(`<strong>Wind Down &mdash; Tonight</strong>`));
+  card.appendChild(el(`<div class="muted" style="font-size:12px;margin:2px 0 10px;">${escapeHtml(today)}</div>`));
+  card.appendChild(el(`<div class="muted" style="font-size:12px;font-weight:600;margin-bottom:8px;">How are you feeling right now?</div>`));
+
+  const moodRow = el(`<div class="sleep-mood-row"></div>`);
+  Object.entries(SLEEP_MOOD_META).forEach(([key, meta]) => {
+    const btn = el(
+      `<button type="button" class="sleep-mood-choice${pm.mood === key ? " sel" : ""}"><span class="emoji">${meta.emoji}</span><span class="lbl">${meta.label}</span></button>`
+    );
+    btn.addEventListener("click", () => {
+      withPm((p) => (p.mood = key));
+      renderSleep();
+    });
+    moodRow.appendChild(btn);
+  });
+  card.appendChild(moodRow);
+
+  const noteInput = document.createElement("input");
+  noteInput.type = "text";
+  noteInput.className = "sleep-note-input";
+  noteInput.placeholder = "What's on your mind? (optional)";
+  noteInput.value = pm.note || "";
+  noteInput.addEventListener("change", () => withPm((p) => (p.note = noteInput.value)));
+  card.appendChild(noteInput);
+
+  card.appendChild(
+    el(
+      `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 6px;">Tonight's habits</div>`
+    )
+  );
+  SLEEP_HABITS.forEach(([key, label]) => {
+    const row = el(`<label class="sleep-habit-row"><span class="sleep-habit-check${pm[key] ? " on" : ""}"></span> ${escapeHtml(label)}</label>`);
+    row.addEventListener("click", (e) => {
+      e.preventDefault();
+      withPm((p) => (p[key] = !p[key]));
+      renderSleep();
+    });
+    card.appendChild(row);
+  });
+
+  const saveBtn = el(`<button type="button" class="sleep-save-btn">${isSaved ? "Update tonight's wind-down" : "Start wind-down"}</button>`);
+  saveBtn.addEventListener("click", () => {
+    withPm((p) => (p.completedDate = today));
+    renderSleep();
+  });
+  card.appendChild(saveBtn);
+  if (isSaved) card.appendChild(el(`<div class="sleep-saved-note">Saved for tonight</div>`));
+  return card;
+}
+
+function renderSleepMorningCard(nightDate, today) {
+  const view = sleepPeek(nightDate);
+  const am = view.am || { quality: null, hours: 7, completedDate: null };
+  const isSaved = am.completedDate === today;
+
+  const withAm = (mutate) => {
+    const entry = sleepEntryForDate(nightDate);
+    entry.am ||= { quality: null, hours: 7, completedDate: null };
+    mutate(entry.am);
+    scheduleSave();
+    return entry.am;
+  };
+
+  const card = el(`<div class="card sleep-card"></div>`);
+  card.appendChild(el(`<strong>How was last night?</strong>`));
+  card.appendChild(el(`<div class="muted" style="font-size:12px;margin:2px 0 10px;">${escapeHtml(nightDate)}</div>`));
+
+  const qualityRow = el(`<div class="sleep-mood-row"></div>`);
+  Object.entries(SLEEP_QUALITY_META).forEach(([key, meta]) => {
+    const btn = el(
+      `<button type="button" class="sleep-mood-choice${am.quality === key ? " sel" : ""}"><span class="emoji">${meta.emoji}</span><span class="lbl">${meta.label}</span></button>`
+    );
+    btn.addEventListener("click", () => {
+      withAm((a) => (a.quality = key));
+      renderSleep();
+    });
+    qualityRow.appendChild(btn);
+  });
+  card.appendChild(qualityRow);
+
+  const hoursRow = el(`
+    <div class="sleep-hours-row">
+      <div><div class="muted" style="font-size:11px;">Hours slept</div><div class="sleep-hours-big">${am.hours}</div></div>
+      <div class="sleep-stepper"><button type="button" data-dir="-1">&minus;</button><button type="button" data-dir="1">+</button></div>
+    </div>
+  `);
+  hoursRow.querySelectorAll("button[data-dir]").forEach((b) => {
+    b.addEventListener("click", () => {
+      withAm((a) => {
+        a.hours = Math.max(0, Math.min(14, Math.round((a.hours + Number(b.dataset.dir) * 0.5) * 2) / 2));
+      });
+      renderSleep();
+    });
+  });
+  card.appendChild(hoursRow);
+
+  const dayEntry = state.wellness.find((w) => w.logDate === nightDate);
+  if (dayEntry?.movement === "Yes") {
+    card.appendChild(el(`<div class="sleep-autodetect-chip"><span class="sleep-chip-tick">&#10003;</span> Auto-detected: you moved that day</div>`));
+  }
+
+  const saveBtn = el(`<button type="button" class="sleep-save-btn">${isSaved ? "Update last night" : "Save last night"}</button>`);
+  saveBtn.addEventListener("click", () => {
+    if (am.quality == null) return;
+    withAm((a) => (a.completedDate = today));
+    renderSleep();
+  });
+  card.appendChild(saveBtn);
+  if (isSaved) card.appendChild(el(`<div class="sleep-saved-note">Saved</div>`));
+  return card;
+}
+
+function renderSleepProgressCard() {
+  const count = sleepLoggedNights().length;
+  const remaining = SLEEP_NIGHTS_TO_UNLOCK - count;
+  const card = el(`<div class="sleep-progress-card"></div>`);
+  card.appendChild(el(`<div class="sleep-progress-label">${count} of ${SLEEP_NIGHTS_TO_UNLOCK} nights logged</div>`));
+  const dots = el(`<div class="sleep-progress-dots"></div>`);
+  for (let i = 0; i < SLEEP_NIGHTS_TO_UNLOCK; i++) {
+    dots.appendChild(el(`<span class="${i < count ? "done" : ""}"></span>`));
+  }
+  card.appendChild(dots);
+  card.appendChild(el(`<div class="sleep-progress-sub">${remaining} more night${remaining === 1 ? "" : "s"} and your trend report unlocks</div>`));
+  return card;
+}
+
+function renderSleepTrendCard(trend) {
+  const wrap = el(`<div></div>`);
+  const hero = el(`
+    <div class="sleep-report-hero">
+      <div class="sleep-report-label">Based on your last ${trend.basedOn} nights</div>
+      <h3>${trend.insights.length ? "Here's what your nights are telling you" : "Still finding your patterns"}</h3>
+      <div class="sleep-report-sub">Refreshes every night &mdash; nothing to unlock again</div>
+    </div>
+  `);
+  wrap.appendChild(hero);
+  if (!trend.insights.length) {
+    wrap.appendChild(el(`<div class="account-note">No strong patterns yet — keep logging and this will fill in.</div>`));
+  }
+  trend.insights.forEach((ins) => {
+    wrap.appendChild(
+      el(`
+        <div class="sleep-insight-card">
+          <div class="sleep-insight-top">
+            <span class="sleep-insight-ic ${ins.tone}">${ins.icon}</span>
+            <div class="sleep-insight-text">${ins.text}</div>
+          </div>
+          <div class="sleep-bar-track"><div class="sleep-bar-fill ${ins.tone}" style="width:${ins.pct}%;"></div></div>
+        </div>
+      `)
+    );
+  });
+  return wrap;
+}
+
+function renderSleepHistory(panel) {
+  const nights = sleepLoggedNights().slice(0, 14).reverse();
+  if (!nights.length) return;
+  panel.appendChild(
+    el(
+      `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">Recent nights</div>`
+    )
+  );
+  const row = el(`<div class="sleep-dot-cal"></div>`);
+  nights.forEach((n) => {
+    const tone = n.am.quality === "great" ? "good" : n.am.quality === "rough" ? "bad" : "mid";
+    row.appendChild(el(`<span class="${tone}" title="${escapeHtml(n.date)} — ${SLEEP_QUALITY_META[n.am.quality]?.label || ""}"></span>`));
+  });
+  panel.appendChild(row);
+}
+
+function renderSleep() {
+  const panel = document.getElementById("panel-sleep");
+  if (!panel) return;
+  panel.innerHTML = "";
+  const today = todayISO();
+  const yesterday = addDays(today, -1);
+  panel.appendChild(el(`<h2 class="section-title serif">Sleep</h2>`));
+  panel.appendChild(renderSleepWindDownCard(today));
+  panel.appendChild(renderSleepMorningCard(yesterday, today));
+  const trend = computeSleepTrend();
+  panel.appendChild(trend ? renderSleepTrendCard(trend) : renderSleepProgressCard());
+  renderSleepHistory(panel);
 }
 
 function renderWellness() {
@@ -5396,6 +5728,7 @@ async function boot() {
   state.bibleSettings ||= { startDate: "2026-01-01" };
   state.goals ||= [];
   state.wellness ||= [];
+  state.sleepLogs ||= [];
   state.nextId ||= 1;
   state.activeTab ||= "home";
   state.budgetView ||= "sections";
