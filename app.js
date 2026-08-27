@@ -4364,9 +4364,12 @@ function sheetActiveToday(sheetId, today) {
     return state.bible.some((r) => r.done && r.completedDate === today);
   }
   if (sheetId === "sleep") {
-    return (state.sleepLogs || []).some(
-      (e) => (e.pm && e.pm.completedDate === today) || (e.am && e.am.completedDate === today)
-    );
+    // Sleep protected is an outcome, not just a logged action — logging a
+    // rough, short night shouldn't count the same as a real one. "Today"
+    // reads on last night specifically, since that's what a morning log
+    // is actually reporting on.
+    const nightEntry = state.sleepLogs.find((e) => e.date === addDays(today, -1));
+    return sleepNightProtected(nightEntry);
   }
   const cs = state.customSheets[sheetId];
   if (!cs || !Array.isArray(cs.items)) return false;
@@ -4692,6 +4695,18 @@ const SLEEP_HABITS = [
 const SLEEP_NIGHTS_TO_UNLOCK = 10;
 const SLEEP_TREND_WINDOW = 30;
 
+// A night only counts as "protected" if it actually held up — enough hours
+// against her own target, and not a night she rated Rough even if the
+// hours were technically there (insomnia, restless sleep). The habit flags
+// (caffeine, phone, alcohol) are never part of this check directly; they're
+// the inputs the trend report correlates against this outcome, not the
+// outcome itself.
+function sleepNightProtected(entry) {
+  if (!entry || !entry.am || entry.am.quality == null || entry.am.hours == null) return false;
+  const target = state.sleepSettings?.targetHours || 7;
+  return entry.am.quality !== "rough" && entry.am.hours >= target;
+}
+
 // Real record for a given night's date — creates it in state the first
 // time something is actually saved against it. Never call this just to
 // read a value; use sleepPeek for that, so opening the tab doesn't
@@ -4729,6 +4744,7 @@ function computeSleepTrend() {
   const nights = sleepLoggedNights();
   if (nights.length < SLEEP_NIGHTS_TO_UNLOCK) return null;
   const windowNights = nights.slice(0, SLEEP_TREND_WINDOW);
+  const protectedCount = windowNights.filter((n) => sleepNightProtected(n)).length;
   const insights = [];
 
   const noCaffNights = windowNights.filter((n) => n.pm && n.pm.noCaffeine);
@@ -4783,7 +4799,50 @@ function computeSleepTrend() {
     }
   }
 
-  return { basedOn: windowNights.length, insights };
+  return { basedOn: windowNights.length, protectedCount, insights };
+}
+
+// Once today's wind-down or last night's log is saved, the card collapses
+// to a one-line summary instead of staying open as a full form someone
+// might mistake for unfinished — tapping it re-expands for editing. Plain
+// in-memory flags, not persisted, same pattern as Home's "Your Spaces"
+// collapse: they just reset to collapsed-by-default each fresh session.
+let sleepPmExpanded = false;
+let sleepAmExpanded = false;
+
+function renderSleepWindDownCollapsed(pm, onExpand) {
+  const moodMeta = SLEEP_MOOD_META[pm.mood];
+  const row = el(`
+    <button type="button" class="card sleep-card sleep-collapsed-row">
+      <span class="sleep-collapsed-emoji">${moodMeta ? moodMeta.emoji : "🌙"}</span>
+      <span class="sleep-collapsed-text">
+        <span class="sleep-collapsed-title">Wind Down &mdash; Tonight</span>
+        <span class="sleep-collapsed-sub">${moodMeta ? moodMeta.label + " &middot; " : ""}Saved for tonight</span>
+      </span>
+      <span class="sleep-collapsed-chevron">${chevronSvg}</span>
+    </button>
+  `);
+  row.addEventListener("click", onExpand);
+  return row;
+}
+
+function renderSleepMorningCollapsed(am, onExpand) {
+  const qualityMeta = SLEEP_QUALITY_META[am.quality];
+  const isProtected = sleepNightProtected({ am });
+  const row = el(`
+    <button type="button" class="card sleep-card sleep-collapsed-row">
+      <span class="sleep-collapsed-emoji">${qualityMeta ? qualityMeta.emoji : "😴"}</span>
+      <span class="sleep-collapsed-text">
+        <span class="sleep-collapsed-title">How was last night?</span>
+        <span class="sleep-collapsed-sub">${qualityMeta ? qualityMeta.label + " &middot; " : ""}${am.hours} hrs &middot; ${
+    isProtected ? "Protected" : "Below target"
+  }</span>
+      </span>
+      <span class="sleep-collapsed-chevron">${chevronSvg}</span>
+    </button>
+  `);
+  row.addEventListener("click", onExpand);
+  return row;
 }
 
 function renderSleepWindDownCard(today) {
@@ -4843,6 +4902,7 @@ function renderSleepWindDownCard(today) {
   const saveBtn = el(`<button type="button" class="sleep-save-btn">${isSaved ? "Update tonight's wind-down" : "Start wind-down"}</button>`);
   saveBtn.addEventListener("click", () => {
     withPm((p) => (p.completedDate = today));
+    sleepPmExpanded = false;
     renderSleep();
   });
   card.appendChild(saveBtn);
@@ -4896,6 +4956,21 @@ function renderSleepMorningCard(nightDate, today) {
   });
   card.appendChild(hoursRow);
 
+  if (am.quality != null) {
+    const isProtected = sleepNightProtected({ am });
+    card.appendChild(
+      el(`
+        <div class="sleep-target-feedback ${isProtected ? "good" : "bad"}">
+          ${
+            isProtected
+              ? "Meets your sleep target"
+              : `Short of your ${state.sleepSettings.targetHours}hr target${am.quality === "rough" ? " &mdash; rated Rough" : ""}`
+          }
+        </div>
+      `)
+    );
+  }
+
   const dayEntry = state.wellness.find((w) => w.logDate === nightDate);
   if (dayEntry?.movement === "Yes") {
     card.appendChild(el(`<div class="sleep-autodetect-chip"><span class="sleep-chip-tick">&#10003;</span> Auto-detected: you moved that day</div>`));
@@ -4905,6 +4980,7 @@ function renderSleepMorningCard(nightDate, today) {
   saveBtn.addEventListener("click", () => {
     if (am.quality == null) return;
     withAm((a) => (a.completedDate = today));
+    sleepAmExpanded = false;
     renderSleep();
   });
   card.appendChild(saveBtn);
@@ -4931,7 +5007,7 @@ function renderSleepTrendCard(trend) {
   const hero = el(`
     <div class="sleep-report-hero">
       <div class="sleep-report-label">Based on your last ${trend.basedOn} nights</div>
-      <h3>${trend.insights.length ? "Here's what your nights are telling you" : "Still finding your patterns"}</h3>
+      <h3>You protected your sleep on ${trend.protectedCount} of ${trend.basedOn} nights</h3>
       <div class="sleep-report-sub">Refreshes every night &mdash; nothing to unlock again</div>
     </div>
   `);
@@ -4960,15 +5036,191 @@ function renderSleepHistory(panel) {
   if (!nights.length) return;
   panel.appendChild(
     el(
-      `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">Recent nights</div>`
+      `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">Recent nights &mdash; tap to edit</div>`
     )
   );
   const row = el(`<div class="sleep-dot-cal"></div>`);
   nights.forEach((n) => {
     const tone = n.am.quality === "great" ? "good" : n.am.quality === "rough" ? "bad" : "mid";
-    row.appendChild(el(`<span class="${tone}" title="${escapeHtml(n.date)} — ${SLEEP_QUALITY_META[n.am.quality]?.label || ""}"></span>`));
+    const dot = el(
+      `<button type="button" class="sleep-dot ${tone}" title="${escapeHtml(n.date)} — ${SLEEP_QUALITY_META[n.am.quality]?.label || ""}"></button>`
+    );
+    dot.addEventListener("click", () => openSleepNightEditor(n.date));
+    row.appendChild(dot);
   });
   panel.appendChild(row);
+}
+
+// A single night's full record, editable regardless of date — the inline
+// cards on the tab only ever expose tonight and last night, so this is
+// the only way to go back and fix an older night (a typo'd hours value,
+// a quality picked in a hurry) the same way Wellness's day editor already
+// lets you correct any past day.
+function openSleepNightEditor(dateStr) {
+  const entry = sleepEntryForDate(dateStr);
+  entry.pm ||= { mood: null, note: "", noCaffeine: false, phoneOff: false, noAlcohol: false, completedDate: null };
+  entry.am ||= { quality: null, hours: 7, completedDate: null };
+
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box sleep-editor-box">
+        <div class="info-modal-header">
+          <h3>${escapeHtml(dateStr)}</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="info-modal-body">
+          <div class="sleep-editor-section-label">Evening</div>
+          <div class="sleep-editor-mood-row"></div>
+          <input class="sleep-note-input sleep-editor-note" type="text" placeholder="What's on your mind? (optional)" />
+          <div class="sleep-editor-habits"></div>
+          <div class="sleep-editor-section-label" style="margin-top:16px;">Morning</div>
+          <div class="sleep-editor-quality-row"></div>
+          <div class="sleep-editor-hours-row"></div>
+          <div class="sleep-editor-feedback"></div>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+            <button type="button" class="btn-primary sleep-editor-done" style="padding:8px 18px;border-radius:8px;border:none;">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  const moodRow = overlay.querySelector(".sleep-editor-mood-row");
+  const renderMoodRow = () => {
+    moodRow.innerHTML = "";
+    Object.entries(SLEEP_MOOD_META).forEach(([key, meta]) => {
+      const btn = el(
+        `<button type="button" class="sleep-mood-choice${entry.pm.mood === key ? " sel" : ""}"><span class="emoji">${meta.emoji}</span><span class="lbl">${meta.label}</span></button>`
+      );
+      btn.addEventListener("click", () => {
+        entry.pm.mood = key;
+        scheduleSave();
+        renderMoodRow();
+      });
+      moodRow.appendChild(btn);
+    });
+  };
+  renderMoodRow();
+
+  const noteInput = overlay.querySelector(".sleep-editor-note");
+  noteInput.value = entry.pm.note || "";
+  noteInput.addEventListener("change", () => {
+    entry.pm.note = noteInput.value;
+    scheduleSave();
+  });
+
+  const habitsWrap = overlay.querySelector(".sleep-editor-habits");
+  const renderHabits = () => {
+    habitsWrap.innerHTML = "";
+    SLEEP_HABITS.forEach(([key, label]) => {
+      const row = el(
+        `<label class="sleep-habit-row"><span class="sleep-habit-check${entry.pm[key] ? " on" : ""}"></span> ${escapeHtml(label)}</label>`
+      );
+      row.addEventListener("click", (e) => {
+        e.preventDefault();
+        entry.pm[key] = !entry.pm[key];
+        scheduleSave();
+        renderHabits();
+      });
+      habitsWrap.appendChild(row);
+    });
+  };
+  renderHabits();
+
+  const qualityRow = overlay.querySelector(".sleep-editor-quality-row");
+  const feedbackWrap = overlay.querySelector(".sleep-editor-feedback");
+  const renderFeedback = () => {
+    feedbackWrap.innerHTML = "";
+    if (entry.am.quality == null) return;
+    const isProtected = sleepNightProtected(entry);
+    feedbackWrap.appendChild(
+      el(`
+        <div class="sleep-target-feedback ${isProtected ? "good" : "bad"}">
+          ${
+            isProtected
+              ? "Meets your sleep target"
+              : `Short of your ${state.sleepSettings.targetHours}hr target${entry.am.quality === "rough" ? " &mdash; rated Rough" : ""}`
+          }
+        </div>
+      `)
+    );
+  };
+  const renderQualityRow = () => {
+    qualityRow.innerHTML = "";
+    Object.entries(SLEEP_QUALITY_META).forEach(([key, meta]) => {
+      const btn = el(
+        `<button type="button" class="sleep-mood-choice${entry.am.quality === key ? " sel" : ""}"><span class="emoji">${meta.emoji}</span><span class="lbl">${meta.label}</span></button>`
+      );
+      btn.addEventListener("click", () => {
+        entry.am.quality = key;
+        scheduleSave();
+        renderQualityRow();
+        renderFeedback();
+      });
+      qualityRow.appendChild(btn);
+    });
+  };
+  renderQualityRow();
+
+  const hoursRow = overlay.querySelector(".sleep-editor-hours-row");
+  const renderHoursRow = () => {
+    hoursRow.innerHTML = "";
+    hoursRow.appendChild(
+      el(`
+        <div class="sleep-hours-row">
+          <div><div class="muted" style="font-size:11px;">Hours slept</div><div class="sleep-hours-big">${entry.am.hours}</div></div>
+          <div class="sleep-stepper"><button type="button" data-dir="-1">&minus;</button><button type="button" data-dir="1">+</button></div>
+        </div>
+      `)
+    );
+    hoursRow.querySelectorAll("button[data-dir]").forEach((b) => {
+      b.addEventListener("click", () => {
+        entry.am.hours = Math.max(0, Math.min(14, Math.round((entry.am.hours + Number(b.dataset.dir) * 0.5) * 2) / 2));
+        scheduleSave();
+        renderHoursRow();
+        renderFeedback();
+      });
+    });
+  };
+  renderHoursRow();
+  renderFeedback();
+
+  const close = () => {
+    // Only counts as a real, dated entry once there's actually a quality
+    // logged — an editor opened and closed without picking anything
+    // shouldn't leave a phantom completedDate behind.
+    if (entry.am.quality != null) entry.am.completedDate = entry.am.completedDate || dateStr;
+    if (entry.pm.mood != null || entry.pm.note || entry.pm.noCaffeine || entry.pm.phoneOff || entry.pm.noAlcohol) {
+      entry.pm.completedDate = entry.pm.completedDate || dateStr;
+    }
+    scheduleSave();
+    overlay.remove();
+    renderSleep();
+  };
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector(".sleep-editor-done").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
+}
+
+function renderSleepTargetControl() {
+  const wrap = el(`<div class="sleep-target-row"></div>`);
+  wrap.appendChild(el(`<span class="muted" style="font-size:12px;">Your target</span>`));
+  const big = el(`<span class="sleep-target-value">${state.sleepSettings.targetHours}</span>`);
+  wrap.appendChild(big);
+  wrap.appendChild(el(`<span class="muted" style="font-size:12px;">hrs a night</span>`));
+  const stepper = el(`<div class="sleep-stepper"><button type="button" data-dir="-1">&minus;</button><button type="button" data-dir="1">+</button></div>`);
+  stepper.querySelectorAll("button[data-dir]").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.sleepSettings.targetHours = Math.max(4, Math.min(11, Math.round((state.sleepSettings.targetHours + Number(b.dataset.dir) * 0.5) * 2) / 2));
+      scheduleSave();
+      renderSleep();
+    });
+  });
+  wrap.appendChild(stepper);
+  return wrap;
 }
 
 function renderSleep() {
@@ -4978,8 +5230,23 @@ function renderSleep() {
   const today = todayISO();
   const yesterday = addDays(today, -1);
   panel.appendChild(el(`<h2 class="section-title serif">Sleep</h2>`));
-  panel.appendChild(renderSleepWindDownCard(today));
-  panel.appendChild(renderSleepMorningCard(yesterday, today));
+  panel.appendChild(renderSleepTargetControl());
+
+  const pmView = sleepPeek(today);
+  const pmSavedToday = pmView.pm?.completedDate === today;
+  if (pmSavedToday && !sleepPmExpanded) {
+    panel.appendChild(renderSleepWindDownCollapsed(pmView.pm, () => { sleepPmExpanded = true; renderSleep(); }));
+  } else {
+    panel.appendChild(renderSleepWindDownCard(today));
+  }
+
+  const amView = sleepPeek(yesterday);
+  const amSavedToday = amView.am?.completedDate === today;
+  if (amSavedToday && !sleepAmExpanded) {
+    panel.appendChild(renderSleepMorningCollapsed(amView.am, () => { sleepAmExpanded = true; renderSleep(); }));
+  } else {
+    panel.appendChild(renderSleepMorningCard(yesterday, today));
+  }
   const trend = computeSleepTrend();
   panel.appendChild(trend ? renderSleepTrendCard(trend) : renderSleepProgressCard());
   renderSleepHistory(panel);
@@ -5729,6 +5996,7 @@ async function boot() {
   state.goals ||= [];
   state.wellness ||= [];
   state.sleepLogs ||= [];
+  state.sleepSettings ||= { targetHours: 7 };
   state.nextId ||= 1;
   state.activeTab ||= "home";
   state.budgetView ||= "sections";
