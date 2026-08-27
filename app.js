@@ -4949,7 +4949,7 @@ function renderSleepMorningCard(nightDate, today) {
   hoursRow.querySelectorAll("button[data-dir]").forEach((b) => {
     b.addEventListener("click", () => {
       withAm((a) => {
-        a.hours = Math.max(0, Math.min(14, Math.round((a.hours + Number(b.dataset.dir) * 0.5) * 2) / 2));
+        a.hours = Math.max(0, Math.min(14, Math.round((a.hours + Number(b.dataset.dir) * 0.25) * 4) / 4));
       });
       renderSleep();
     });
@@ -5175,7 +5175,7 @@ function openSleepNightEditor(dateStr) {
     );
     hoursRow.querySelectorAll("button[data-dir]").forEach((b) => {
       b.addEventListener("click", () => {
-        entry.am.hours = Math.max(0, Math.min(14, Math.round((entry.am.hours + Number(b.dataset.dir) * 0.5) * 2) / 2));
+        entry.am.hours = Math.max(0, Math.min(14, Math.round((entry.am.hours + Number(b.dataset.dir) * 0.25) * 4) / 4));
         scheduleSave();
         renderHoursRow();
         renderFeedback();
@@ -5232,20 +5232,24 @@ function renderSleep() {
   panel.appendChild(el(`<h2 class="section-title serif">Sleep</h2>`));
   panel.appendChild(renderSleepTargetControl());
 
-  const pmView = sleepPeek(today);
-  const pmSavedToday = pmView.pm?.completedDate === today;
-  if (pmSavedToday && !sleepPmExpanded) {
-    panel.appendChild(renderSleepWindDownCollapsed(pmView.pm, () => { sleepPmExpanded = true; renderSleep(); }));
-  } else {
-    panel.appendChild(renderSleepWindDownCard(today));
-  }
-
+  // Last night leads — it's the pending thing waiting on you when you open
+  // the tab (usually in the morning), while tonight's wind-down is for
+  // later. Seeing "plan for tonight" above "you never logged last night"
+  // read backwards.
   const amView = sleepPeek(yesterday);
   const amSavedToday = amView.am?.completedDate === today;
   if (amSavedToday && !sleepAmExpanded) {
     panel.appendChild(renderSleepMorningCollapsed(amView.am, () => { sleepAmExpanded = true; renderSleep(); }));
   } else {
     panel.appendChild(renderSleepMorningCard(yesterday, today));
+  }
+
+  const pmView = sleepPeek(today);
+  const pmSavedToday = pmView.pm?.completedDate === today;
+  if (pmSavedToday && !sleepPmExpanded) {
+    panel.appendChild(renderSleepWindDownCollapsed(pmView.pm, () => { sleepPmExpanded = true; renderSleep(); }));
+  } else {
+    panel.appendChild(renderSleepWindDownCard(today));
   }
   const trend = computeSleepTrend();
   panel.appendChild(trend ? renderSleepTrendCard(trend) : renderSleepProgressCard());
