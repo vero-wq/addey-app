@@ -893,6 +893,52 @@ td input:hover { border-color: var(--border); }
 .wellness-history-note { font-size: 12px; color: var(--text); line-height: 1.45; margin-top: 3px; }
 .wellness-history-note .muted { font-weight: 600; margin-right: 4px; }
 
+/* Sleep — wind-down / morning log / trend report */
+.sleep-card strong { display: block; font-size: 15px; }
+.sleep-mood-row { display: flex; gap: 8px; margin: 10px 0 12px; }
+.sleep-mood-choice { flex: 1; padding: 10px 4px; border-radius: 12px; text-align: center; border: 1.5px solid var(--border); background: var(--surface); font-family: inherit; cursor: pointer; }
+.sleep-mood-choice .emoji { font-size: 19px; display: block; margin-bottom: 3px; }
+.sleep-mood-choice .lbl { font-size: 10.5px; font-weight: 600; color: var(--muted); }
+.sleep-mood-choice.sel { border-color: var(--accent-dark); background: rgba(169,128,79,0.1); }
+.sleep-mood-choice.sel .lbl { color: var(--accent-dark); }
+.sleep-note-input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; font-size: 12.5px; font-family: inherit; margin-bottom: 4px; background: var(--surface); color: var(--text); }
+.sleep-habit-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 13px; cursor: pointer; }
+.sleep-habit-check { width: 18px; height: 18px; border-radius: 6px; border: 1.5px solid var(--border); flex-shrink: 0; }
+.sleep-habit-check.on { background: var(--good); border-color: var(--good); }
+.sleep-save-btn { width: 100%; padding: 11px; border-radius: 10px; background: var(--accent-dark); color: #fff; text-align: center; font-weight: 700; font-size: 13.5px; border: none; font-family: inherit; cursor: pointer; margin-top: 12px; }
+.sleep-saved-note { text-align: center; font-size: 11.5px; color: var(--good); font-weight: 600; margin-top: 8px; }
+.sleep-hours-row { display: flex; align-items: center; justify-content: space-between; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-bottom: 4px; }
+.sleep-hours-big { font-family: "Source Serif 4", Georgia, serif; font-size: 21px; }
+.sleep-stepper { display: flex; gap: 6px; }
+.sleep-stepper button { width: 27px; height: 27px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); font-size: 14px; font-weight: 700; cursor: pointer; color: var(--text); font-family: inherit; }
+.sleep-autodetect-chip { display: flex; align-items: center; gap: 8px; background: #E4E9E0; color: var(--good); border-radius: 10px; padding: 9px 12px; font-size: 12px; margin: 10px 0 4px; font-weight: 600; }
+.sleep-chip-tick { width: 16px; height: 16px; border-radius: 50%; background: var(--good); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+.sleep-progress-card { background: rgba(201,162,74,0.12); border: 1.5px dashed #C9A24A; border-radius: 14px; padding: 13px; margin-bottom: 14px; }
+.sleep-progress-label { font-size: 12.5px; font-weight: 700; color: var(--accent-dark); margin-bottom: 8px; }
+.sleep-progress-dots { display: flex; gap: 5px; }
+.sleep-progress-dots span { flex: 1; height: 8px; border-radius: 4px; background: var(--border); }
+.sleep-progress-dots span.done { background: var(--accent-dark); }
+.sleep-progress-sub { font-size: 11px; color: var(--muted); margin-top: 8px; }
+.sleep-report-hero { background: linear-gradient(135deg, var(--accent-dark), var(--accent)); border-radius: 16px; padding: 16px; color: #fff; margin-bottom: 14px; }
+.sleep-report-label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; opacity: .85; font-weight: 700; }
+.sleep-report-hero h3 { font-family: "Source Serif 4", Georgia, serif; font-size: 18px; margin: 4px 0 2px; }
+.sleep-report-sub { font-size: 11.5px; opacity: .9; }
+.sleep-insight-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 13px; margin-bottom: 10px; }
+.sleep-insight-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.sleep-insight-ic { width: 26px; height: 26px; border-radius: 8px; background: #F1DAD3; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.sleep-insight-ic.good { background: #E4E9E0; }
+.sleep-insight-text { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+.sleep-insight-text b { color: var(--accent-dark); }
+.sleep-bar-track { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 2px; }
+.sleep-bar-fill { height: 100%; border-radius: 3px; }
+.sleep-bar-fill.good { background: var(--good); }
+.sleep-bar-fill.bad { background: var(--danger); }
+.sleep-dot-cal { display: flex; gap: 5px; flex-wrap: wrap; }
+.sleep-dot-cal span { width: 16px; height: 16px; border-radius: 5px; background: var(--border); }
+.sleep-dot-cal span.good { background: #E4E9E0; }
+.sleep-dot-cal span.bad { background: #F1DAD3; }
+.sleep-dot-cal span.mid { background: #F1E7CF; }
+
 .setup-banner {
   background: #F1EBDD; color: var(--text); font-size: 13px; line-height: 1.5;
   padding: 12px 14px; border-radius: 8px; margin-bottom: 18px;
@@ -1093,6 +1139,7 @@ td input:hover { border-color: var(--border); }
         <section id="panel-budget" class="panel"></section>
         <section id="panel-investments" class="panel"></section>
         <section id="panel-bible" class="panel"></section>
+        <section id="panel-sleep" class="panel"></section>
         <section id="panel-wellness" class="panel"></section>
         <section id="panel-appearance" class="panel"></section>
         <section id="panel-settings" class="panel"></section>
