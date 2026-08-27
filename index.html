@@ -934,10 +934,26 @@ td input:hover { border-color: var(--border); }
 .sleep-bar-fill.good { background: var(--good); }
 .sleep-bar-fill.bad { background: var(--danger); }
 .sleep-dot-cal { display: flex; gap: 5px; flex-wrap: wrap; }
-.sleep-dot-cal span { width: 16px; height: 16px; border-radius: 5px; background: var(--border); }
-.sleep-dot-cal span.good { background: #E4E9E0; }
-.sleep-dot-cal span.bad { background: #F1DAD3; }
-.sleep-dot-cal span.mid { background: #F1E7CF; }
+.sleep-dot-cal .sleep-dot { width: 16px; height: 16px; border-radius: 5px; background: var(--border); }
+.sleep-dot-cal .sleep-dot.good { background: #E4E9E0; }
+.sleep-dot-cal .sleep-dot.bad { background: #F1DAD3; }
+.sleep-dot-cal .sleep-dot.mid { background: #F1E7CF; }
+.sleep-target-row { display: flex; align-items: center; gap: 7px; margin: 4px 0 14px; }
+.sleep-target-value { font-family: "Source Serif 4", Georgia, serif; font-size: 17px; color: var(--accent-dark); }
+.sleep-target-row .sleep-stepper { margin-left: 4px; }
+.sleep-target-feedback { font-size: 11.5px; font-weight: 600; margin: -2px 0 12px; padding: 7px 10px; border-radius: 8px; }
+.sleep-target-feedback.good { background: #E4E9E0; color: var(--good); }
+.sleep-target-feedback.bad { background: #F1DAD3; color: #8C3F2B; }
+.sleep-collapsed-row { display: flex; align-items: center; gap: 12px; width: 100%; cursor: pointer; text-align: left; font-family: inherit; }
+.sleep-collapsed-emoji { font-size: 22px; flex-shrink: 0; }
+.sleep-collapsed-text { flex: 1; display: flex; flex-direction: column; }
+.sleep-collapsed-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.sleep-collapsed-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.sleep-collapsed-chevron { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; transform: rotate(-90deg); }
+.sleep-editor-box { max-height: 85vh; overflow-y: auto; }
+.sleep-editor-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
+.sleep-dot-cal .sleep-dot { border: none; padding: 0; cursor: pointer; font-family: inherit; }
+.sleep-dot-cal .sleep-dot:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
 
 .setup-banner {
   background: #F1EBDD; color: var(--text); font-size: 13px; line-height: 1.5;
