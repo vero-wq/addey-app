@@ -52,6 +52,13 @@ const SHEET_GALLERY = [
     desc: "Your reading list, organized by category — to read and already read.",
     starterItems: [],
   },
+  {
+    key: "social",
+    label: "Connections Log",
+    icon: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>`,
+    desc: "A quick log of who you connected with today — a call, coffee, a real conversation.",
+    starterItems: [],
+  },
   // Kept last, deliberately: a genuinely useful utility, but the one
   // gallery space with no habit pillar behind it — same category as the
   // built-in Lists space. Not being removed for anyone already using it,
@@ -937,6 +944,7 @@ function addSheetFromTemplate(tpl) {
   const isQuran = tpl.key === "quran";
   const isBooks = tpl.key === "books";
   const isWorkout = tpl.key === "workout";
+  const isSocial = tpl.key === "social";
   state.customSheets[id] = {
     label: tpl.label,
     templateKey: tpl.key,
@@ -946,13 +954,14 @@ function addSheetFromTemplate(tpl) {
       ? seedQuranItems()
       : isBooks
       ? seedBookItems()
-      : isWorkout
+      : isWorkout || isSocial
       ? []
       : tpl.starterItems.map((text) => ({ id: nextId(), text, done: false })),
     ...(isWardrobe ? { wardrobeSchemaV: 2, openCategories: {}, activeSeason: null } : {}),
     ...(isQuran ? { quranSchemaV: 1, quranSettings: { startDate: todayISO() } } : {}),
     ...(isBooks ? { booksSchemaV: 1, openCategories: {}, activeStatus: "toread" } : {}),
     ...(isWorkout ? seedWorkoutSheetData() : {}),
+    ...(isSocial ? { socialSchemaV: 1 } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
   scheduleSave();
@@ -975,6 +984,8 @@ function renderCustomSheet(id) {
     renderBookSheet(id);
   } else if (sheet && sheet.templateKey === "workout" && sheet.workoutSchemaV === 1) {
     renderWorkoutSheet(id);
+  } else if (sheet && sheet.templateKey === "social") {
+    renderSocialSheet(id);
   } else {
     renderChecklistSheet(id);
   }
@@ -1814,25 +1825,30 @@ function renderBookSheet(id) {
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
-  // Learning pillar check-in — separate from any single book's finished
-  // status, since the habit is reading today, not finishing a book today.
+  // Learning pillar check-in — a real log entry (which book, which
+  // chapter), not just a same-day marker. Separate from any single
+  // book's finished status, since the habit is reading today, not
+  // finishing a book today.
   const todayStr = todayISO();
-  const readToday = (state.learningLog || []).includes(todayStr);
+  const todaysLog = (state.learningLog || []).find((e) => e.date === todayStr);
+  const todaysBook = todaysLog?.bookId ? sheet.items.find((b) => b.id === todaysLog.bookId) : null;
   const learningRow = el(`
-    <button type="button" class="learning-checkin-row${readToday ? " done" : ""}">
-      <span class="learning-checkin-check${readToday ? " on" : ""}">${readToday ? checkSvg : ""}</span>
-      <span class="learning-checkin-label">${readToday ? "Marked as read today" : "Mark today's reading"}</span>
+    <button type="button" class="learning-checkin-row${todaysLog ? " done" : ""}">
+      <span class="learning-checkin-check${todaysLog ? " on" : ""}">${todaysLog ? checkSvg : ""}</span>
+      <span class="learning-checkin-label">
+        ${
+          todaysLog
+            ? `Logged today${todaysBook ? ` — ${escapeHtml(todaysBook.title)}${todaysLog.chapter ? `, ch. ${todaysLog.chapter}` : ""}` : ""} · tap to update`
+            : "Log today's reading"
+        }
+      </span>
     </button>
   `);
-  learningRow.addEventListener("click", () => {
-    state.learningLog = readToday
-      ? (state.learningLog || []).filter((d) => d !== todayStr)
-      : [...(state.learningLog || []), todayStr];
-    scheduleSave();
-    renderBookSheet(id);
-    renderHome();
-  });
+  learningRow.addEventListener("click", () => openReadingLogModal(id));
   panel.appendChild(learningRow);
+  if (!sheet.items.length) {
+    panel.appendChild(el(`<div class="muted" style="padding:2px 0 12px; font-size:12px;">Add a book below, then log your reading against it.</div>`));
+  }
 
   const total = sheet.items.length;
   const readCount = sheet.items.filter((b) => b.read).length;
@@ -1912,6 +1928,7 @@ function renderBookSheet(id) {
         : "";
       const facts = [
         ["Format", book.format],
+        ["Progress", book.totalChapters ? `Chapter ${book.currentChapter || 0} of ${book.totalChapters}` : ""],
         ["Online rating", starsFor(book.onlineRating)],
         ["My rating", book.read ? starsFor(book.myRating) : ""],
       ].filter(([, v]) => v);
@@ -1934,6 +1951,7 @@ function renderBookSheet(id) {
             ${book.notes ? `<div class="wi-detail-notes">${escapeHtml(book.notes)}</div>` : ""}
             <div class="wi-detail-actions">
               ${book.link ? `<a class="btn-ghost wi-detail-link" href="${escapeHtml(book.link)}" target="_blank" rel="noopener noreferrer">${linkSvg} Open link</a>` : ""}
+              <button type="button" class="btn-ghost wi-detail-log">Log reading</button>
               <button type="button" class="btn-ghost wi-detail-edit">${editSvg} Edit</button>
             </div>
           </div>
@@ -1948,6 +1966,7 @@ function renderBookSheet(id) {
       });
       item.querySelector(".wi-link-icon")?.addEventListener("click", (e) => e.stopPropagation());
       item.querySelector(".wi-detail-edit").addEventListener("click", () => openBookItemModal(id, book.id));
+      item.querySelector(".wi-detail-log").addEventListener("click", () => openReadingLogModal(id, book.id));
       itemsWrap.appendChild(item);
     });
     panel.appendChild(group);
@@ -1972,7 +1991,7 @@ function openBookItemModal(sheetId, itemId) {
   const sheet = state.customSheets[sheetId];
   const isNew = !itemId;
   const item = isNew
-    ? { title: "", author: "", category: "", format: "listen or read", link: "", read: false, onlineRating: null, myRating: null, notes: "" }
+    ? { title: "", author: "", category: "", format: "listen or read", link: "", read: false, onlineRating: null, myRating: null, notes: "", totalChapters: null, currentChapter: 0 }
     : sheet.items.find((b) => b.id === itemId);
   if (!item) return;
 
@@ -2007,6 +2026,17 @@ function openBookItemModal(sheetId, itemId) {
                 <option value="0" ${!item.read ? "selected" : ""}>To Read</option>
                 <option value="1" ${item.read ? "selected" : ""}>Read</option>
               </select>
+            </div>
+          </div>
+
+          <div class="wardrobe-form-row">
+            <div>
+              <label class="muted">Total chapters</label>
+              <input type="number" min="0" class="bk-f-total-chapters" value="${item.totalChapters || ""}" placeholder="e.g. 24" />
+            </div>
+            <div>
+              <label class="muted">Currently on</label>
+              <input type="number" min="0" class="bk-f-current-chapter" value="${item.currentChapter || 0}" />
             </div>
           </div>
 
@@ -2047,6 +2077,8 @@ function openBookItemModal(sheetId, itemId) {
       category: overlay.querySelector(".bk-f-category").value.trim(),
       format: overlay.querySelector(".bk-f-format").value,
       read: overlay.querySelector(".bk-f-read").value === "1",
+      totalChapters: overlay.querySelector(".bk-f-total-chapters").value ? Number(overlay.querySelector(".bk-f-total-chapters").value) : null,
+      currentChapter: overlay.querySelector(".bk-f-current-chapter").value ? Number(overlay.querySelector(".bk-f-current-chapter").value) : 0,
       onlineRating: overlay.querySelector(".bk-f-online-rating").value ? Number(overlay.querySelector(".bk-f-online-rating").value) : null,
       myRating: overlay.querySelector(".bk-f-my-rating").value ? Number(overlay.querySelector(".bk-f-my-rating").value) : null,
       notes: overlay.querySelector(".bk-f-notes").value.trim(),
@@ -2071,6 +2103,233 @@ function openBookItemModal(sheetId, itemId) {
         scheduleSave();
         overlay.remove();
         renderBookSheet(sheetId);
+      });
+    });
+  }
+
+  document.body.appendChild(overlay);
+}
+
+// Logging a day's reading — pick which book (from the library, since a
+// day of reading only means something attached to a specific book), how
+// far she got, format-aware label pulled straight from that book's own
+// Format field rather than asking again. Upserts today's entry so
+// re-logging the same day just updates the chapter instead of stacking
+// duplicates, and rolls the chapter forward onto the book itself so the
+// Book List row's progress fact stays in sync.
+function openReadingLogModal(sheetId, presetBookId) {
+  const sheet = state.customSheets[sheetId];
+  if (!sheet) return;
+  if (!sheet.items.length) {
+    openBookItemModal(sheetId, null);
+    return;
+  }
+  const todayStr = todayISO();
+  const existing = (state.learningLog || []).find((e) => e.date === todayStr);
+  const startBookId = presetBookId || existing?.bookId || sheet.items[0].id;
+
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Log today's reading</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">Book</label>
+          <select class="rl-f-book">
+            ${sheet.items.map((b) => `<option value="${b.id}" ${b.id === startBookId ? "selected" : ""}>${escapeHtml(b.title)}</option>`).join("")}
+          </select>
+
+          <label class="muted rl-f-format-label"></label>
+
+          <label class="muted">Chapter you're on now</label>
+          <input type="number" min="0" class="rl-f-chapter" />
+        </div>
+        <div class="modal-actions" style="justify-content:space-between;">
+          <div></div>
+          <button type="button" class="btn-primary rl-save">${existing ? "Update log" : "Log it"}</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  const bookSelect = overlay.querySelector(".rl-f-book");
+  const chapterInput = overlay.querySelector(".rl-f-chapter");
+  const formatLabel = overlay.querySelector(".rl-f-format-label");
+
+  function syncForBook() {
+    const book = sheet.items.find((b) => b.id === bookSelect.value);
+    formatLabel.textContent = book?.format ? `Format: ${book.format}` : "";
+    const carryOverChapter = book?.id === existing?.bookId ? existing?.chapter : null;
+    chapterInput.value = carryOverChapter ?? book?.currentChapter ?? 0;
+  }
+  bookSelect.addEventListener("change", syncForBook);
+  syncForBook();
+
+  overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelector(".rl-save").addEventListener("click", () => {
+    const bookId = bookSelect.value;
+    const book = sheet.items.find((b) => b.id === bookId);
+    const chapter = chapterInput.value ? Number(chapterInput.value) : null;
+    if (!book) return;
+
+    state.learningLog = (state.learningLog || []).filter((e) => e.date !== todayStr);
+    state.learningLog.push({ date: todayStr, bookId, chapter });
+
+    if (chapter !== null) {
+      book.currentChapter = chapter;
+      if (book.totalChapters && chapter >= book.totalChapters) book.read = true;
+    }
+
+    scheduleSave();
+    overlay.remove();
+    renderBookSheet(sheetId);
+    renderHome();
+  });
+
+  document.body.appendChild(overlay);
+}
+
+// ------------------------------------------------------------------
+// Connections Log — the Social Connection pillar's home. Deliberately
+// minimal: who, what kind of connection, when, and an optional note —
+// a "who, what, when" quick-add rather than a whole contacts system.
+// Logging a real conversation, call, or hangout today is what completes
+// the pillar; a flat yes/no toggle would say nothing about whether the
+// connection was real.
+// ------------------------------------------------------------------
+const SOCIAL_KIND_OPTIONS = ["In person", "Phone call", "Video call", "Text / message thread", "Group hangout"];
+
+function renderSocialSheet(id) {
+  const panel = document.getElementById(`panel-${id}`);
+  const sheet = state.customSheets[id];
+  if (!panel || !sheet) return;
+  panel.innerHTML = "";
+  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  const todayStr = todayISO();
+  const loggedToday = sheet.items.some((i) => i.date === todayStr);
+  const logRow = el(`
+    <button type="button" class="learning-checkin-row${loggedToday ? " done" : ""}">
+      <span class="learning-checkin-check${loggedToday ? " on" : ""}">${loggedToday ? checkSvg : ""}</span>
+      <span class="learning-checkin-label">${loggedToday ? "Logged a connection today · tap to add another" : "Log today's connection"}</span>
+    </button>
+  `);
+  logRow.addEventListener("click", () => openSocialEntryModal(id, null));
+  panel.appendChild(logRow);
+
+  const entries = [...sheet.items].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+  if (!entries.length) {
+    panel.appendChild(el(`<div class="muted" style="padding:16px 0;">Nothing logged yet — who did you connect with today?</div>`));
+  }
+
+  entries.forEach((entry) => {
+    const row = el(`
+      <details class="wardrobe-item">
+        <summary class="wardrobe-row">
+          <div class="wi-body">
+            <div class="wi-name">${escapeHtml(entry.who || "Someone")}</div>
+            <div class="wi-sub">${escapeHtml(entry.kind || "")} &middot; ${escapeHtml(entry.date)}</div>
+          </div>
+          <span class="wardrobe-chevron">${chevronSvg}</span>
+        </summary>
+        <div class="wardrobe-item-detail">
+          ${entry.notes ? `<div class="wi-detail-notes">${escapeHtml(entry.notes)}</div>` : ""}
+          <div class="wi-detail-actions">
+            <button type="button" class="btn-ghost wi-detail-edit">${editSvg} Edit</button>
+            <button type="button" class="btn-ghost danger wi-detail-delete">Delete</button>
+          </div>
+        </div>
+      </details>
+    `);
+    row.querySelector(".wi-detail-edit").addEventListener("click", () => openSocialEntryModal(id, entry.id));
+    row.querySelector(".wi-detail-delete").addEventListener("click", () => {
+      confirmModal("Delete entry?", `Remove this connection log for ${entry.date}?`, "Delete", () => {
+        sheet.items = sheet.items.filter((i) => i.id !== entry.id);
+        scheduleSave();
+        renderSocialSheet(id);
+        renderHome();
+      });
+    });
+    panel.appendChild(row);
+  });
+}
+
+function openSocialEntryModal(sheetId, itemId) {
+  const sheet = state.customSheets[sheetId];
+  const isNew = !itemId;
+  const item = isNew
+    ? { who: "", kind: SOCIAL_KIND_OPTIONS[0], date: todayISO(), notes: "" }
+    : sheet.items.find((i) => i.id === itemId);
+  if (!item) return;
+
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>${isNew ? "Log a connection" : "Edit entry"}</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">Who</label>
+          <input type="text" class="sc-f-who" value="${escapeHtml(item.who)}" placeholder="e.g. Mom, Jess" />
+
+          <label class="muted">What</label>
+          <select class="sc-f-kind">${SOCIAL_KIND_OPTIONS.map((k) => `<option value="${k}" ${item.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select>
+
+          <label class="muted">When</label>
+          <input type="date" class="sc-f-date" value="${item.date}" />
+
+          <label class="muted">Notes</label>
+          <textarea class="sc-f-notes" rows="3" placeholder="Optional">${escapeHtml(item.notes)}</textarea>
+        </div>
+        <div class="modal-actions" style="justify-content:space-between;">
+          <div>${isNew ? "" : `<button type="button" class="btn-ghost danger sc-delete">Delete</button>`}</div>
+          <button type="button" class="btn-primary sc-save">${isNew ? "Add" : "Save"}</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelector(".sc-save").addEventListener("click", () => {
+    const updated = {
+      who: overlay.querySelector(".sc-f-who").value.trim(),
+      kind: overlay.querySelector(".sc-f-kind").value,
+      date: overlay.querySelector(".sc-f-date").value || todayISO(),
+      notes: overlay.querySelector(".sc-f-notes").value.trim(),
+    };
+    if (!updated.who) return;
+    if (isNew) {
+      sheet.items.push({ id: nextId(), ...updated });
+    } else {
+      Object.assign(item, updated);
+    }
+    scheduleSave();
+    overlay.remove();
+    renderSocialSheet(sheetId);
+    renderHome();
+  });
+
+  const deleteBtn = overlay.querySelector(".sc-delete");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      confirmModal("Delete entry?", `Remove this connection log?`, "Delete", () => {
+        sheet.items = sheet.items.filter((i) => i.id !== item.id);
+        scheduleSave();
+        overlay.remove();
+        renderSocialSheet(sheetId);
+        renderHome();
       });
     });
   }
@@ -4449,8 +4708,13 @@ function pillarCandidateSheets(key) {
       const cs = state.customSheets[s.id];
       if (cs && cs.templateKey === "books") results.push({ id: s.id, label: sheetLabel(s) });
     });
+  } else if (key === "socialConnection") {
+    state.sheets.forEach((s) => {
+      if (s.kind !== "custom" || !s.visible) return;
+      const cs = state.customSheets[s.id];
+      if (cs && cs.templateKey === "social") results.push({ id: s.id, label: sheetLabel(s) });
+    });
   }
-  // socialConnection: no space maps to this yet.
   return results;
 }
 
@@ -4489,9 +4753,15 @@ function sheetActiveToday(sheetId, today) {
   if (cs && cs.templateKey === "books") {
     // Books don't have a "done today" shape the way a checklist does —
     // finishing a whole book is rare, but reading is meant to be daily.
-    // Learning completes off a separate same-day marker set from inside
-    // the Book List panel instead (see renderBookSheet).
-    return (state.learningLog || []).includes(today);
+    // Learning completes off a real reading-log entry (which book, what
+    // chapter) logged from inside the Book List panel — see
+    // renderBookSheet / openReadingLogModal.
+    return (state.learningLog || []).some((e) => e.date === today);
+  }
+  if (cs && cs.templateKey === "social") {
+    // Social connection completes off a real logged entry today — who,
+    // what, when — not a flat yes/no toggle.
+    return cs.items.some((i) => i.date === today);
   }
   if (!cs || !Array.isArray(cs.items)) return false;
   return cs.items.some((i) => i.done && i.completedDate === today);
@@ -5765,10 +6035,14 @@ function renderHomeHero(today) {
         <span class="home-streak-flame-num">${streak.current}</span>
         <span class="home-streak-flame-label">day streak</span>
       </div>
-      <div class="home-streak-flame-longest">Longest ever &middot; ${streak.longest} day${streak.longest === 1 ? "" : "s"}</div>
+      <div class="home-streak-flame-longest">Consecutive days &middot; longest ever ${streak.longest} day${streak.longest === 1 ? "" : "s"}</div>
     </div>
   `));
 
+  // Streak and Deposits are deliberately two different numbers, and the
+  // small label under Deposits exists specifically to keep them from
+  // reading as the same thing: streak resets the moment a day is missed,
+  // while deposits only ever accumulate across the whole cycle.
   hero.appendChild(el(`
     <div class="home-deposit-track">
       <div class="home-deposit-track-row">
@@ -5776,7 +6050,7 @@ function renderHomeHero(today) {
         <span class="home-deposit-track-count">${deposits.deposits} of ${deposits.goal}</span>
       </div>
       <div class="home-deposit-track-bar"><div class="home-deposit-track-fill" style="width:${deposits.pct}%;"></div></div>
-      <div class="home-cycle-caption"><strong>${wellness.stats.goodCount} of ${wellness.stats.totalCount}</strong> days logged this cycle &middot; ${wellness.stats.reached ? "ready to claim" : `target ${wellness.stats.endDate}`}</div>
+      <div class="home-cycle-caption">Cumulative this cycle &middot; <strong>${wellness.stats.goodCount} of ${wellness.stats.totalCount}</strong> days logged &middot; ${wellness.stats.reached ? "ready to claim" : `target ${wellness.stats.endDate}`}</div>
     </div>
   `));
 
@@ -6242,11 +6516,15 @@ async function boot() {
   state.wellness ||= [];
   state.sleepLogs ||= [];
   state.sleepSettings ||= { targetHours: 7 };
-  // Learning pillar — "read today" is a same-day marker separate from a
-  // book's own read/unread status, since finishing a book is rare but the
-  // habit is meant to be daily. Plain array of date strings, same shape
-  // as everything else here.
+  // Learning pillar — a real reading log: which book, what chapter, what
+  // day. Older saves stored this as a plain array of date strings (just
+  // "did she read today", not linked to any book) — migrate those
+  // forward into the same shape as a real logged entry, minus the parts
+  // that were never captured.
   state.learningLog ||= [];
+  state.learningLog = state.learningLog.map((e) =>
+    typeof e === "string" ? { date: e, bookId: null, chapter: null } : e
+  );
   state.nextId ||= 1;
   state.activeTab ||= "home";
   state.budgetView ||= "sections";
