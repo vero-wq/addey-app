@@ -592,6 +592,14 @@ td input:hover { border-color: var(--border); }
 .icon-btn[disabled] { opacity: 0.35; cursor: default; }
 .icon-btn[disabled]:hover { background: var(--surface); color: var(--muted); }
 
+.space-usage-row { margin-bottom: 18px; max-width: 420px; }
+.space-usage-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.space-usage-label { font-size: 12px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .03em; }
+.space-usage-count { font-size: 12px; font-weight: 700; color: var(--accent-dark); }
+.space-usage-bar { height: 7px; border-radius: 5px; background: var(--border); overflow: hidden; }
+.space-usage-fill { height: 100%; background: var(--good); border-radius: 5px; }
+.space-usage-fill.full { background: var(--accent-dark); }
+
 .sheet-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .sheet-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
 .sheet-card-icon { width: 34px; height: 34px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--accent); }
@@ -707,6 +715,12 @@ td input:hover { border-color: var(--border); }
 .wardrobe-item[open] .wardrobe-chevron { transform: rotate(180deg); }
 
 /* ---------- Book List ---------- */
+.learning-checkin-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 13px; border-radius: 12px; border: 1.5px dashed var(--accent); background: var(--bg); font-family: inherit; cursor: pointer; margin-bottom: 4px; text-align: left; }
+.learning-checkin-row.done { border-style: solid; border-color: var(--good); background: #E4E9E0; }
+.learning-checkin-check { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--accent); flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; }
+.learning-checkin-check.on { background: var(--good); border-color: var(--good); }
+.learning-checkin-label { font-size: 13px; font-weight: 600; color: var(--accent-dark); }
+.learning-checkin-row.done .learning-checkin-label { color: var(--good); }
 .book-summary-strip { display: flex; gap: 8px; margin: 12px 0 14px; }
 .book-summary-chip { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .book-summary-chip .num { font-size: 19px; font-weight: 700; }
@@ -1007,7 +1021,31 @@ td input:hover { border-color: var(--border); }
 .home-hero-prize-name { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 17px; color: #fff; }
 .home-hero-prize-sub { font-size: 12px; color: #F3E8D4; margin-top: 1px; }
 .home-hero-pillars-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
-.home-hero-pillars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.home-hero-pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+/* Streak */
+.home-streak-flame { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.home-streak-flame-top { display: flex; align-items: baseline; gap: 8px; }
+.home-streak-flame-icon { font-size: 22px; line-height: 1; }
+.home-streak-flame-num { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 26px; color: var(--accent-dark); }
+.home-streak-flame-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.home-streak-flame-longest { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* Deposits */
+.home-deposit-track { margin-bottom: 14px; }
+.home-deposit-track-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.home-deposit-track-label { font-size: 11.5px; font-weight: 700; color: var(--text); }
+.home-deposit-track-count { font-size: 11.5px; font-weight: 700; color: var(--accent-dark); }
+.home-deposit-track-bar { height: 8px; border-radius: 5px; background: var(--border); overflow: hidden; }
+.home-deposit-track-fill { height: 100%; background: var(--accent-dark); border-radius: 5px; }
+
+/* Milestone savings nudge */
+.home-nudge-card { background: #FBF3E6; border: 1px solid #ECD9B4; border-radius: 12px; padding: 13px 14px; margin-bottom: 14px; }
+.home-nudge-title { font-family: "Source Serif 4", Georgia, serif; font-size: 14.5px; margin-bottom: 5px; }
+.home-nudge-body { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
+.home-nudge-actions { display: flex; gap: 8px; }
+.home-nudge-btn-primary { flex: 1; background: var(--accent-dark); color: #fff; border: none; border-radius: 100px; padding: 9px; font-weight: 700; font-size: 12.5px; font-family: inherit; cursor: pointer; }
+.home-nudge-btn-ghost { background: none; border: none; color: var(--muted); font-weight: 600; font-size: 12.5px; font-family: inherit; cursor: pointer; padding: 9px 10px; }
 .home-pillar { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; border-radius: 12px; border: 1px solid transparent; background: #F1DAD3; cursor: pointer; font-family: inherit; }
 .home-pillar.done { background: #E4E9E0; }
 .home-pillar-icon { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
@@ -1038,6 +1076,7 @@ td input:hover { border-color: var(--border); }
 .home-yourspaces-tile.manage .home-yourspaces-tile-icon { background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
 .home-yourspaces-tile.manage .home-yourspaces-tile-label { color: var(--accent-dark); }
 
+.home-yourspaces-head-static { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 12px; }
 .home-yourspaces-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 12px; cursor: pointer; background: none; border: none; width: 100%; font-family: inherit; text-align: left; }
 .home-yourspaces-head-left { display: flex; flex-direction: column; }
 .home-yourspaces-title { font-size: 13px; font-weight: 700; color: var(--text); }
