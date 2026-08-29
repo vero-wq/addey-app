@@ -27,13 +27,6 @@ const SHEET_GALLERY = [
     starterItems: ["Upper body — Monday", "Lower body — Wednesday", "Full body — Friday"],
   },
   {
-    key: "wardrobe",
-    label: "Capsule Wardrobe",
-    icon: `<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path>`,
-    desc: "Checklist for what's in rotation this season, by category.",
-    starterItems: ["Tops", "Bottoms", "Outerwear", "Shoes", "Accessories"],
-  },
-  {
     key: "meals",
     label: "Meal Planner",
     icon: `<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>`,
@@ -53,6 +46,17 @@ const SHEET_GALLERY = [
     icon: `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h7"></path>`,
     desc: "Your reading list, organized by category — to read and already read.",
     starterItems: [],
+  },
+  // Kept last, deliberately: a genuinely useful utility, but the one
+  // gallery space with no habit pillar behind it — same category as the
+  // built-in Lists space. Not being removed for anyone already using it,
+  // just no longer featured as a core habit-wellness offering.
+  {
+    key: "wardrobe",
+    label: "Capsule Wardrobe",
+    icon: `<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path>`,
+    desc: "Checklist for what's in rotation this season, by category — a general wardrobe utility, not a habit pillar.",
+    starterItems: ["Tops", "Bottoms", "Outerwear", "Shoes", "Accessories"],
   },
 ];
 
@@ -866,7 +870,63 @@ function toggleSheetVisible(id) {
   }
 }
 
+// Tiered space cap — Free and Paid are real product tiers, Founder is
+// Veronika's own account so she can test different space templates
+// without deleting data to make room. Counts every visible space except
+// Wellness, since Wellness isn't really a separate space anymore — Home
+// absorbed it (see homeAbsorbsWellnessV1Applied above) — it's just a
+// hidden data source now, not something you navigate to or add more of.
+function spaceCapForAccount() {
+  const acct = state.account || {};
+  if (acct.isFounder) return 30;
+  if (acct.plan === "paid") return 16;
+  return 8;
+}
+function countedSpaces() {
+  return state.sheets.filter((s) => s.visible && s.id !== "wellness").length;
+}
+
+// A small, reusable "you're at your limit" modal — never a silent block.
+// Names the exact next tier and how many more spaces it buys.
+function openSpaceCapModal() {
+  const acct = state.account || {};
+  const limit = spaceCapForAccount();
+  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Paid";
+  const nextTierLimit = 16;
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box" style="max-width:360px;text-align:center;">
+        <div style="font-size:26px;margin-bottom:8px;">🔒</div>
+        <h3 style="margin:0 0 8px;">You've used all ${limit} spaces</h3>
+        <p class="muted" style="margin:0 0 18px;line-height:1.5;">
+          ${
+            nextTierLabel
+              ? `Upgrade to ${nextTierLabel} for ${nextTierLimit} spaces total — double the room, same habit tracking. Or remove a space in My Spaces to make room.`
+              : `Remove a space in My Spaces to make room for a new one.`
+          }
+        </p>
+        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `See ${nextTierLabel} plan` : "Manage my spaces"}</button>
+        <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Close</button>
+      </div>
+    </div>
+  `);
+  overlay.querySelector(".btn-primary").addEventListener("click", () => {
+    overlay.remove();
+    settingsSubTab = "mine";
+    activateTab("settings");
+  });
+  overlay.querySelector(".btn-ghost").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
 function addSheetFromTemplate(tpl) {
+  if (countedSpaces() >= spaceCapForAccount()) {
+    openSpaceCapModal();
+    return;
+  }
   const id = `sheet_${nextId()}`;
   const isWardrobe = tpl.key === "wardrobe";
   const isQuran = tpl.key === "quran";
@@ -1162,6 +1222,21 @@ function renderSettings() {
 
   galleryPanel.appendChild(el(`<div class="settings-group-title">Space gallery</div>`));
   galleryPanel.appendChild(el(`<div class="settings-group-desc">A few more spaces, ready to drop in whenever you want them.</div>`));
+
+  const usedCount = countedSpaces();
+  const limit = spaceCapForAccount();
+  const atCap = usedCount >= limit;
+  const planLabel = (state.account && state.account.planLabel) || "Free";
+  galleryPanel.appendChild(el(`
+    <div class="space-usage-row">
+      <div class="space-usage-top">
+        <span class="space-usage-label">${escapeHtml(planLabel)} plan &middot; spaces used</span>
+        <span class="space-usage-count">${usedCount} of ${limit}</span>
+      </div>
+      <div class="space-usage-bar"><div class="space-usage-fill${atCap ? " full" : ""}" style="width:${Math.min(100, Math.round((usedCount / limit) * 100))}%;"></div></div>
+    </div>
+  `));
+
   const gallery = el(`<div class="sheet-gallery"></div>`);
   SHEET_GALLERY.forEach((tpl) => {
     const alreadyAdded = Object.values(state.customSheets).some((cs) => cs.templateKey === tpl.key);
@@ -1173,6 +1248,8 @@ function renderSettings() {
         ${
           alreadyAdded
             ? `<span class="sheet-card-added">${checkSvg} Added</span>`
+            : atCap
+            ? `<button type="button" class="btn-ghost small" style="align-self:flex-start;">Upgrade to add</button>`
             : `<button type="button" class="btn-ghost small" style="align-self:flex-start;">+ Add</button>`
         }
       </div>
@@ -1726,6 +1803,26 @@ function renderBookSheet(id) {
   if (!panel || !sheet) return;
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  // Learning pillar check-in — separate from any single book's finished
+  // status, since the habit is reading today, not finishing a book today.
+  const todayStr = todayISO();
+  const readToday = (state.learningLog || []).includes(todayStr);
+  const learningRow = el(`
+    <button type="button" class="learning-checkin-row${readToday ? " done" : ""}">
+      <span class="learning-checkin-check${readToday ? " on" : ""}">${readToday ? checkSvg : ""}</span>
+      <span class="learning-checkin-label">${readToday ? "Marked as read today" : "Mark today's reading"}</span>
+    </button>
+  `);
+  learningRow.addEventListener("click", () => {
+    state.learningLog = readToday
+      ? (state.learningLog || []).filter((d) => d !== todayStr)
+      : [...(state.learningLog || []), todayStr];
+    scheduleSave();
+    renderBookSheet(id);
+    renderHome();
+  });
+  panel.appendChild(learningRow);
 
   const total = sheet.items.length;
   const readCount = sheet.items.filter((b) => b.read).length;
@@ -4259,6 +4356,7 @@ const WELLNESS_YESNO_FIELDS = [
   ["spiritualAnchor", "Spiritual anchor"],
   ["sleepProtected", "Sleep protected"],
   ["socialConnection", "Social connection"],
+  ["learning", "Learning"],
 ];
 // Small enumerated dropdowns, also color-coded.
 const WELLNESS_ENUM_FIELDS = {
@@ -4335,6 +4433,12 @@ function pillarCandidateSheets(key) {
   } else if (key === "sleepProtected") {
     const sleepSheet = state.sheets.find((s) => s.id === "sleep" && s.visible);
     if (sleepSheet) results.push({ id: "sleep", label: sheetLabel(sleepSheet) });
+  } else if (key === "learning") {
+    state.sheets.forEach((s) => {
+      if (s.kind !== "custom" || !s.visible) return;
+      const cs = state.customSheets[s.id];
+      if (cs && cs.templateKey === "books") results.push({ id: s.id, label: sheetLabel(s) });
+    });
   }
   // socialConnection: no space maps to this yet.
   return results;
@@ -4372,6 +4476,13 @@ function sheetActiveToday(sheetId, today) {
     return sleepNightProtected(nightEntry);
   }
   const cs = state.customSheets[sheetId];
+  if (cs && cs.templateKey === "books") {
+    // Books don't have a "done today" shape the way a checklist does —
+    // finishing a whole book is rare, but reading is meant to be daily.
+    // Learning completes off a separate same-day marker set from inside
+    // the Book List panel instead (see renderBookSheet).
+    return (state.learningLog || []).includes(today);
+  }
   if (!cs || !Array.isArray(cs.items)) return false;
   return cs.items.some((i) => i.done && i.completedDate === today);
 }
@@ -5503,6 +5614,96 @@ function computeWellnessProgress(today) {
 }
 
 // ------------------------------------------------------------------
+// Deposits — every pillar logged "Yes" on a given day mints one deposit
+// toward this cycle's prize. Deliberately derived from state.wellness
+// rather than stored as its own counter, same as goodCount/totalCount
+// above — one source of truth, nothing to keep in sync by hand.
+//
+// The goal itself is a number on the prize (depositGoal), not a fixed
+// formula, so it can be set deliberately per prize later; until it is,
+// it defaults to half of the theoretical max (every pillar, every day of
+// the cycle) — reachable without requiring a perfect run.
+// ------------------------------------------------------------------
+function computeDepositStats(prize, today) {
+  const endDate = addDays(prize.cycleStartDate, prize.cycleLengthDays);
+  let cursor = prize.cycleStartDate;
+  let deposits = 0;
+  while (cursor <= endDate && cursor <= today) {
+    const entry = state.wellness.find((w) => w.logDate === cursor);
+    if (entry) {
+      WELLNESS_YESNO_FIELDS.forEach(([key]) => {
+        if (entry[key] === "Yes") deposits++;
+      });
+    }
+    cursor = addDays(cursor, 1);
+  }
+  const goal = prize.depositGoal || Math.round(prize.cycleLengthDays * WELLNESS_YESNO_FIELDS.length * 0.5);
+  const pct = goal ? Math.max(0, Math.min(100, Math.round((deposits / goal) * 100))) : 0;
+  return { deposits, goal, pct };
+}
+
+// Milestones are fractions of the deposit goal, not fixed counts, so they
+// scale with whatever goal a prize ends up with. Each one nudges exactly
+// once per cycle — state.veronikasPrize.nudgedMilestones remembers which
+// fractions have already shown their card, so re-opening Home after
+// dismissing one doesn't bring it right back.
+const DEPOSIT_MILESTONE_FRACTIONS = [0.25, 0.5, 0.75];
+function depositMilestoneThresholds(goal) {
+  return DEPOSIT_MILESTONE_FRACTIONS.map((f) => Math.round(goal * f));
+}
+function nextUnnudgedMilestone(prize, depositStats) {
+  const thresholds = depositMilestoneThresholds(depositStats.goal);
+  for (let i = 0; i < DEPOSIT_MILESTONE_FRACTIONS.length; i++) {
+    const fraction = DEPOSIT_MILESTONE_FRACTIONS[i];
+    const threshold = thresholds[i];
+    if (depositStats.deposits >= threshold && !(prize.nudgedMilestones || []).includes(fraction)) {
+      return { fraction, threshold };
+    }
+  }
+  return null;
+}
+
+// ------------------------------------------------------------------
+// Streaks — consecutive "good" days (same 80%-of-logged-pillars bar as
+// the rest of Wellness), read straight off state.wellness so there's
+// nothing new to keep in sync. Today not being logged yet doesn't break
+// yesterday's streak — there's still time left in the day — but any
+// other gap does.
+// ------------------------------------------------------------------
+function computeStreakStats(today) {
+  const entries = state.wellness.slice().sort((a, b) => (a.logDate < b.logDate ? -1 : 1));
+  let longest = 0;
+  let run = 0;
+  let prevDate = null;
+  entries.forEach((e) => {
+    const positive = isWellnessDayPositive(e);
+    if (positive) {
+      run = prevDate && addDays(prevDate, 1) === e.logDate ? run + 1 : 1;
+      longest = Math.max(longest, run);
+    } else {
+      run = 0;
+    }
+    prevDate = e.logDate;
+  });
+
+  let current = 0;
+  let cursor = today;
+  let isToday = true;
+  while (true) {
+    const entry = state.wellness.find((w) => w.logDate === cursor);
+    const positive = isWellnessDayPositive(entry);
+    if (positive) {
+      current++;
+    } else if (!isToday) {
+      break;
+    }
+    isToday = false;
+    cursor = addDays(cursor, -1);
+  }
+  return { current, longest: Math.max(longest, current) };
+}
+
+// ------------------------------------------------------------------
 // Home — a quiet, read-only summary that lives dead center in the nav
 // on mobile (a fixed circle, never scrolled away) and first in the
 // sidebar on desktop. Pulls the same identity quote / wellness
@@ -5537,6 +5738,8 @@ function renderHomeHero(today) {
   applyPillarAutoDetection(todaysEntry, today);
   const wellness = computeWellnessProgress(today);
   const prize = wellness.prize;
+  const deposits = computeDepositStats(prize, today);
+  const streak = computeStreakStats(today);
 
   const hero = el(`<div class="card"></div>`);
 
@@ -5551,6 +5754,52 @@ function renderHomeHero(today) {
       </div>
     </div>
   `));
+
+  hero.appendChild(el(`
+    <div class="home-streak-flame">
+      <div class="home-streak-flame-top">
+        <span class="home-streak-flame-icon">${streak.current > 0 ? "🔥" : "〰️"}</span>
+        <span class="home-streak-flame-num">${streak.current}</span>
+        <span class="home-streak-flame-label">day streak</span>
+      </div>
+      <div class="home-streak-flame-longest">Longest ever &middot; ${streak.longest} day${streak.longest === 1 ? "" : "s"}</div>
+    </div>
+  `));
+
+  hero.appendChild(el(`
+    <div class="home-deposit-track">
+      <div class="home-deposit-track-row">
+        <span class="home-deposit-track-label">Deposits toward ${escapeHtml(prize.itemName || "your reward")}</span>
+        <span class="home-deposit-track-count">${deposits.deposits} of ${deposits.goal}</span>
+      </div>
+      <div class="home-deposit-track-bar"><div class="home-deposit-track-fill" style="width:${deposits.pct}%;"></div></div>
+    </div>
+  `));
+
+  const milestone = nextUnnudgedMilestone(prize, deposits);
+  if (milestone) {
+    const nudge = el(`
+      <div class="home-nudge-card">
+        <div class="home-nudge-title">Milestone reached &mdash; ${milestone.threshold} deposits</div>
+        <div class="home-nudge-body">Set aside some money toward ${escapeHtml(prize.itemName || "your reward")}? Manual for now &mdash; Addley will only ever nudge, not move money itself.</div>
+        <div class="home-nudge-actions">
+          <button type="button" class="home-nudge-btn-primary">Open Budget</button>
+          <button type="button" class="home-nudge-btn-ghost">Not now</button>
+        </div>
+      </div>
+    `);
+    const dismiss = () => {
+      prize.nudgedMilestones = [...(prize.nudgedMilestones || []), milestone.fraction];
+      scheduleSave();
+      renderHome();
+    };
+    nudge.querySelector(".home-nudge-btn-primary").addEventListener("click", () => {
+      dismiss();
+      activateTab("budget");
+    });
+    nudge.querySelector(".home-nudge-btn-ghost").addEventListener("click", dismiss);
+    hero.appendChild(nudge);
+  }
 
   const prizeBanner = el(`<div class="home-hero-prize-banner"></div>`);
   if (prize.itemPhoto) {
@@ -5599,77 +5848,65 @@ function renderHomeHero(today) {
   return hero;
 }
 
-// One card for everything space-related on Home: your added spaces (collapsed
-// to a quiet icon preview by default, expandable to the full grid in place)
-// plus a single line at the bottom pointing to the Gallery for adding more.
-// Nothing here adds a space directly — tapping the gallery line just opens
-// Settings on the Gallery sub-tab so you can browse and decide there.
-let homeYourSpacesExpanded = false; // resets each session, not persisted
-
+// One always-visible card for everything not already pinned to the bottom
+// bar. Deliberately never collapsed — spaces you added on purpose
+// shouldn't need a tap just to be seen. Shows only what ISN'T one of the
+// first MOBILE_PINNED_COUNT bar icons, so nothing appears twice between
+// the bar and this card. Capped at 6 tiles before a 7th "See all" tile
+// takes over (a screen-size limit, the same for every plan); under that,
+// an explicit "Add a space" tile closes out the grid so there's always
+// one visible, obvious way in — never a hidden gesture.
 function renderYourSpaces() {
   const wrap = el(`<div class="card"></div>`);
-  const visible = state.sheets.filter((s) => s.visible && s.id !== "wellness");
+  const barVisible = state.sheets.filter((s) => s.visible);
+  const pinnedIds = new Set(barVisible.slice(0, MOBILE_PINNED_COUNT).map((s) => s.id));
+  const additional = barVisible.filter((s) => s.id !== "wellness" && !pinnedIds.has(s.id));
 
-  const head = el(`
-    <button type="button" class="home-yourspaces-head">
-      <span class="home-yourspaces-head-left">
-        <span class="home-yourspaces-title">Your spaces</span>
-        <span class="home-yourspaces-count">${visible.length} added</span>
-      </span>
-      <span class="home-yourspaces-chevron${homeYourSpacesExpanded ? " open" : ""}">${chevronSvg}</span>
-    </button>
-  `);
-  head.addEventListener("click", () => {
-    homeYourSpacesExpanded = !homeYourSpacesExpanded;
-    renderHome();
+  wrap.appendChild(el(`
+    <div class="home-yourspaces-head-static">
+      <span class="home-yourspaces-title">Your additional spaces</span>
+      <span class="home-yourspaces-count">${additional.length}</span>
+    </div>
+  `));
+
+  const grid = el(`<div class="home-yourspaces-grid"></div>`);
+  additional.slice(0, 6).forEach((s) => {
+    const tile = el(`
+      <button type="button" class="home-yourspaces-tile">
+        <span class="home-yourspaces-tile-icon">${iconSvg(sheetIcon(s))}</span>
+        <span class="home-yourspaces-tile-label">${escapeHtml(sheetLabel(s))}</span>
+      </button>
+    `);
+    tile.addEventListener("click", () => activateTab(s.id));
+    grid.appendChild(tile);
   });
-  wrap.appendChild(head);
 
-  if (visible.length) {
-    if (homeYourSpacesExpanded) {
-      const grid = el(`<div class="home-yourspaces-grid"></div>`);
-      visible.forEach((s) => {
-        const tile = el(`
-          <button type="button" class="home-yourspaces-tile">
-            <span class="home-yourspaces-tile-icon">${iconSvg(sheetIcon(s))}</span>
-            <span class="home-yourspaces-tile-label">${escapeHtml(sheetLabel(s))}</span>
-          </button>
-        `);
-        tile.addEventListener("click", () => activateTab(s.id));
-        grid.appendChild(tile);
-      });
-      wrap.appendChild(grid);
-    } else {
-      const previewRow = el(`<div class="home-yourspaces-preview-row"></div>`);
-      const previewCount = Math.min(4, visible.length);
-      visible.slice(0, previewCount).forEach((s) => {
-        const dot = el(`<button type="button" class="home-yourspaces-preview-dot">${iconSvg(sheetIcon(s))}</button>`);
-        dot.addEventListener("click", (e) => {
-          e.stopPropagation();
-          activateTab(s.id);
-        });
-        previewRow.appendChild(dot);
-      });
-      const remaining = visible.length - previewCount;
-      previewRow.appendChild(
-        el(`<span class="home-yourspaces-preview-more">${remaining > 0 ? `+${remaining} more · ` : ""}tap to view all</span>`)
-      );
-      wrap.appendChild(previewRow);
-    }
+  if (additional.length > 6) {
+    const seeAllTile = el(`
+      <button type="button" class="home-yourspaces-tile manage">
+        <span class="home-yourspaces-tile-icon">+${additional.length - 6}</span>
+        <span class="home-yourspaces-tile-label">See all</span>
+      </button>
+    `);
+    seeAllTile.addEventListener("click", () => {
+      settingsSubTab = "mine";
+      activateTab("settings");
+    });
+    grid.appendChild(seeAllTile);
+  } else {
+    const addTile = el(`
+      <button type="button" class="home-yourspaces-tile manage">
+        <span class="home-yourspaces-tile-icon">+</span>
+        <span class="home-yourspaces-tile-label">Add a space</span>
+      </button>
+    `);
+    addTile.addEventListener("click", () => {
+      settingsSubTab = "gallery";
+      activateTab("settings");
+    });
+    grid.appendChild(addTile);
   }
-
-  const galleryLink = el(`
-    <button type="button" class="home-yourspaces-gallery-link">
-      Add more spaces from the gallery ${chevronSvg}
-    </button>
-  `);
-  galleryLink.style.setProperty("--chevron-rotate", "-90deg");
-  galleryLink.querySelector("svg").style.transform = "rotate(-90deg)";
-  galleryLink.addEventListener("click", () => {
-    settingsSubTab = "gallery";
-    activateTab("settings");
-  });
-  wrap.appendChild(galleryLink);
+  wrap.appendChild(grid);
 
   return wrap;
 }
@@ -6001,6 +6238,11 @@ async function boot() {
   state.wellness ||= [];
   state.sleepLogs ||= [];
   state.sleepSettings ||= { targetHours: 7 };
+  // Learning pillar — "read today" is a same-day marker separate from a
+  // book's own read/unread status, since finishing a book is rare but the
+  // habit is meant to be daily. Plain array of date strings, same shape
+  // as everything else here.
+  state.learningLog ||= [];
   state.nextId ||= 1;
   state.activeTab ||= "home";
   state.budgetView ||= "sections";
@@ -6049,7 +6291,8 @@ async function boot() {
   // sheet, since that matched what was already in use; everything else
   // starts unmapped (manual-only) until she picks something in the "You"
   // page's Pillar Mapping screen.
-  state.pillarSourceMap ||= { movement: [], spiritualAnchor: [], sleepProtected: [], socialConnection: [] };
+  state.pillarSourceMap ||= { movement: [], spiritualAnchor: [], sleepProtected: [], socialConnection: [], learning: [] };
+  state.pillarSourceMap.learning ||= [];
   if (!state.pillarSourceMapDefaultApplied) {
     if (state.sheets.some((s) => s.id === "bible" && s.visible) && !state.pillarSourceMap.spiritualAnchor.length) {
       state.pillarSourceMap.spiritualAnchor = ["bible"];
@@ -6160,7 +6403,10 @@ async function boot() {
     cycleLengthDays: 90,
     itemName: "Your reward",
     itemPhoto: "",
+    depositGoal: null,
+    nudgedMilestones: [],
   };
+  state.veronikasPrize.nudgedMilestones ||= [];
   // Upgrade the default wording once, but never touch it if she's
   // written her own quote (i.e. it no longer matches either default).
   if (state.veronikasPrize.quote === OLD_DEFAULT_PRIZE_QUOTE) {
