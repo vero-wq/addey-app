@@ -16,7 +16,12 @@ const BUILTIN_SHEET_META = {
   wellness: { label: "Wellness", icon: `<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path>` },
   sleep: { label: "Sleep", icon: `<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>` },
 };
-const BUILTIN_SHEET_ORDER = ["todo", "budget", "investments", "bible", "sleep", "wellness"];
+// "todo" (Lists) is deliberately left out of this list now — it's a pure
+// utility with no habit pillar behind it, same reasoning as Wardrobe.
+// Anyone who already has it (existing accounts, including Veronika's own)
+// keeps it untouched, since this only controls what gets seeded for a
+// brand-new account; nothing here ever removes an existing sheet.
+const BUILTIN_SHEET_ORDER = ["budget", "investments", "bible", "sleep", "wellness"];
 
 const SHEET_GALLERY = [
   {
@@ -1240,6 +1245,11 @@ function renderSettings() {
   const gallery = el(`<div class="sheet-gallery"></div>`);
   SHEET_GALLERY.forEach((tpl) => {
     const alreadyAdded = Object.values(state.customSheets).some((cs) => cs.templateKey === tpl.key);
+    // Capsule Wardrobe is grandfathered in for accounts that already have
+    // one — never removed, still fully usable — but it's off the shelf
+    // for everyone else. Not a habit pillar, so it no longer gets offered
+    // as something new to add; it's leftover, not featured.
+    if (tpl.key === "wardrobe" && !alreadyAdded) return;
     const cardEl = el(`
       <div class="sheet-card">
         <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
@@ -5743,18 +5753,11 @@ function renderHomeHero(today) {
 
   const hero = el(`<div class="card"></div>`);
 
-  hero.appendChild(el(`
-    <div class="home-hero-top">
-      <div class="home-streak-ring" style="background:conic-gradient(var(--accent) ${wellness.pct}%, var(--border) ${wellness.pct}% 100%);">
-        <div class="home-streak-ring-inner">${wellness.pct}%</div>
-      </div>
-      <div>
-        <div class="home-hero-eyebrow">This cycle's progress</div>
-        <div class="home-streak-caption"><strong>${wellness.stats.goodCount} of ${wellness.stats.totalCount}</strong> good days &middot; ${wellness.stats.reached ? "ready to claim" : `${wellness.stats.endDate} target`}</div>
-      </div>
-    </div>
-  `));
-
+  // No progress ring here anymore — it was a slow-moving percentage of
+  // this cycle's good days, and it said nothing Deposits doesn't already
+  // say more concretely. Its context (how far into the cycle, the target
+  // date) still shows up, just as a small caption under Deposits instead
+  // of its own visual anchor competing with the streak for attention.
   hero.appendChild(el(`
     <div class="home-streak-flame">
       <div class="home-streak-flame-top">
@@ -5773,6 +5776,7 @@ function renderHomeHero(today) {
         <span class="home-deposit-track-count">${deposits.deposits} of ${deposits.goal}</span>
       </div>
       <div class="home-deposit-track-bar"><div class="home-deposit-track-fill" style="width:${deposits.pct}%;"></div></div>
+      <div class="home-cycle-caption"><strong>${wellness.stats.goodCount} of ${wellness.stats.totalCount}</strong> days logged this cycle &middot; ${wellness.stats.reached ? "ready to claim" : `target ${wellness.stats.endDate}`}</div>
     </div>
   `));
 
