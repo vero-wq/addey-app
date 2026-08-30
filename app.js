@@ -441,7 +441,15 @@ function activateTab(tab) {
   if (homeRow) homeRow.classList.toggle("active", tab === "home");
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeCircle) homeCircle.classList.toggle("active", tab === "home");
+  // Home always re-renders itself on every switch, so its pillar tiles are
+  // never stale. Wellness needs the same treatment — it shows the exact
+  // same per-day record (state.wellness), and a pillar quick-logged from
+  // Home only calls renderHome() afterward, never renderWellness(). Without
+  // this, switching to Wellness could show whatever it looked like the
+  // last time IT was rendered (at boot, or last time something changed
+  // from inside it) — stale relative to anything logged from Home since.
   if (tab === "home") renderHome();
+  if (tab === "wellness") renderWellness();
   state.activeTab = tab;
   scheduleSave();
   // Auto-growing textareas measure scrollHeight, which is 0 while their
@@ -5365,7 +5373,11 @@ const CYCLE_PHASE_INFO = [
   { key: "luteal", label: "4. Luteal", days: "Days 15–28", flex: 13, desc: "After ovulation, before your next period. Energy gradually tapers; PMS symptoms can show up toward the end." },
 ];
 
-function buildCyclePhaseInfoBody() {
+// activeValue (e.g. "Ovulatory") highlights that phase's card — used by
+// the Cycle quick-log sheet so the diagram doubles as a "here's where you
+// are" reminder, not just reference material. Omitted entirely for the
+// plain info-popup use, which has nothing to highlight.
+function buildCyclePhaseInfoBody(activeValue) {
   const body = el(`<div></div>`);
   body.appendChild(el(`<p class="muted" style="font-size:13px;margin:0 0 14px 0;line-height:1.5;">A general guide to a typical 28-day cycle — yours may run shorter, longer, or less predictably, and that's normal.</p>`));
   const track = el(`<div class="cycle-phase-track"></div>`);
@@ -5375,8 +5387,9 @@ function buildCyclePhaseInfoBody() {
   body.appendChild(track);
   const cards = el(`<div class="cycle-phase-cards"></div>`);
   CYCLE_PHASE_INFO.forEach((p) => {
+    const isActive = activeValue && p.label.toLowerCase().includes(activeValue.toLowerCase());
     cards.appendChild(el(`
-      <div class="cycle-phase-card">
+      <div class="cycle-phase-card${isActive ? " active" : ""}">
         <div class="cycle-phase-card-dot cycle-phase-${p.key}"></div>
         <div>
           <div class="cycle-phase-card-title">${escapeHtml(p.label)} <span class="muted" style="font-weight:400;">&middot; ${escapeHtml(p.days)}</span></div>
@@ -6239,6 +6252,61 @@ function renderWellness() {
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">Daily Wellness</h2>`));
 
+  // Today's card leads the page — same pillar-and-cycle grid Home uses,
+  // plus the reflection questions given real room and a real prompt
+  // instead of three single-line inputs stacked at the bottom of a grid
+  // of dropdowns. This is the thing you actually do here every day; the
+  // progress bar and trend charts are the look-back half of the page,
+  // so they come after it, not before.
+  const journalCard = el(`<div class="card wellness-journal-card"></div>`);
+  journalCard.appendChild(el(`<div class="wellness-journal-head"><div class="wellness-journal-title serif">Today</div><div class="muted wellness-journal-date">${escapeHtml(today)}</div></div>`));
+  journalCard.appendChild(el(`<div class="muted wellness-journal-sub">Body first, then how it actually went.</div>`));
+
+  // Cycle phase has its own tile + sheet below (same as Home) — only
+  // Food quality still uses the plain dropdown here.
+  journalCard.appendChild(
+    wellnessSelect("foodQuality", WELLNESS_ENUM_FIELDS.foodQuality.label, WELLNESS_ENUM_FIELDS.foodQuality.options, todays.foodQuality || "", (val) => {
+      todays.foodQuality = val;
+      scheduleSave();
+    })
+  );
+
+  journalCard.appendChild(el(`<div class="wellness-journal-pillars-label">Pillars</div>`));
+  journalCard.appendChild(renderPillarCycleGrid(todays, today, () => renderWellness()));
+
+  const activityStack = el(`<div class="wellness-journal-activity-stack"></div>`);
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    if (todays[key] !== "Yes") return;
+    const wrap = el(`<div class="wellness-journal-activity-item"></div>`);
+    wrap.appendChild(el(`<label class="muted wellness-journal-activity-label">${escapeHtml(label)}</label>`));
+    attachPillarActivityField(wrap, key, today);
+    activityStack.appendChild(wrap);
+  });
+  if (activityStack.children.length) journalCard.appendChild(activityStack);
+
+  WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
+    const q = el(`<div class="journal-q"></div>`);
+    q.appendChild(el(`<label>${escapeHtml(label)}</label>`));
+    const textarea = document.createElement("textarea");
+    textarea.className = "auto-grow";
+    textarea.rows = 1;
+    textarea.placeholder = "…";
+    textarea.value = todays[key] || "";
+    const autoGrow = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    };
+    textarea.addEventListener("input", autoGrow);
+    textarea.addEventListener("change", () => {
+      todays[key] = textarea.value || null;
+      scheduleSave();
+    });
+    q.appendChild(textarea);
+    journalCard.appendChild(q);
+    requestAnimationFrame(autoGrow);
+  });
+  panel.appendChild(journalCard);
+
   const wellnessHere = computeWellnessProgress(today);
   panel.appendChild(
     buildProgressCard(
@@ -6257,48 +6325,6 @@ function renderWellness() {
   renderCooccurrenceCard(panel, today);
 
   renderIdentityQuote(panel);
-
-  const card = el(`<div class="card"><strong>Today &mdash; ${today}</strong><div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;"></div></div>`);
-  const grid = card.querySelector("div > div");
-
-  Object.entries(WELLNESS_ENUM_FIELDS).forEach(([key, { label, options }]) => {
-    grid.appendChild(
-      wellnessSelect(key, label, options, todays[key] || "", (val) => {
-        todays[key] = val;
-        scheduleSave();
-      })
-    );
-  });
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    const fieldWrap = wellnessSelect(key, label, ["Yes", "No"], todays[key] || "", (val) => {
-      todays[key] = val;
-      scheduleSave();
-      activityWrap.style.display = val === "Yes" ? "block" : "none";
-      if (val !== "Yes") clearPillarActivity(key, today);
-    });
-    const activityWrap = attachPillarActivityField(fieldWrap, key, today);
-    activityWrap.style.display = todays[key] === "Yes" ? "block" : "none";
-    grid.appendChild(fieldWrap);
-  });
-
-  const notesWrap = el(`<div style="margin-top:12px;display:flex;flex-direction:column;gap:10px;"></div>`);
-  WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
-    const field = el(`<div></div>`);
-    field.appendChild(el(`<label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">${escapeHtml(label)}</label>`));
-    const input = document.createElement("input");
-    input.type = "text";
-    input.style.width = "100%";
-    input.style.boxSizing = "border-box";
-    input.value = todays[key] || "";
-    input.addEventListener("change", () => {
-      todays[key] = input.value || null;
-      scheduleSave();
-    });
-    field.appendChild(input);
-    notesWrap.appendChild(field);
-  });
-  card.appendChild(notesWrap);
-  panel.appendChild(card);
 
   const bonusStats = computeBonusCycleStats(state.veronikasPrize, today);
   renderQuarterlyProgress(panel, today, bonusStats);
@@ -6690,27 +6716,7 @@ function renderHomeHero(today) {
   hero.appendChild(prizeBanner);
 
   hero.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
-  const grid = el(`<div class="home-hero-pillars"></div>`);
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    const done = todaysEntry[key] === "Yes";
-    const caption = done ? pillarTodayCaption(key, today) : null;
-    const tile = el(`
-      <button type="button" class="home-pillar${done ? " done" : ""}">
-        <span class="home-pillar-icon ${done ? "on" : "off"}">${done ? checkSvg : ""}</span>
-        <span class="home-pillar-label">${escapeHtml(label)}</span>
-        ${caption ? `<span class="home-pillar-source">${escapeHtml(caption)}</span>` : ""}
-      </button>
-    `);
-    tile.addEventListener("click", () => {
-      if (done) {
-        openWellnessDayEditor(today, () => renderHome());
-      } else {
-        openPillarQuickLogModal(key, label, today, todaysEntry);
-      }
-    });
-    grid.appendChild(tile);
-  });
-  hero.appendChild(grid);
+  hero.appendChild(renderPillarCycleGrid(todaysEntry, today, () => renderHome()));
 
   const historyLink = el(`<button type="button" class="home-hero-history-link">See full wellness history &rarr;</button>`);
   historyLink.addEventListener("click", () => activateTab("wellness"));
@@ -6725,7 +6731,7 @@ function renderHomeHero(today) {
 // manual labels; "+ New" is a one-line prompt for anything not seen
 // before; "Just mark done" keeps the zero-friction path fully intact for
 // days you don't want to bother with the detail.
-function openPillarQuickLogModal(key, label, today, todaysEntry) {
+function openPillarQuickLogModal(key, label, today, todaysEntry, onDone) {
   const history = pillarManualLabelHistory(key);
   const overlay = el(`
     <div class="modal-overlay sheet">
@@ -6745,7 +6751,7 @@ function openPillarQuickLogModal(key, label, today, todaysEntry) {
     setPillarActivity(key, today, activityLabel || null, "manual");
     scheduleSave();
     overlay.remove();
-    renderHome();
+    onDone();
   };
   overlay.querySelectorAll(".pillarql-chip:not(.add)").forEach((btn) => {
     btn.addEventListener("click", () => finish(btn.dataset.label));
@@ -6756,6 +6762,88 @@ function openPillarQuickLogModal(key, label, today, todaysEntry) {
     finish(val.trim());
   });
   overlay.querySelector(".pillarql-skip").addEventListener("click", () => finish(null));
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+// The five pillar tiles plus a sixth Cycle tile, in one grid — shared by
+// Home and the Wellness page's own "Today" card so the exact same tap
+// targets, same visual language, and same tap behavior show up wherever
+// today's record is edited. Cycle is deliberately NOT a pillar (no
+// pass/fail, no streak) — it just lives in the same grid instead of a
+// separate, differently-styled card, since hiding it below its own
+// dropdown was the whole complaint that started this.
+function renderPillarCycleGrid(todaysEntry, today, onDone) {
+  const grid = el(`<div class="home-hero-pillars"></div>`);
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    const done = todaysEntry[key] === "Yes";
+    const caption = done ? pillarTodayCaption(key, today) : null;
+    const tile = el(`
+      <button type="button" class="home-pillar${done ? " done" : ""}">
+        <span class="home-pillar-icon ${done ? "on" : "off"}">${done ? checkSvg : ""}</span>
+        <span class="home-pillar-label">${escapeHtml(label)}</span>
+        ${caption ? `<span class="home-pillar-source">${escapeHtml(caption)}</span>` : ""}
+      </button>
+    `);
+    tile.addEventListener("click", () => {
+      if (done) {
+        openWellnessDayEditor(today, onDone);
+      } else {
+        openPillarQuickLogModal(key, label, today, todaysEntry, onDone);
+      }
+    });
+    grid.appendChild(tile);
+  });
+
+  const phase = todaysEntry.cyclePhase || null;
+  const cycleTile = el(`
+    <button type="button" class="home-pillar cycle-tile ${phase ? "cycle-logged" : "cycle-unlogged"}">
+      <span class="home-pillar-icon ${phase ? "cycle-on" : "cycle-off"}">${phase ? "" : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+      <span class="home-pillar-label">Cycle</span>
+      ${phase ? `<span class="home-pillar-source">${escapeHtml(phase)}</span>` : ""}
+    </button>
+  `);
+  cycleTile.addEventListener("click", () => openCyclePhaseSheet(todaysEntry, today, onDone));
+  grid.appendChild(cycleTile);
+
+  return grid;
+}
+
+// Tapping Cycle — the same diagram that used to hide behind the little
+// (i) button next to the old dropdown, surfaced as the actual point of
+// the interaction instead of a footnote to it, with today's phase (if
+// any) highlighted and four taps to log or change it.
+function openCyclePhaseSheet(todaysEntry, today, onDone) {
+  const currentPhase = todaysEntry.cyclePhase || null;
+  const overlay = el(`
+    <div class="modal-overlay sheet">
+      <div class="modal-box pillarql-box cycle-sheet-box">
+        <div class="pillarql-title">Where are you in your cycle?</div>
+      </div>
+    </div>
+  `);
+  const box = overlay.querySelector(".cycle-sheet-box");
+  box.appendChild(buildCyclePhaseInfoBody(currentPhase));
+
+  const logLabel = el(`<div class="cycle-log-label">Log today as</div>`);
+  box.appendChild(logLabel);
+  const logRow = el(`<div class="cycle-log-row"></div>`);
+  CYCLE_PHASE_INFO.forEach((p) => {
+    const phaseValue = p.label.replace(/^\d+\.\s*/, "");
+    const isActive = currentPhase === phaseValue;
+    const btn = el(`<button type="button" class="cycle-log-btn cycle-log-${p.key}${isActive ? " active" : ""}">${escapeHtml(phaseValue)}</button>`);
+    btn.addEventListener("click", () => {
+      todaysEntry.cyclePhase = phaseValue;
+      scheduleSave();
+      overlay.remove();
+      onDone();
+    });
+    logRow.appendChild(btn);
+  });
+  box.appendChild(logRow);
+
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
   });
