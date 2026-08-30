@@ -1145,7 +1145,12 @@ function renderSettings() {
 
   const card = el(`<div class="card"></div>`);
   let visibleIdx = 0;
-  state.sheets.forEach((s) => {
+  // Wellness deliberately doesn't appear in this list at all — it isn't
+  // an optional space you'd add or hide the way Book List or Sleep is,
+  // it's the trend view behind Home itself, and every pillar/deposit/
+  // streak already reads from it. Listing it next to Book List implied
+  // a choice that was never really there.
+  state.sheets.filter((s) => s.id !== "wellness").forEach((s) => {
     const isCustom = s.kind === "custom";
     const label = sheetLabel(s);
     const pinnedSlot = s.visible && visibleIdx < MOBILE_PINNED_COUNT;
@@ -1233,6 +1238,9 @@ function renderSettings() {
     card.appendChild(row);
   });
   minePanel.appendChild(card);
+  minePanel.appendChild(
+    el(`<div class="settings-note">Wellness isn't a space you add or hide — it's the trend view behind Home. Open it anytime from "See full wellness history" on Home.</div>`)
+  );
 
   panel.appendChild(minePanel);
 
@@ -4959,6 +4967,73 @@ function sheetActiveToday(sheetId, today) {
   return cs.items.some((i) => i.done && i.completedDate === today);
 }
 
+// ------------------------------------------------------------------
+// Pillar activity — one real record per pillar per day it's marked Yes,
+// whichever way that happened: auto-detected from a linked space, or a
+// manual quick-log (a hike, a church visit — anything real that isn't
+// tracked in a structured space). This is what makes a trend report
+// possible at all: without it, a manual "Yes" is a bare checkmark with
+// nothing behind it. `source` is either "manual" or the id of the space
+// that triggered it, so a trend can tell "12 workouts" from "5 hikes"
+// even though both just read as Movement=Yes on the day.
+// ------------------------------------------------------------------
+function pillarActivityFor(pillar, date) {
+  return state.pillarActivity.find((a) => a.pillar === pillar && a.date === date);
+}
+
+// Idempotent — replaces whatever was recorded for this pillar+day, since
+// there's only ever one real explanation for a given day's Yes.
+function setPillarActivity(pillar, date, label, source) {
+  state.pillarActivity = state.pillarActivity.filter((a) => !(a.pillar === pillar && a.date === date));
+  state.pillarActivity.push({ id: nextId(), pillar, date, label: label || null, source });
+}
+
+function clearPillarActivity(pillar, date) {
+  state.pillarActivity = state.pillarActivity.filter((a) => !(a.pillar === pillar && a.date === date));
+}
+
+// A space's own label, for attributing an auto-detected day (e.g. "via
+// Workout Log") — separate from a manual entry's freeform label.
+function labelForActivitySource(source) {
+  if (!source || source === "manual") return null;
+  const sheet = state.sheets.find((s) => s.id === source);
+  return sheet ? sheetLabel(sheet) : null;
+}
+
+// What to show under a pillar tile today — the real thing that happened,
+// not just the fact that something did. Falls back to the configured
+// mapping's label for a Yes that predates this feature (no activity
+// record yet), so nothing regresses for old data.
+function pillarTodayCaption(key, today) {
+  const activity = pillarActivityFor(key, today);
+  if (activity) {
+    if (activity.source === "manual") return activity.label || "Marked done manually";
+    return `via ${labelForActivitySource(activity.source) || activity.label || "a space"}`;
+  }
+  const mapped = pillarSourceLabel(key);
+  return mapped ? `via ${mapped}` : null;
+}
+
+// Chips for the quick-log sheet: this pillar's own history of manual
+// labels, most recent distinct label first — so "Hike" and "Walk" show
+// up as one-tap options once you've used them, without ever asking you
+// to type the same thing twice.
+function pillarManualLabelHistory(key) {
+  const seen = new Set();
+  const labels = [];
+  [...state.pillarActivity]
+    .filter((a) => a.pillar === key && a.source === "manual" && a.label)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .forEach((a) => {
+      const k = a.label.trim().toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        labels.push(a.label);
+      }
+    });
+  return labels.slice(0, 4);
+}
+
 // Runs on every Home render: for each pillar with mapped spaces, if
 // there's real activity today in any of them and the pillar isn't marked
 // yet, mark it — additive to (never overriding) a manual tap or a manual
@@ -4968,9 +5043,11 @@ function applyPillarAutoDetection(todaysEntry, today) {
   WELLNESS_YESNO_FIELDS.forEach(([key]) => {
     if (todaysEntry[key] === "Yes") return;
     const ids = state.pillarSourceMap?.[key] || [];
-    if (ids.some((id) => sheetActiveToday(id, today))) {
+    const activeId = ids.find((id) => sheetActiveToday(id, today));
+    if (activeId) {
       todaysEntry[key] = "Yes";
       changed = true;
+      setPillarActivity(key, today, labelForActivitySource(activeId), activeId);
     }
   });
   if (changed) scheduleSave();
@@ -5236,6 +5313,29 @@ function wellnessSelect(field, label, options, currentValue, onChange) {
   syncTitle();
   wrap.appendChild(select);
   return wrap;
+}
+
+// Attaches the "what did you do" field under a pillar's Yes/No select —
+// shared by Today's card and the day editor, since a correction made
+// after the fact deserves the exact same detail a same-day quick-log
+// gets. Only meaningful while the pillar reads Yes; the caller wires
+// show/hide and clearing the record on a flip to No.
+function attachPillarActivityField(fieldWrap, key, dateStr) {
+  const activity = pillarActivityFor(key, dateStr);
+  const activityWrap = el(`
+    <div class="wde-activity-wrap">
+      <input type="text" class="wde-activity-input" placeholder="What did you do? (optional)" list="wde-activity-list-${key}-${dateStr}" value="${escapeHtml(activity?.label || "")}" />
+      <datalist id="wde-activity-list-${key}-${dateStr}">${pillarManualLabelHistory(key)
+        .map((h) => `<option value="${escapeHtml(h)}"></option>`)
+        .join("")}</datalist>
+    </div>
+  `);
+  activityWrap.querySelector(".wde-activity-input").addEventListener("change", (e) => {
+    setPillarActivity(key, dateStr, e.target.value.trim(), "manual");
+    scheduleSave();
+  });
+  fieldWrap.appendChild(activityWrap);
+  return activityWrap;
 }
 
 // Finds today's wellness log, creating a blank one if this is the first
@@ -5839,6 +5939,179 @@ function renderSleep() {
   renderSleepHistory(panel);
 }
 
+// ------------------------------------------------------------------
+// Pillar trends — reads purely off state.wellness + state.pillarActivity,
+// so it reflects whatever mix of space-detected and manual days actually
+// happened, not a separate tracked metric of its own.
+// ------------------------------------------------------------------
+const TREND_WINDOW_DAYS = 21; // three weeks — enough to see a pattern, few enough to still read as a strip
+const COOCCUR_WINDOW_DAYS = 60; // a longer, sturdier window for the between-pillar stat specifically
+const COOCCUR_MIN_DAYS = 15; // below this in either bucket, the rate is too noisy to show
+const COOCCUR_MIN_DIFF = 0.15; // don't surface a "pattern" that's within normal day-to-day noise
+
+function pillarTrendBreakdown(key, today) {
+  const days = [];
+  for (let i = TREND_WINDOW_DAYS - 1; i >= 0; i--) days.push(addDays(today, -i));
+  const counts = new Map();
+  let activeCount = 0;
+  let manualCount = 0;
+  const dayCells = days.map((d) => {
+    const entry = state.wellness.find((w) => w.logDate === d);
+    if (!(entry && entry[key] === "Yes")) return { date: d, active: false };
+    activeCount++;
+    const activity = pillarActivityFor(key, d);
+    const isManual = activity?.source === "manual";
+    if (isManual) manualCount++;
+    const lbl = activity?.label || (activity ? labelForActivitySource(activity.source) : null) || "Logged";
+    counts.set(lbl, (counts.get(lbl) || 0) + 1);
+    return { date: d, active: true, source: isManual ? "manual" : "space", label: lbl };
+  });
+  return {
+    days: dayCells,
+    activeCount,
+    manualCount,
+    totalDays: TREND_WINDOW_DAYS,
+    breakdown: [...counts.entries()].sort((a, b) => b[1] - a[1]),
+  };
+}
+
+// Same "today not yet logged doesn't break yesterday" rule as the
+// overall streak on Home, just scoped to one pillar.
+function pillarCurrentStreak(key, today) {
+  let streak = 0;
+  const todayEntry = state.wellness.find((w) => w.logDate === today);
+  let cursor = todayEntry && todayEntry[key] === "Yes" ? today : addDays(today, -1);
+  while (true) {
+    const entry = state.wellness.find((w) => w.logDate === cursor);
+    if (entry && entry[key] === "Yes") {
+      streak++;
+      cursor = addDays(cursor, -1);
+    } else break;
+  }
+  return streak;
+}
+
+function renderPillarTrendCard(panel, key, label, today) {
+  const trend = pillarTrendBreakdown(key, today);
+  const streak = pillarCurrentStreak(key, today);
+  const notLogged = trend.totalDays - trend.activeCount;
+  const parts = trend.breakdown.map(([lbl, count]) => `${count} ${lbl}`);
+  if (notLogged) parts.push(`${notLogged} not logged`);
+  const card = el(`
+    <div class="card trend-card">
+      <div class="trend-title">${escapeHtml(label)} &mdash; last ${trend.totalDays} days</div>
+      <div class="trend-sub">${escapeHtml(parts.join(" · ")) || "Nothing logged yet"}</div>
+      <div class="trend-strip">
+        ${trend.days
+          .map(
+            (d) =>
+              `<div class="trend-day${d.active ? (d.source === "manual" ? " manual" : " space") : ""}" title="${escapeHtml(d.date)}${d.label ? ": " + escapeHtml(d.label) : ""}"></div>`
+          )
+          .join("")}
+      </div>
+      <div class="trend-legend">
+        <div class="tl-item"><span class="tl-dot space"></span>Space-tracked</div>
+        <div class="tl-item"><span class="tl-dot manual"></span>Logged manually</div>
+      </div>
+      <div class="trend-stat-row">
+        <div class="trend-stat"><div class="num">${trend.activeCount}/${trend.totalDays}</div><div class="lbl">days active</div></div>
+        <div class="trend-stat"><div class="num">${trend.manualCount}</div><div class="lbl">from manual logs</div></div>
+        <div class="trend-stat"><div class="num">${streak}</div><div class="lbl">day streak</div></div>
+      </div>
+    </div>
+  `);
+  panel.appendChild(card);
+}
+
+// All five pillars' day-strips stacked, so a pattern is something you
+// notice yourself rather than a correlation the app hands you.
+function renderAllPillarsTrendStack(panel, today) {
+  panel.appendChild(el(`<div class="trend-sub" style="margin:-2px 0 10px;">Last ${TREND_WINDOW_DAYS} days, side by side &mdash; darker means space-tracked, green means logged manually. Patterns here are for you to notice, not conclusions the app is drawing.</div>`));
+  const card = el(`<div class="card pillars-trend-stack"></div>`);
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    const trend = pillarTrendBreakdown(key, today);
+    const row = el(`
+      <div class="ptrow">
+        <div class="ptrow-label">${escapeHtml(label)}</div>
+        <div class="ptrow-strip">
+          ${trend.days.map((d) => `<div class="ptrow-day${d.active ? (d.source === "manual" ? " manual" : " space") : ""}" title="${escapeHtml(d.date)}"></div>`).join("")}
+        </div>
+      </div>
+    `);
+    card.appendChild(row);
+  });
+  panel.appendChild(card);
+}
+
+// Plain conditional frequency between two pillars over a longer window —
+// deliberately not a claim about causation, since the data here can't
+// tell "movement improves sleep" from "good sleep makes movement more
+// likely." Returns null when either bucket is too small to be more than
+// noise.
+function pillarCooccurrence(keyA, keyB, today) {
+  let withA = 0,
+    withABothB = 0,
+    withoutA = 0,
+    withoutABothB = 0;
+  for (let i = 0; i < COOCCUR_WINDOW_DAYS; i++) {
+    const entry = state.wellness.find((w) => w.logDate === addDays(today, -i));
+    if (!entry) continue;
+    const aYes = entry[keyA] === "Yes";
+    const bYes = entry[keyB] === "Yes";
+    if (aYes) {
+      withA++;
+      if (bYes) withABothB++;
+    } else {
+      withoutA++;
+      if (bYes) withoutABothB++;
+    }
+  }
+  if (withA < COOCCUR_MIN_DAYS || withoutA < COOCCUR_MIN_DAYS) return null;
+  const rateWith = withABothB / withA;
+  const rateWithout = withoutABothB / withoutA;
+  return { keyA, keyB, withA, withoutA, rateWith, rateWithout, diff: rateWith - rateWithout };
+}
+
+// Checks every ordered pair, keeps only the stronger direction of each
+// unordered pair, and surfaces at most two — enough to be interesting,
+// not so many it reads as the app fishing for patterns.
+function computeNotableCooccurrences(today) {
+  const keys = WELLNESS_YESNO_FIELDS.map(([k]) => k);
+  const results = [];
+  keys.forEach((a) => {
+    keys.forEach((b) => {
+      if (a === b) return;
+      const r = pillarCooccurrence(a, b, today);
+      if (r && Math.abs(r.diff) >= COOCCUR_MIN_DIFF) results.push(r);
+    });
+  });
+  const byPair = new Map();
+  results.forEach((r) => {
+    const pairKey = [r.keyA, r.keyB].sort().join("|");
+    const existing = byPair.get(pairKey);
+    if (!existing || Math.abs(r.diff) > Math.abs(existing.diff)) byPair.set(pairKey, r);
+  });
+  return [...byPair.values()].sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 2);
+}
+
+function renderCooccurrenceCard(panel, today) {
+  const labelFor = (k) => WELLNESS_YESNO_FIELDS.find(([key]) => key === k)?.[1] || k;
+  const notable = computeNotableCooccurrences(today);
+  const card = el(`<div class="card cooccur-card"></div>`);
+  card.appendChild(el(`<div class="trend-title">Patterns between pillars</div>`));
+  if (!notable.length) {
+    card.appendChild(el(`<div class="trend-sub">Not enough data yet to compare pillars &mdash; needs a few weeks of both logged.</div>`));
+  } else {
+    notable.forEach((r) => {
+      card.appendChild(el(`
+        <div class="cooccur-row">On days you logged <strong>${escapeHtml(labelFor(r.keyA))}</strong>, <strong>${escapeHtml(labelFor(r.keyB))}</strong> was also true <strong>${Math.round(r.rateWith * 100)}%</strong> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>
+      `));
+    });
+    card.appendChild(el(`<div class="cooccur-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
+  }
+  panel.appendChild(card);
+}
+
 function renderWellness() {
   const panel = document.getElementById("panel-wellness");
   const today = todayISO();
@@ -5859,6 +6132,11 @@ function renderWellness() {
     )
   );
 
+  panel.appendChild(el(`<div class="social-circle-title" style="margin-top:4px;">Trends</div>`));
+  renderAllPillarsTrendStack(panel, today);
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => renderPillarTrendCard(panel, key, label, today));
+  renderCooccurrenceCard(panel, today);
+
   renderIdentityQuote(panel);
 
   const card = el(`<div class="card"><strong>Today &mdash; ${today}</strong><div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;"></div></div>`);
@@ -5873,12 +6151,15 @@ function renderWellness() {
     );
   });
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    grid.appendChild(
-      wellnessSelect(key, label, ["Yes", "No"], todays[key] || "", (val) => {
-        todays[key] = val;
-        scheduleSave();
-      })
-    );
+    const fieldWrap = wellnessSelect(key, label, ["Yes", "No"], todays[key] || "", (val) => {
+      todays[key] = val;
+      scheduleSave();
+      activityWrap.style.display = val === "Yes" ? "block" : "none";
+      if (val !== "Yes") clearPillarActivity(key, today);
+    });
+    const activityWrap = attachPillarActivityField(fieldWrap, key, today);
+    activityWrap.style.display = todays[key] === "Yes" ? "block" : "none";
+    grid.appendChild(fieldWrap);
   });
 
   const notesWrap = el(`<div style="margin-top:12px;display:flex;flex-direction:column;gap:10px;"></div>`);
@@ -5943,12 +6224,15 @@ function openWellnessDayEditor(dateStr, onClose) {
     );
   });
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    grid.appendChild(
-      wellnessSelect(key, label, ["Yes", "No"], entry[key] || "", (val) => {
-        entry[key] = val;
-        scheduleSave();
-      })
-    );
+    const fieldWrap = wellnessSelect(key, label, ["Yes", "No"], entry[key] || "", (val) => {
+      entry[key] = val;
+      scheduleSave();
+      activityWrap.style.display = val === "Yes" ? "block" : "none";
+      if (val !== "Yes") clearPillarActivity(key, dateStr);
+    });
+    const activityWrap = attachPillarActivityField(fieldWrap, key, dateStr);
+    activityWrap.style.display = entry[key] === "Yes" ? "block" : "none";
+    grid.appendChild(fieldWrap);
   });
   const notesWrap = overlay.querySelector(".wellness-editor-notes");
   WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
@@ -6248,13 +6532,17 @@ function renderHomeHero(today) {
 
   const milestone = nextUnnudgedMilestone(prize, deposits);
   if (milestone) {
+    // A suggestion, not a call to action into Budget — Budget isn't a
+    // space this nudge should be steering anyone toward, so this just
+    // says the thing out loud and gets out of the way. Addley never
+    // moves money itself; this is the whole nudge, not a first step
+    // toward a bigger flow.
     const nudge = el(`
       <div class="home-nudge-card">
         <div class="home-nudge-title">Milestone reached &mdash; ${milestone.threshold} deposits</div>
-        <div class="home-nudge-body">Set aside some money toward ${escapeHtml(prize.itemName || "your reward")}? Manual for now &mdash; Addley will only ever nudge, not move money itself.</div>
+        <div class="home-nudge-body">Consider moving some money toward ${escapeHtml(prize.itemName || "your reward")} &mdash; Addley just nudges, it never moves money itself.</div>
         <div class="home-nudge-actions">
-          <button type="button" class="home-nudge-btn-primary">Open Budget</button>
-          <button type="button" class="home-nudge-btn-ghost">Not now</button>
+          <button type="button" class="home-nudge-btn-ghost">Got it</button>
         </div>
       </div>
     `);
@@ -6263,10 +6551,6 @@ function renderHomeHero(today) {
       scheduleSave();
       renderHome();
     };
-    nudge.querySelector(".home-nudge-btn-primary").addEventListener("click", () => {
-      dismiss();
-      activateTab("budget");
-    });
     nudge.querySelector(".home-nudge-btn-ghost").addEventListener("click", dismiss);
     hero.appendChild(nudge);
   }
@@ -6290,21 +6574,19 @@ function renderHomeHero(today) {
   const grid = el(`<div class="home-hero-pillars"></div>`);
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
     const done = todaysEntry[key] === "Yes";
-    const source = pillarSourceLabel(key);
+    const caption = done ? pillarTodayCaption(key, today) : null;
     const tile = el(`
       <button type="button" class="home-pillar${done ? " done" : ""}">
         <span class="home-pillar-icon ${done ? "on" : "off"}">${done ? checkSvg : ""}</span>
         <span class="home-pillar-label">${escapeHtml(label)}</span>
-        ${source ? `<span class="home-pillar-source">via ${escapeHtml(source)}</span>` : ""}
+        ${caption ? `<span class="home-pillar-source">${escapeHtml(caption)}</span>` : ""}
       </button>
     `);
     tile.addEventListener("click", () => {
       if (done) {
         openWellnessDayEditor(today, () => renderHome());
       } else {
-        todaysEntry[key] = "Yes";
-        scheduleSave();
-        renderHome();
+        openPillarQuickLogModal(key, label, today, todaysEntry);
       }
     });
     grid.appendChild(tile);
@@ -6316,6 +6598,49 @@ function renderHomeHero(today) {
   hero.appendChild(historyLink);
 
   return hero;
+}
+
+// Tapping an undone pillar — a bottom sheet instead of a silent toggle,
+// so a real day (a hike, church, a walk with a friend) becomes a real
+// record instead of a bare checkmark. Chips are this pillar's own past
+// manual labels; "+ New" is a one-line prompt for anything not seen
+// before; "Just mark done" keeps the zero-friction path fully intact for
+// days you don't want to bother with the detail.
+function openPillarQuickLogModal(key, label, today, todaysEntry) {
+  const history = pillarManualLabelHistory(key);
+  const overlay = el(`
+    <div class="modal-overlay sheet">
+      <div class="modal-box pillarql-box">
+        <div class="pillarql-title">What did you do for ${escapeHtml(label)}?</div>
+        <div class="pillarql-sub">Tap one, or just mark it done.</div>
+        <div class="pillarql-chip-row">
+          ${history.map((h) => `<button type="button" class="pillarql-chip" data-label="${escapeHtml(h)}">${escapeHtml(h)}</button>`).join("")}
+          <button type="button" class="pillarql-chip add">+ New</button>
+        </div>
+        <button type="button" class="pillarql-skip">Just mark done, skip the detail</button>
+      </div>
+    </div>
+  `);
+  const finish = (activityLabel) => {
+    todaysEntry[key] = "Yes";
+    setPillarActivity(key, today, activityLabel || null, "manual");
+    scheduleSave();
+    overlay.remove();
+    renderHome();
+  };
+  overlay.querySelectorAll(".pillarql-chip:not(.add)").forEach((btn) => {
+    btn.addEventListener("click", () => finish(btn.dataset.label));
+  });
+  overlay.querySelector(".pillarql-chip.add").addEventListener("click", () => {
+    const val = window.prompt(`What did you do for ${label}?`, "");
+    if (val === null) return;
+    finish(val.trim());
+  });
+  overlay.querySelector(".pillarql-skip").addEventListener("click", () => finish(null));
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
 }
 
 // One always-visible card for everything not already pinned to the bottom
@@ -6767,6 +7092,10 @@ async function boot() {
   // page's Pillar Mapping screen.
   state.pillarSourceMap ||= { movement: [], spiritualAnchor: [], sleepProtected: [], socialConnection: [], learning: [] };
   state.pillarSourceMap.learning ||= [];
+  // Real per-day record of what a pillar's "Yes" actually was — see
+  // setPillarActivity/pillarActivityFor above. Older saves have none of
+  // this yet; that's fine, it only affects trend detail going forward.
+  state.pillarActivity ||= [];
   if (!state.pillarSourceMapDefaultApplied) {
     if (state.sheets.some((s) => s.id === "bible" && s.visible) && !state.pillarSourceMap.spiritualAnchor.length) {
       state.pillarSourceMap.spiritualAnchor = ["bible"];
