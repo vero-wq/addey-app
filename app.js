@@ -6801,7 +6801,7 @@ function renderPillarCycleGrid(todaysEntry, today, onDone) {
   const phase = todaysEntry.cyclePhase || null;
   const cycleTile = el(`
     <button type="button" class="home-pillar cycle-tile ${phase ? "cycle-logged" : "cycle-unlogged"}">
-      <span class="home-pillar-icon ${phase ? "cycle-on" : "cycle-off"}">${phase ? "" : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+      <span class="home-pillar-icon ${phase ? "cycle-on" : "cycle-off"}">${phase ? checkSvg : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
       <span class="home-pillar-label">Cycle</span>
       ${phase ? `<span class="home-pillar-source">${escapeHtml(phase)}</span>` : ""}
     </button>
