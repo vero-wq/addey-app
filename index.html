@@ -636,6 +636,55 @@ td input:hover { border-color: var(--border); }
 .modal-box p { margin: 0 0 20px 0; font-size: 14px; color: var(--muted); line-height: 1.5; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
+/* Pillar quick-log — a bottom sheet rather than a centered modal, so it
+   reads as fast and disposable, not a form to fill out. */
+.modal-overlay.sheet { align-items: flex-end; padding: 0; }
+.pillarql-box { width: 100%; max-width: 480px; margin: 0 auto; border-radius: 18px 18px 0 0; padding: 18px 18px 22px; }
+.pillarql-title { font-family: "Source Serif 4", serif; font-size: 15px; margin-bottom: 2px; }
+.pillarql-sub { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+.pillarql-chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.pillarql-chip { font-size: 12px; font-weight: 700; padding: 9px 14px; border-radius: 100px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; cursor: pointer; }
+.pillarql-chip.add { border-style: dashed; border-color: var(--accent); color: var(--accent-dark); }
+.pillarql-skip { display: block; width: 100%; text-align: center; background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--accent-dark); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; padding-top: 2px; }
+
+/* "What did you do" field under a Yes pillar — Today's card and the day
+   editor both use this, so a same-day log and a later correction get
+   the same level of detail. */
+.wde-activity-wrap { margin-top: 2px; }
+.wde-activity-wrap input { width: 100%; box-sizing: border-box; font-size: 12.5px; padding: 7px 9px; }
+
+.settings-note { font-size: 11px; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 12px; line-height: 1.5; }
+
+/* ---------- Pillar trends (Wellness page) ---------- */
+.trend-card { margin-bottom: 12px; }
+.trend-title { font-size: 12.5px; font-weight: 700; margin-bottom: 2px; }
+.trend-sub { font-size: 10.5px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+.trend-strip { display: flex; gap: 2.5px; flex-wrap: wrap; margin-bottom: 12px; }
+.trend-day { width: 15px; height: 15px; border-radius: 4px; background: var(--border); }
+.trend-day.space { background: var(--accent-dark); }
+.trend-day.manual { background: var(--good); }
+.trend-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.tl-item { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.tl-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; display: inline-block; }
+.tl-dot.space { background: var(--accent-dark); }
+.tl-dot.manual { background: var(--good); }
+.trend-stat-row { display: flex; gap: 8px; }
+.trend-stat { flex: 1; background: var(--bg); border-radius: 10px; padding: 9px 8px; text-align: center; }
+.trend-stat .num { font-size: 16px; font-weight: 700; font-family: "Source Serif 4", serif; }
+.trend-stat .lbl { font-size: 9px; color: var(--muted); margin-top: 1px; }
+.pillars-trend-stack { padding: 12px; }
+.ptrow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ptrow:last-child { margin-bottom: 0; }
+.ptrow-label { font-size: 10.5px; font-weight: 700; width: 78px; flex-shrink: 0; }
+.ptrow-strip { display: flex; gap: 2px; flex: 1; flex-wrap: wrap; }
+.ptrow-day { width: 10px; height: 13px; border-radius: 3px; background: var(--border); }
+.ptrow-day.space { background: var(--accent-dark); }
+.ptrow-day.manual { background: var(--good); }
+.cooccur-card .trend-title { margin-bottom: 8px; }
+.cooccur-row { font-size: 12px; line-height: 1.55; padding: 8px 0; border-top: 1px solid var(--border); }
+.cooccur-row:first-of-type { border-top: none; }
+.cooccur-note { font-size: 10.5px; color: var(--muted); margin-top: 4px; font-style: italic; }
+
 .field-info-btn {
   width: 15px; height: 15px; border-radius: 50%; border: none; background: none; padding: 0;
   display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex-shrink: 0; cursor: pointer;
@@ -1076,9 +1125,9 @@ td input:hover { border-color: var(--border); }
 .home-nudge-card { background: #FBF3E6; border: 1px solid #ECD9B4; border-radius: 12px; padding: 13px 14px; margin-bottom: 14px; }
 .home-nudge-title { font-family: "Source Serif 4", Georgia, serif; font-size: 14.5px; margin-bottom: 5px; }
 .home-nudge-body { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
-.home-nudge-actions { display: flex; gap: 8px; }
+.home-nudge-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .home-nudge-btn-primary { flex: 1; background: var(--accent-dark); color: #fff; border: none; border-radius: 100px; padding: 9px; font-weight: 700; font-size: 12.5px; font-family: inherit; cursor: pointer; }
-.home-nudge-btn-ghost { background: none; border: none; color: var(--muted); font-weight: 600; font-size: 12.5px; font-family: inherit; cursor: pointer; padding: 9px 10px; }
+.home-nudge-btn-ghost { background: none; border: 1px solid var(--border); border-radius: 100px; color: var(--accent-dark); font-weight: 700; font-size: 12.5px; font-family: inherit; cursor: pointer; padding: 8px 16px; }
 .home-pillar { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; border-radius: 12px; border: 1px solid transparent; background: #F1DAD3; cursor: pointer; font-family: inherit; }
 .home-pillar.done { background: #E4E9E0; }
 .home-pillar-icon { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
