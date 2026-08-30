@@ -6124,56 +6124,122 @@ function pillarCurrentStreak(key, today) {
   return streak;
 }
 
-function renderPillarTrendCard(panel, key, label, today) {
-  const trend = pillarTrendBreakdown(key, today);
-  const streak = pillarCurrentStreak(key, today);
-  const notLogged = trend.totalDays - trend.activeCount;
-  const parts = trend.breakdown.map(([lbl, count]) => `${count} ${lbl}`);
-  if (notLogged) parts.push(`${notLogged} not logged`);
-  const card = el(`
-    <div class="card trend-card">
-      <div class="trend-title">${escapeHtml(label)} &mdash; last ${trend.totalDays} days</div>
-      <div class="trend-sub">${escapeHtml(parts.join(" · ")) || "Nothing logged yet"}</div>
-      <div class="trend-strip">
-        ${trend.days
-          .map(
-            (d) =>
-              `<div class="trend-day${d.active ? (d.source === "manual" ? " manual" : " space") : ""}" title="${escapeHtml(d.date)}${d.label ? ": " + escapeHtml(d.label) : ""}"></div>`
-          )
-          .join("")}
-      </div>
-      <div class="trend-legend">
-        <div class="tl-item"><span class="tl-dot space"></span>Space-tracked</div>
-        <div class="tl-item"><span class="tl-dot manual"></span>Logged manually</div>
-      </div>
-      <div class="trend-stat-row">
-        <div class="trend-stat"><div class="num">${trend.activeCount}/${trend.totalDays}</div><div class="lbl">days active</div></div>
-        <div class="trend-stat"><div class="num">${trend.manualCount}</div><div class="lbl">from manual logs</div></div>
-        <div class="trend-stat"><div class="num">${streak}</div><div class="lbl">day streak</div></div>
-      </div>
-    </div>
-  `);
-  panel.appendChild(card);
-}
+// Distinct, muted hues per pillar so the pulse chart's day-dots, the
+// streak rings, and (eventually) anything else pillar-colored all agree
+// with each other — deliberately not reused from the cycle-phase colors,
+// which mean something different (a phase of the month, not a habit).
+const PILLAR_TREND_COLOR = {
+  movement: "#A9804F",
+  spiritualAnchor: "#8A6BA8",
+  sleepProtected: "#4F7A93",
+  socialConnection: "#B36B4A",
+  learning: "#5F8F5B",
+};
 
-// All five pillars' day-strips stacked, so a pattern is something you
-// notice yourself rather than a correlation the app hands you.
-function renderAllPillarsTrendStack(panel, today) {
-  panel.appendChild(el(`<div class="trend-sub" style="margin:-2px 0 10px;">Last ${TREND_WINDOW_DAYS} days, side by side &mdash; darker means space-tracked, green means logged manually. Patterns here are for you to notice, not conclusions the app is drawing.</div>`));
-  const card = el(`<div class="card pillars-trend-stack"></div>`);
+// One plain-language sentence about whichever pillar is doing best right
+// now, instead of leading the section with raw grids. "Best" weighs both
+// how many days were active AND the current streak, so a pillar with a
+// long streak going right now can win out over one with slightly more
+// total days but no momentum.
+function computeStrongestPillarTrend(today) {
+  let best = null;
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
     const trend = pillarTrendBreakdown(key, today);
-    const row = el(`
-      <div class="ptrow">
-        <div class="ptrow-label">${escapeHtml(label)}</div>
-        <div class="ptrow-strip">
-          ${trend.days.map((d) => `<div class="ptrow-day${d.active ? (d.source === "manual" ? " manual" : " space") : ""}" title="${escapeHtml(d.date)}"></div>`).join("")}
-        </div>
-      </div>
-    `);
-    card.appendChild(row);
+    const streak = pillarCurrentStreak(key, today);
+    const score = trend.activeCount + streak * 0.5;
+    if (!best || score > best.score) best = { key, label, score, activeCount: trend.activeCount, totalDays: trend.totalDays, streak };
   });
-  panel.appendChild(card);
+  return best;
+}
+
+function renderTrendInsightBanner(panel, today) {
+  const best = computeStrongestPillarTrend(today);
+  if (!best || !best.activeCount) return; // nothing logged yet — nothing to say
+  const streakClause = best.streak >= 2 ? `, including a ${best.streak}-day streak right now` : "";
+  panel.appendChild(el(`
+    <div class="trend-insight-banner">
+      <div class="trend-insight-icon">🔥</div>
+      <div class="trend-insight-text"><strong>${escapeHtml(best.label)}</strong> is your strongest habit &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.</div>
+    </div>
+  `));
+}
+
+// One line instead of five rows of squares: for each of the last
+// TREND_WINDOW_DAYS days, how many of the 5 pillars were a "Yes" that
+// day. A smooth SVG line + soft fill under it, matching the app's other
+// hand-drawn (non-library) charts.
+function renderPulseChart(panel, today) {
+  const dates = [];
+  for (let i = TREND_WINDOW_DAYS - 1; i >= 0; i--) dates.push(addDays(today, -i));
+  const totals = dates.map((d) => {
+    const entry = state.wellness.find((w) => w.logDate === d);
+    if (!entry) return 0;
+    return WELLNESS_YESNO_FIELDS.reduce((n, [key]) => n + (entry[key] === "Yes" ? 1 : 0), 0);
+  });
+
+  const W = 320, H = 100, PAD = 6, maxY = WELLNESS_YESNO_FIELDS.length;
+  const n = totals.length;
+  const stepX = n > 1 ? (W - PAD * 2) / (n - 1) : 0;
+  const pts = totals.map((t, i) => [PAD + i * stepX, H - PAD - (t / maxY) * (H - PAD * 2 - 12)]);
+  const linePath = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  const areaPath = pts.length ? `${linePath} L${pts[pts.length - 1][0].toFixed(1)},${H - PAD} L${pts[0][0].toFixed(1)},${H - PAD} Z` : "";
+  const gridLines = [0, 1, 2, 3, 4, 5]
+    .filter((v) => v <= maxY)
+    .map((v) => {
+      const y = H - PAD - (v / maxY) * (H - PAD * 2 - 12);
+      return `<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="var(--border)" stroke-width="1" ${v === 0 ? "" : 'stroke-dasharray="2,3"'}/>`;
+    })
+    .join("");
+  const lastPt = pts[pts.length - 1];
+
+  panel.appendChild(el(`
+    <div class="card pulse-card">
+      <div class="pulse-head">
+        <div class="t">Days you showed up</div>
+        <div class="n">last ${TREND_WINDOW_DAYS} days</div>
+      </div>
+      <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:visible;">
+        <defs>
+          <linearGradient id="pulseGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#A9804F" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#A9804F" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        ${gridLines}
+        ${areaPath ? `<path d="${areaPath}" fill="url(#pulseGrad)"/>` : ""}
+        ${linePath ? `<path d="${linePath}" fill="none" stroke="#7C5C36" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>` : ""}
+        ${lastPt ? `<circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="4.5" fill="#7C5C36" stroke="var(--bg)" stroke-width="2"/>` : ""}
+      </svg>
+    </div>
+  `));
+}
+
+// One ring per pillar — % of the trend window it was a "Yes", plus the
+// current streak — replacing the old per-pillar squares-and-stats cards.
+function renderPillarRingsGrid(panel, today) {
+  const grid = el(`<div class="ring-grid"></div>`);
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    const trend = pillarTrendBreakdown(key, today);
+    const streak = pillarCurrentStreak(key, today);
+    const pct = trend.totalDays ? Math.round((trend.activeCount / trend.totalDays) * 100) : 0;
+    const color = PILLAR_TREND_COLOR[key] || "var(--accent)";
+    const r = 30, c = 2 * Math.PI * r;
+    const offset = c - (pct / 100) * c;
+    grid.appendChild(el(`
+      <div class="ring-card">
+        <div class="ring-wrap">
+          <svg width="74" height="74">
+            <circle cx="37" cy="37" r="${r}" fill="none" stroke="var(--border)" stroke-width="7"/>
+            <circle cx="37" cy="37" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${offset}" transform="rotate(-90 37 37)"/>
+          </svg>
+          <div class="ring-pct">${pct}%</div>
+        </div>
+        <div class="ring-label">${escapeHtml(label)}</div>
+        <div class="ring-streak">${streak ? `${streak}-day streak` : "no streak yet"}</div>
+      </div>
+    `));
+  });
+  panel.appendChild(grid);
 }
 
 // Plain conditional frequency between two pillars over a longer window —
@@ -6230,19 +6296,16 @@ function computeNotableCooccurrences(today) {
 function renderCooccurrenceCard(panel, today) {
   const labelFor = (k) => WELLNESS_YESNO_FIELDS.find(([key]) => key === k)?.[1] || k;
   const notable = computeNotableCooccurrences(today);
-  const card = el(`<div class="card cooccur-card"></div>`);
-  card.appendChild(el(`<div class="trend-title">Patterns between pillars</div>`));
   if (!notable.length) {
-    card.appendChild(el(`<div class="trend-sub">Not enough data yet to compare pillars &mdash; needs a few weeks of both logged.</div>`));
-  } else {
-    notable.forEach((r) => {
-      card.appendChild(el(`
-        <div class="cooccur-row">On days you logged <strong>${escapeHtml(labelFor(r.keyA))}</strong>, <strong>${escapeHtml(labelFor(r.keyB))}</strong> was also true <strong>${Math.round(r.rateWith * 100)}%</strong> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>
-      `));
-    });
-    card.appendChild(el(`<div class="cooccur-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
+    panel.appendChild(el(`<div class="trend-pattern-card">Not enough data yet to compare pillars &mdash; needs a few weeks of both logged.</div>`));
+    return;
   }
-  panel.appendChild(card);
+  notable.forEach((r) => {
+    panel.appendChild(el(`
+      <div class="trend-pattern-card">On days you logged <b>${escapeHtml(labelFor(r.keyA))}</b>, <b>${escapeHtml(labelFor(r.keyB))}</b> was also true <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>
+    `));
+  });
+  panel.appendChild(el(`<div class="trend-pattern-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
 }
 
 function renderWellness() {
@@ -6321,8 +6384,11 @@ function renderWellness() {
   );
 
   panel.appendChild(el(`<div class="social-circle-title" style="margin-top:4px;">Trends</div>`));
-  renderAllPillarsTrendStack(panel, today);
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => renderPillarTrendCard(panel, key, label, today));
+  renderTrendInsightBanner(panel, today);
+  renderPulseChart(panel, today);
+  panel.appendChild(el(`<div class="trend-title" style="margin:2px 0 8px;">Streaks right now</div>`));
+  renderPillarRingsGrid(panel, today);
+  panel.appendChild(el(`<div class="trend-title" style="margin:2px 0 8px;">Pattern worth noticing</div>`));
   renderCooccurrenceCard(panel, today);
 
   renderIdentityQuote(panel);
