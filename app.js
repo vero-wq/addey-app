@@ -176,6 +176,8 @@ const QURAN_SEED_ITEMS = [{"reading": "Surah Al-Fatiha (1:1–7) to Surah Al-Baq
 
 let state = null;
 let saveTimer = null;
+let saveRetryTimer = null;
+let saveRetryDelay = 2000;
 let currentUserId = null;
 let currentUserEmail = null;
 
@@ -366,6 +368,11 @@ function syncTopbarHeight() {
 function scheduleSave() {
   setSaveIndicator("Saving…");
   if (saveTimer) clearTimeout(saveTimer);
+  if (saveRetryTimer) {
+    clearTimeout(saveRetryTimer);
+    saveRetryTimer = null;
+  }
+  saveRetryDelay = 2000;
   saveTimer = setTimeout(doSave, 300);
 }
 
@@ -377,11 +384,32 @@ async function doSave() {
     // "Saved" that just sits there taking up space once it's done. A
     // failure is the one state worth calling out, so that stays.
     setSaveIndicator("");
+    saveRetryDelay = 2000;
   } catch (err) {
     console.error("Save failed:", err);
     setSaveIndicator("Couldn't save", true);
+    // Most failures here are a brief network hiccup (a dropped connection,
+    // a slow round-trip) rather than a real problem with the edit itself —
+    // retry quietly in the background with backoff rather than leaving the
+    // change stranded until some unrelated later edit happens to trigger
+    // another save. A newer edit cancels this and starts fresh (see
+    // scheduleSave); a successful retry clears the indicator like normal.
+    if (saveRetryTimer) clearTimeout(saveRetryTimer);
+    saveRetryTimer = setTimeout(doSave, saveRetryDelay);
+    saveRetryDelay = Math.min(saveRetryDelay * 2, 30000);
   }
 }
+
+// Coming back online after a dropped connection is the single most common
+// reason a save failed — retry right away instead of waiting out whatever
+// backoff delay happened to be in progress.
+window.addEventListener("online", () => {
+  if (saveRetryTimer) {
+    clearTimeout(saveRetryTimer);
+    saveRetryTimer = null;
+    doSave();
+  }
+});
 
 // ------------------------------------------------------------------
 // Tabs
