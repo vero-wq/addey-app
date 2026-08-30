@@ -718,6 +718,15 @@ td input:hover { border-color: var(--border); }
 .cycle-phase-card-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .cycle-phase-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .cycle-phase-card-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+.cycle-phase-card.active { background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 8px 10px; margin: -6px -10px 6px; }
+.cycle-sheet-box { max-height: 82vh; overflow-y: auto; }
+.cycle-log-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 4px 0 8px; }
+.cycle-log-row { display: flex; gap: 8px; }
+.cycle-log-btn { flex: 1; padding: 11px 4px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); font-size: 11.5px; font-weight: 700; text-align: center; color: var(--text); font-family: inherit; cursor: pointer; }
+.cycle-log-btn.active.cycle-log-menstrual { background: #B3543E; border-color: #B3543E; color: #fff; }
+.cycle-log-btn.active.cycle-log-follicular { background: #C98A4B; border-color: #C98A4B; color: #fff; }
+.cycle-log-btn.active.cycle-log-ovulatory { background: #6E9B6A; border-color: #6E9B6A; color: #fff; }
+.cycle-log-btn.active.cycle-log-luteal { background: #5B7A93; border-color: #5B7A93; color: #fff; }
 .btn-danger { background: #B3543E; color: #fff; border: none; border-radius: 7px; padding: 9px 16px; font-size: 13px; font-weight: 600; }
 .btn-danger:hover { background: #97402D; }
 
@@ -978,6 +987,24 @@ td input:hover { border-color: var(--border); }
 .wellness-select.bad { background: #F1DAD3; border-color: #E0B6A8; color: #8C3F2B; }
 .wellness-select.mid { background: #F1E7CF; border-color: #E0CD9D; color: #8A6A1F; }
 
+/* ---- Wellness's Today card — the journal, front and center ---- */
+.wellness-journal-card { background: linear-gradient(180deg, #FFFDF9, var(--surface)); border: 1.5px solid #E7D9BE; }
+.wellness-journal-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2px; }
+.wellness-journal-title { font-size: 18px; }
+.wellness-journal-date { font-size: 11.5px; }
+.wellness-journal-sub { font-size: 12px; margin: 2px 0 14px; line-height: 1.5; }
+.wellness-journal-pillars-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 8px; }
+.wellness-journal-activity-stack { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.wellness-journal-activity-label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 3px; }
+.journal-q { margin: 16px 0 0; }
+.journal-q label { display: block; font-family: "Source Serif 4", Georgia, serif; font-style: italic; font-size: 14.5px; color: #4A4038; margin-bottom: 6px; }
+.journal-q textarea {
+  width: 100%; box-sizing: border-box; border: 1px dashed #D9C9A6; border-radius: 10px; background: #FFFEFB;
+  font-family: inherit; font-size: 13.5px; padding: 10px 12px; resize: none; overflow: hidden; color: var(--text);
+}
+.journal-q textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-style: solid; }
+.journal-q textarea::placeholder { color: #B5A98F; }
+
 .wellness-badge {
   display: inline-block;
   font-size: 11px;
@@ -1144,6 +1171,16 @@ td input:hover { border-color: var(--border); }
 .home-pillar:not(.done) .home-pillar-label { color: #8C3F2B; }
 .home-pillar-label { font-size: 10.5px; font-weight: 600; text-align: center; line-height: 1.2; color: var(--text); }
 .home-pillar-source { font-size: 8.5px; color: var(--muted); text-align: center; }
+/* Cycle tile shares .home-pillar sizing/layout but never uses the
+   red/green pass-fail treatment — there's no "did it right" here, so an
+   unlogged day gets a neutral dashed state instead of looking like a
+   missed habit, and a logged day picks up that phase's own color. */
+.home-pillar.cycle-unlogged { background: var(--bg); border: 1.5px dashed var(--border); }
+.home-pillar.cycle-unlogged .home-pillar-icon.cycle-off { background: var(--surface); border: 1.5px solid var(--border); color: var(--muted); }
+.home-pillar.cycle-unlogged .home-pillar-label { color: var(--muted); }
+.home-pillar.cycle-logged { background: #EFE3D0; }
+.home-pillar.cycle-logged .home-pillar-icon.cycle-on { background: #6E9B6A; }
+.home-pillar.cycle-logged .home-pillar-label { color: #5B4A28; }
 .home-hero-history-link { display: block; width: 100%; text-align: center; margin-top: 14px; font-size: 12px; color: var(--accent-dark); font-weight: 600; background: none; border: none; cursor: pointer; font-family: inherit; }
 
 .home-shelf-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 20px 2px 10px; display: flex; justify-content: space-between; align-items: baseline; }
