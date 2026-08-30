@@ -1874,6 +1874,8 @@ function starsFor(n) {
   return n ? "⭐️".repeat(n) : "";
 }
 
+let bookSearchQuery = ""; // resets each session, not persisted — same treatment as settingsSubTab
+
 function renderBookSheet(id) {
   const panel = document.getElementById(`panel-${id}`);
   const sheet = state.customSheets[id];
@@ -1917,6 +1919,37 @@ function renderBookSheet(id) {
   `);
   panel.appendChild(summaryRow);
 
+  // A shelf this size is easy to lose a specific book in, especially when
+  // trying to log today's reading against it — search by title or author
+  // narrows straight to it instead of scrolling and opening categories.
+  const searchWrap = el(`
+    <div class="book-search-wrap">
+      <input type="text" class="book-search-input" placeholder="Search by title or author…" value="${escapeHtml(bookSearchQuery)}" />
+      ${bookSearchQuery ? `<button type="button" class="icon-btn book-search-clear" aria-label="Clear search">${closeSvg}</button>` : ""}
+    </div>
+  `);
+  const searchInput = searchWrap.querySelector(".book-search-input");
+  // Re-rendering the whole panel on every keystroke (same pattern as
+  // everything else here) would normally steal focus back to nothing —
+  // restore it and the cursor position right after so typing feels
+  // continuous instead of kicking you out after each letter.
+  searchInput.addEventListener("input", () => {
+    bookSearchQuery = searchInput.value;
+    const caret = searchInput.selectionStart;
+    renderBookSheet(id);
+    const freshInput = panel.querySelector(".book-search-input");
+    if (freshInput) {
+      freshInput.focus();
+      freshInput.setSelectionRange(caret, caret);
+    }
+  });
+  searchWrap.querySelector(".book-search-clear")?.addEventListener("click", () => {
+    bookSearchQuery = "";
+    renderBookSheet(id);
+    panel.querySelector(".book-search-input")?.focus();
+  });
+  panel.appendChild(searchWrap);
+
   const filterRow = el(`<div class="view-toggle-row"><div class="view-toggle"></div></div>`);
   const filterWrap = filterRow.querySelector(".view-toggle");
   [
@@ -1934,9 +1967,11 @@ function renderBookSheet(id) {
   });
   panel.appendChild(filterRow);
 
+  const query = bookSearchQuery.trim().toLowerCase();
   const items = sheet.items.filter((b) => {
-    if (sheet.activeStatus === "read") return b.read;
-    if (sheet.activeStatus === "toread") return !b.read;
+    if (sheet.activeStatus === "read" && !b.read) return false;
+    if (sheet.activeStatus === "toread" && b.read) return false;
+    if (query && !`${b.title} ${b.author}`.toLowerCase().includes(query)) return false;
     return true;
   });
 
@@ -1950,7 +1985,9 @@ function renderBookSheet(id) {
     byCategory.get(b.category).push(b);
   });
 
-  if (!items.length) {
+  if (!items.length && query) {
+    panel.appendChild(el(`<div class="muted" style="padding:10px 0;">No books match "${escapeHtml(bookSearchQuery)}".</div>`));
+  } else if (!items.length) {
     panel.appendChild(el(`<div class="muted" style="padding:10px 0;">Nothing here yet — add a book below.</div>`));
   }
 
@@ -1958,7 +1995,10 @@ function renderBookSheet(id) {
     const catItems = byCategory.get(cat);
     const doneCount = catItems.filter((b) => b.read).length;
     const remembered = sheet.openCategories[cat];
-    const shouldOpen = remembered !== undefined ? remembered : true;
+    // A search result hiding inside a category she'd collapsed earlier
+    // would defeat the point — while searching, every category stays open
+    // regardless of what's remembered.
+    const shouldOpen = query ? true : remembered !== undefined ? remembered : true;
     const group = el(`
       <details class="wardrobe-group" ${shouldOpen ? "open" : ""}>
         <summary class="wardrobe-summary">
@@ -2193,9 +2233,11 @@ function openReadingLogModal(sheetId, presetBookId) {
         </div>
         <div class="wardrobe-item-form">
           <label class="muted">Book</label>
-          <select class="rl-f-book">
-            ${sheet.items.map((b) => `<option value="${b.id}" ${b.id === startBookId ? "selected" : ""}>${escapeHtml(b.title)}</option>`).join("")}
-          </select>
+          <div class="rl-search-wrap">
+            <input type="text" class="rl-search-input" placeholder="Search your books…" />
+          </div>
+          <select class="rl-f-book"></select>
+          <div class="rl-search-empty" hidden>No books match — try a different search.</div>
 
           <label class="muted rl-f-format-label"></label>
 
@@ -2210,18 +2252,47 @@ function openReadingLogModal(sheetId, presetBookId) {
     </div>
   `);
 
+  const searchInput = overlay.querySelector(".rl-search-input");
   const bookSelect = overlay.querySelector(".rl-f-book");
+  const emptyNote = overlay.querySelector(".rl-search-empty");
   const chapterInput = overlay.querySelector(".rl-f-chapter");
   const formatLabel = overlay.querySelector(".rl-f-format-label");
+  const saveBtn = overlay.querySelector(".rl-save");
 
+  // A long shelf makes a plain dropdown slow to search on mobile — typing
+  // here narrows the actual <select> down to matching title/author before
+  // she has to open it, so the picker itself stays a normal, familiar
+  // control instead of a custom widget.
+  function renderOptions(query, keepId) {
+    const q = query.trim().toLowerCase();
+    const matches = sheet.items.filter((b) => !q || `${b.title} ${b.author}`.toLowerCase().includes(q));
+    const selectedId = matches.some((b) => b.id === keepId) ? keepId : matches[0]?.id;
+    bookSelect.innerHTML = matches.map((b) => `<option value="${b.id}" ${b.id === selectedId ? "selected" : ""}>${escapeHtml(b.title)}${b.author ? ` — ${escapeHtml(b.author)}` : ""}</option>`).join("");
+    const hasMatches = matches.length > 0;
+    bookSelect.hidden = !hasMatches;
+    emptyNote.hidden = hasMatches;
+    saveBtn.disabled = !hasMatches;
+    return selectedId;
+  }
+
+  // A <select>'s .value is always a string, but book ids are numbers
+  // (assigned by nextId()) — comparing them with === silently fails, so
+  // every read of bookSelect.value gets coerced back to a number here
+  // before it's ever matched against sheet.items.
   function syncForBook() {
-    const book = sheet.items.find((b) => b.id === bookSelect.value);
+    const book = sheet.items.find((b) => b.id === Number(bookSelect.value));
     formatLabel.textContent = book?.format ? `Format: ${book.format}` : "";
     const carryOverChapter = book?.id === existing?.bookId ? existing?.chapter : null;
     chapterInput.value = carryOverChapter ?? book?.currentChapter ?? 0;
   }
-  bookSelect.addEventListener("change", syncForBook);
+  renderOptions("", startBookId);
   syncForBook();
+
+  searchInput.addEventListener("input", () => {
+    renderOptions(searchInput.value, Number(bookSelect.value));
+    syncForBook();
+  });
+  bookSelect.addEventListener("change", syncForBook);
 
   overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", (e) => {
@@ -2229,7 +2300,7 @@ function openReadingLogModal(sheetId, presetBookId) {
   });
 
   overlay.querySelector(".rl-save").addEventListener("click", () => {
-    const bookId = bookSelect.value;
+    const bookId = Number(bookSelect.value);
     const book = sheet.items.find((b) => b.id === bookId);
     const chapter = chapterInput.value ? Number(chapterInput.value) : null;
     if (!book) return;
