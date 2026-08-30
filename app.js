@@ -411,6 +411,26 @@ window.addEventListener("online", () => {
   }
 });
 
+// A reorder, a toggle, any edit — scheduleSave() waits 300ms before it even
+// starts talking to the network, so switching apps, swiping a mobile
+// browser tab away, or closing the tab right after making a change can
+// tear the page down before that timer ever fires, silently dropping the
+// edit. The tab going hidden (backgrounded) or being torn down are both
+// reliable signals that "she might be leaving right now" — flush
+// immediately instead of waiting out the debounce, so what's already in
+// memory gets sent while the page is still around to send it.
+function flushPendingSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    doSave();
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushPendingSave();
+});
+window.addEventListener("pagehide", flushPendingSave);
+
 // ------------------------------------------------------------------
 // Tabs
 // ------------------------------------------------------------------
