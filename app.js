@@ -2249,8 +2249,9 @@ function openReadingLogModal(sheetId, presetBookId) {
 
           <label class="muted rl-f-format-label"></label>
 
-          <label class="muted">Chapter you're on now</label>
+          <label class="muted">What chapter did you finish?</label>
           <input type="number" min="0" class="rl-f-chapter" />
+          <div class="rl-chapter-hint muted">Read more than one? Just enter the last one — the rest count automatically.</div>
         </div>
         <div class="modal-actions" style="justify-content:space-between;">
           <div></div>
