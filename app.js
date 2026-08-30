@@ -961,7 +961,7 @@ function addSheetFromTemplate(tpl) {
     ...(isQuran ? { quranSchemaV: 1, quranSettings: { startDate: todayISO() } } : {}),
     ...(isBooks ? { booksSchemaV: 1, openCategories: {}, activeStatus: "toread" } : {}),
     ...(isWorkout ? seedWorkoutSheetData() : {}),
-    ...(isSocial ? { socialSchemaV: 1 } : {}),
+    ...(isSocial ? { socialSchemaV: 2, people: [] } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
   scheduleSave();
@@ -2196,78 +2196,255 @@ function openReadingLogModal(sheetId, presetBookId) {
 }
 
 // ------------------------------------------------------------------
-// Connections Log — the Social Connection pillar's home. Deliberately
-// minimal: who, what kind of connection, when, and an optional note —
-// a "who, what, when" quick-add rather than a whole contacts system.
-// Logging a real conversation, call, or hangout today is what completes
-// the pillar; a flat yes/no toggle would say nothing about whether the
-// connection was real.
+// Connections Log — the Social Connection pillar's home. Built around
+// people, not a plain entry list: each person you've logged becomes a
+// quick-log chip (tap to log today with their usual kind, no form),
+// the app surfaces whoever's overdue against their own normal rhythm,
+// and "Your circle" groups history by person instead of by date so it
+// reads as who's been neglected, not just a feed of what happened.
 // ------------------------------------------------------------------
 const SOCIAL_KIND_OPTIONS = ["In person", "Phone call", "Video call", "Text / message thread", "Group hangout"];
+// Below this many days since last contact, don't bother flagging anyone
+// overdue — a couple of days' gap is normal, not a lapse.
+const SOCIAL_MIN_OVERDUE_DAYS = 5;
+// Nobody's logged twice yet, so there's no real cadence to compare
+// against — assume a weekly rhythm until a second log says otherwise.
+const SOCIAL_DEFAULT_CADENCE_DAYS = 7;
+
+function socialPersonEntries(sheet, personId) {
+  return sheet.items.filter((e) => e.personId === personId).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+// A person's own rhythm, read back from their own log history — the
+// same "on track" vs "overdue" read the mockup showed, computed for
+// real instead of hard-coded.
+function socialPersonCadence(sheet, person, today) {
+  const entries = socialPersonEntries(sheet, person.id);
+  if (!entries.length) return { lastDate: null, daysSince: null, cadenceDays: SOCIAL_DEFAULT_CADENCE_DAYS, status: "new" };
+  const lastDate = entries[entries.length - 1].date;
+  const daysSince = daysBetween(new Date(lastDate + "T00:00:00"), new Date(today + "T00:00:00"));
+  const gaps = [];
+  for (let i = 1; i < entries.length; i++) {
+    gaps.push(daysBetween(new Date(entries[i - 1].date + "T00:00:00"), new Date(entries[i].date + "T00:00:00")));
+  }
+  const cadenceDays = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) || 1 : SOCIAL_DEFAULT_CADENCE_DAYS;
+  const overdueThreshold = Math.max(Math.round(cadenceDays * 1.5), SOCIAL_MIN_OVERDUE_DAYS);
+  const status = daysSince === 0 ? "today" : daysSince >= overdueThreshold ? "overdue" : "onTrack";
+  return { lastDate, daysSince, cadenceDays, status, overdueThreshold };
+}
+
+function socialCadenceLabel(cadence) {
+  if (cadence.status === "today") return "Logged today";
+  if (cadence.status === "new") return "First log";
+  if (cadence.lastDate == null) return "";
+  return `${cadence.daysSince} day${cadence.daysSince === 1 ? "" : "s"} ago`;
+}
+
+// Logs today for a person with one tap — their most recently used kind,
+// no form. If they're already logged today this is treated as "log
+// again" (a second real connection that day), which is rare but real.
+function socialQuickLog(sheetId, personId) {
+  const sheet = state.customSheets[sheetId];
+  const person = sheet.people.find((p) => p.id === personId);
+  if (!person) return;
+  const entries = socialPersonEntries(sheet, personId);
+  const lastKind = entries.length ? entries[entries.length - 1].kind : SOCIAL_KIND_OPTIONS[0];
+  sheet.items.push({ id: nextId(), personId, kind: lastKind, date: todayISO(), notes: "" });
+  scheduleSave();
+  renderSocialSheet(sheetId);
+  renderHome();
+}
 
 function renderSocialSheet(id) {
   const panel = document.getElementById(`panel-${id}`);
   const sheet = state.customSheets[id];
   if (!panel || !sheet) return;
+  sheet.people ||= [];
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
   const todayStr = todayISO();
-  const loggedToday = sheet.items.some((i) => i.date === todayStr);
-  const logRow = el(`
-    <button type="button" class="learning-checkin-row${loggedToday ? " done" : ""}">
-      <span class="learning-checkin-check${loggedToday ? " on" : ""}">${loggedToday ? checkSvg : ""}</span>
-      <span class="learning-checkin-label">${loggedToday ? "Logged a connection today · tap to add another" : "Log today's connection"}</span>
+  const cadenceByPerson = new Map(sheet.people.map((p) => [p.id, socialPersonCadence(sheet, p, todayStr)]));
+
+  // Quick log — people already logged before, most recently contacted
+  // first, so whoever's top of mind is also the fastest to tap again.
+  panel.appendChild(el(`<div class="social-quicklog-label">Quick log</div>`));
+  const chipRow = el(`<div class="social-quicklog-row"></div>`);
+  const sortedPeople = [...sheet.people].sort((a, b) => {
+    const da = cadenceByPerson.get(a.id).lastDate || "";
+    const db = cadenceByPerson.get(b.id).lastDate || "";
+    return da < db ? 1 : da > db ? -1 : 0;
+  });
+  sortedPeople.forEach((person) => {
+    const cadence = cadenceByPerson.get(person.id);
+    const chip = el(`
+      <button type="button" class="social-chip">
+        <span class="social-chip-avatar${cadence.status === "today" ? " today" : ""}${cadence.status === "overdue" ? " due" : ""}">
+          ${escapeHtml((person.name.trim()[0] || "?").toUpperCase())}
+          ${cadence.status === "today" ? `<span class="social-chip-dot">${checkSvg}</span>` : ""}
+        </span>
+        <span class="social-chip-name">${escapeHtml(person.name)}</span>
+      </button>
+    `);
+    // Already logged today — tapping again opens the full form (to add
+    // another kind, a note, or just review) rather than silently
+    // stacking a second identical entry.
+    chip.addEventListener("click", () => {
+      if (cadence.status === "today") openSocialEntryModal(id, null, person.id);
+      else socialQuickLog(id, person.id);
+    });
+    chipRow.appendChild(chip);
+  });
+  const addChip = el(`
+    <button type="button" class="social-chip">
+      <span class="social-chip-avatar social-chip-add">+</span>
+      <span class="social-chip-name">New</span>
     </button>
   `);
-  logRow.addEventListener("click", () => openSocialEntryModal(id, null));
-  panel.appendChild(logRow);
+  addChip.addEventListener("click", () => openSocialEntryModal(id, null, null));
+  chipRow.appendChild(addChip);
+  panel.appendChild(chipRow);
+  panel.appendChild(el(`<div class="social-quicklog-hint">Tap a face to log today's default kind. Tap "New" for someone else or a different kind.</div>`));
 
-  const entries = [...sheet.items].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-
-  if (!entries.length) {
-    panel.appendChild(el(`<div class="muted" style="padding:16px 0;">Nothing logged yet — who did you connect with today?</div>`));
+  // Reconnect nudge — whoever's furthest past their own normal rhythm,
+  // if anyone qualifies. Recomputed every render, so logging them (or
+  // anyone else being more overdue) is what makes it change or clear —
+  // no separate dismiss state to manage.
+  let mostOverdue = null;
+  sheet.people.forEach((person) => {
+    const cadence = cadenceByPerson.get(person.id);
+    if (cadence.status !== "overdue") return;
+    const severity = cadence.daysSince - cadence.overdueThreshold;
+    if (!mostOverdue || severity > mostOverdue.severity) mostOverdue = { person, cadence, severity };
+  });
+  if (mostOverdue) {
+    const nudge = el(`
+      <div class="social-nudge-card">
+        <span class="social-nudge-icon">💛</span>
+        <span class="social-nudge-text">It's been <strong>${mostOverdue.cadence.daysSince} days</strong> since you connected with ${escapeHtml(mostOverdue.person.name)}.</span>
+        <button type="button" class="social-nudge-btn">Log it</button>
+      </div>
+    `);
+    nudge.querySelector(".social-nudge-btn").addEventListener("click", () => socialQuickLog(id, mostOverdue.person.id));
+    panel.appendChild(nudge);
   }
 
-  entries.forEach((entry) => {
-    const row = el(`
-      <details class="wardrobe-item">
-        <summary class="wardrobe-row">
-          <div class="wi-body">
-            <div class="wi-name">${escapeHtml(entry.who || "Someone")}</div>
-            <div class="wi-sub">${escapeHtml(entry.kind || "")} &middot; ${escapeHtml(entry.date)}</div>
-          </div>
-          <span class="wardrobe-chevron">${chevronSvg}</span>
-        </summary>
-        <div class="wardrobe-item-detail">
-          ${entry.notes ? `<div class="wi-detail-notes">${escapeHtml(entry.notes)}</div>` : ""}
-          <div class="wi-detail-actions">
-            <button type="button" class="btn-ghost wi-detail-edit">${editSvg} Edit</button>
-            <button type="button" class="btn-ghost danger wi-detail-delete">Delete</button>
-          </div>
-        </div>
-      </details>
-    `);
-    row.querySelector(".wi-detail-edit").addEventListener("click", () => openSocialEntryModal(id, entry.id));
-    row.querySelector(".wi-detail-delete").addEventListener("click", () => {
-      confirmModal("Delete entry?", `Remove this connection log for ${entry.date}?`, "Delete", () => {
-        sheet.items = sheet.items.filter((i) => i.id !== entry.id);
-        scheduleSave();
-        renderSocialSheet(id);
-        renderHome();
-      });
+  // Your circle — grouped by person instead of a chronological feed, so
+  // it reads as who's on track vs. who's slipping, not just a log.
+  if (sheet.people.length) {
+    panel.appendChild(el(`<div class="social-circle-title">Your circle</div>`));
+    const circleSorted = [...sheet.people].sort((a, b) => {
+      const ca = cadenceByPerson.get(a.id);
+      const cb = cadenceByPerson.get(b.id);
+      const rank = (c) => (c.status === "overdue" ? 0 : c.status === "new" ? 1 : c.status === "onTrack" ? 2 : 3);
+      if (rank(ca) !== rank(cb)) return rank(ca) - rank(cb);
+      return (cb.daysSince ?? 0) - (ca.daysSince ?? 0);
     });
-    panel.appendChild(row);
-  });
+    circleSorted.forEach((person) => {
+      const cadence = cadenceByPerson.get(person.id);
+      const entries = [...socialPersonEntries(sheet, person.id)].reverse();
+      const badgeClass = cadence.status === "overdue" ? "warn" : cadence.status === "new" ? "" : "good";
+      const badgeLabel = cadence.status === "overdue" ? "overdue" : cadence.status === "new" ? "new" : cadence.status === "today" ? "logged today" : "on track";
+      const row = el(`
+        <details class="wardrobe-item social-circle-row">
+          <summary class="wardrobe-row">
+            <div class="social-circle-avatar">${escapeHtml((person.name.trim()[0] || "?").toUpperCase())}</div>
+            <div class="wi-body">
+              <div class="wi-name">${escapeHtml(person.name)}</div>
+              <div class="wi-sub">${escapeHtml(socialCadenceLabel(cadence))}</div>
+            </div>
+            ${badgeLabel ? `<span class="social-circle-badge${badgeClass ? ` ${badgeClass}` : ""}">${badgeLabel}</span>` : ""}
+            <span class="wardrobe-chevron">${chevronSvg}</span>
+          </summary>
+          <div class="wardrobe-item-detail">
+            <div class="wi-detail-actions">
+              <button type="button" class="btn-ghost social-log-again">Log again</button>
+              <button type="button" class="btn-ghost wi-detail-edit-name">Rename</button>
+              <button type="button" class="btn-ghost danger social-remove-person">Remove person</button>
+            </div>
+            ${
+              entries.length
+                ? entries
+                    .map(
+                      (entry) => `
+                <div class="social-history-row" data-entry-id="${entry.id}">
+                  <div>
+                    <div class="social-history-kind">${escapeHtml(entry.kind || "")}</div>
+                    <div class="social-history-date">${escapeHtml(entry.date)}${entry.notes ? ` &middot; ${escapeHtml(entry.notes)}` : ""}</div>
+                  </div>
+                  <div class="social-history-actions">
+                    <button type="button" class="icon-btn social-history-edit" data-entry-id="${entry.id}">${editSvg}</button>
+                  </div>
+                </div>
+              `
+                    )
+                    .join("")
+                : `<div class="muted" style="padding:8px 0; font-size:12px;">No log entries yet.</div>`
+            }
+          </div>
+        </details>
+      `);
+      row.querySelector(".social-log-again").addEventListener("click", (e) => {
+        e.preventDefault();
+        socialQuickLog(id, person.id);
+      });
+      row.querySelector(".wi-detail-edit-name").addEventListener("click", (e) => {
+        e.preventDefault();
+        openSocialPersonRenameModal(id, person.id);
+      });
+      row.querySelector(".social-remove-person").addEventListener("click", (e) => {
+        e.preventDefault();
+        confirmModal("Remove person?", `This removes ${person.name} and all ${entries.length} logged entr${entries.length === 1 ? "y" : "ies"} for them.`, "Remove", () => {
+          sheet.people = sheet.people.filter((p) => p.id !== person.id);
+          sheet.items = sheet.items.filter((i) => i.personId !== person.id);
+          scheduleSave();
+          renderSocialSheet(id);
+          renderHome();
+        });
+      });
+      row.querySelectorAll(".social-history-edit").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          openSocialEntryModal(id, btn.dataset.entryId, person.id);
+        });
+      });
+      panel.appendChild(row);
+    });
+  } else {
+    panel.appendChild(el(`<div class="muted" style="padding:16px 0;">Nothing logged yet — tap "New" above to log who you connected with today.</div>`));
+  }
 }
 
-function openSocialEntryModal(sheetId, itemId) {
+function openSocialPersonRenameModal(sheetId, personId) {
   const sheet = state.customSheets[sheetId];
+  const person = sheet.people.find((p) => p.id === personId);
+  if (!person) return;
+  const newName = window.prompt("Rename this person", person.name);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) return;
+  person.name = trimmed;
+  scheduleSave();
+  renderSocialSheet(sheetId);
+}
+
+// Logging (or editing a past log for) one person — kind is a tap-once
+// chip row rather than a dropdown, same as the mockup, since there are
+// only a handful of options and tapping is faster than opening a select
+// on mobile.
+function openSocialEntryModal(sheetId, itemId, presetPersonId) {
+  const sheet = state.customSheets[sheetId];
+  sheet.people ||= [];
   const isNew = !itemId;
-  const item = isNew
-    ? { who: "", kind: SOCIAL_KIND_OPTIONS[0], date: todayISO(), notes: "" }
-    : sheet.items.find((i) => i.id === itemId);
+  const item = isNew ? { personId: presetPersonId || null, kind: SOCIAL_KIND_OPTIONS[0], date: todayISO(), notes: "" } : sheet.items.find((i) => i.id === itemId);
   if (!item) return;
+  if (isNew && item.personId) {
+    const entries = socialPersonEntries(sheet, item.personId);
+    if (entries.length) item.kind = entries[entries.length - 1].kind;
+  }
+
+  const existingNames = sheet.people.map((p) => p.name).sort();
+  const startingName = item.personId ? sheet.people.find((p) => p.id === item.personId)?.name || "" : "";
 
   const overlay = el(`
     <div class="modal-overlay">
@@ -2278,10 +2455,13 @@ function openSocialEntryModal(sheetId, itemId) {
         </div>
         <div class="wardrobe-item-form">
           <label class="muted">Who</label>
-          <input type="text" class="sc-f-who" value="${escapeHtml(item.who)}" placeholder="e.g. Mom, Jess" />
+          <input type="text" class="sc-f-who" value="${escapeHtml(startingName)}" placeholder="e.g. Mom, Jess" list="sc-people-list" />
+          <datalist id="sc-people-list">${existingNames.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("")}</datalist>
 
           <label class="muted">What</label>
-          <select class="sc-f-kind">${SOCIAL_KIND_OPTIONS.map((k) => `<option value="${k}" ${item.kind === k ? "selected" : ""}>${k}</option>`).join("")}</select>
+          <div class="mp-kind-row">
+            ${SOCIAL_KIND_OPTIONS.map((k) => `<button type="button" class="mp-kind sc-kind-opt${item.kind === k ? " sel" : ""}" data-kind="${escapeHtml(k)}">${escapeHtml(k)}</button>`).join("")}
+          </div>
 
           <label class="muted">When</label>
           <input type="date" class="sc-f-date" value="${item.date}" />
@@ -2291,11 +2471,19 @@ function openSocialEntryModal(sheetId, itemId) {
         </div>
         <div class="modal-actions" style="justify-content:space-between;">
           <div>${isNew ? "" : `<button type="button" class="btn-ghost danger sc-delete">Delete</button>`}</div>
-          <button type="button" class="btn-primary sc-save">${isNew ? "Add" : "Save"}</button>
+          <button type="button" class="btn-primary sc-save">${isNew ? "Log it" : "Save"}</button>
         </div>
       </div>
     </div>
   `);
+
+  let selectedKind = item.kind;
+  overlay.querySelectorAll(".sc-kind-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedKind = btn.dataset.kind;
+      overlay.querySelectorAll(".sc-kind-opt").forEach((b) => b.classList.toggle("sel", b === btn));
+    });
+  });
 
   overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", (e) => {
@@ -2303,17 +2491,21 @@ function openSocialEntryModal(sheetId, itemId) {
   });
 
   overlay.querySelector(".sc-save").addEventListener("click", () => {
-    const updated = {
-      who: overlay.querySelector(".sc-f-who").value.trim(),
-      kind: overlay.querySelector(".sc-f-kind").value,
-      date: overlay.querySelector(".sc-f-date").value || todayISO(),
-      notes: overlay.querySelector(".sc-f-notes").value.trim(),
-    };
-    if (!updated.who) return;
+    const name = overlay.querySelector(".sc-f-who").value.trim();
+    const date = overlay.querySelector(".sc-f-date").value || todayISO();
+    const notes = overlay.querySelector(".sc-f-notes").value.trim();
+    if (!name) return;
+
+    let person = sheet.people.find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+    if (!person) {
+      person = { id: nextId(), name };
+      sheet.people.push(person);
+    }
+
     if (isNew) {
-      sheet.items.push({ id: nextId(), ...updated });
+      sheet.items.push({ id: nextId(), personId: person.id, kind: selectedKind, date, notes });
     } else {
-      Object.assign(item, updated);
+      Object.assign(item, { personId: person.id, kind: selectedKind, date, notes });
     }
     scheduleSave();
     overlay.remove();
@@ -6673,6 +6865,31 @@ async function boot() {
       });
     });
     sheet.workoutTargetSimplified = true;
+  });
+  // One-time upgrade: Connections Log started as a flat list of entries
+  // with a free-text "who" on each one — no shared identity between two
+  // entries for the same person, so there was nothing to hang a quick-log
+  // chip or a per-person cadence read off of. Promote each distinct name
+  // into a real person record and re-point every entry at it by id;
+  // matching is name-based (trimmed, case-insensitive) since that's all
+  // the old data had to go on.
+  Object.values(state.customSheets).forEach((sheet) => {
+    if (sheet.templateKey !== "social" || sheet.socialSchemaV === 2) return;
+    sheet.people ||= [];
+    const byName = new Map(sheet.people.map((p) => [p.name.trim().toLowerCase(), p]));
+    sheet.items.forEach((entry) => {
+      if (entry.personId) return;
+      const key = (entry.who || "").trim().toLowerCase();
+      let person = byName.get(key);
+      if (!person) {
+        person = { id: nextId(), name: (entry.who || "Someone").trim() || "Someone" };
+        sheet.people.push(person);
+        byName.set(key, person);
+      }
+      entry.personId = person.id;
+      delete entry.who;
+    });
+    sheet.socialSchemaV = 2;
   });
 
   // Veronika's Bonus — an identity statement, a quiet rhythm reading
