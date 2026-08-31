@@ -309,17 +309,33 @@ async function loadStateFromSupabase(userId) {
 // locally." Two devices editing the exact same list within moments of
 // each other can still race the old way; this closes the specific gap
 // that bit the wellness/cycle log, not every possible collision.
+// Folds remote fields into each local record IN PLACE rather than
+// building fresh merged objects — anything on screen mid-edit (the
+// Cycle sheet holds a direct reference to today's wellness record while
+// it's open, same as Home's hero and the Wellness page's own "today"
+// variable) is holding onto that exact object. Replacing it with a new
+// one the instant a save happens would silently detach whatever's being
+// edited from the array doSave() actually uploads next — a tap that
+// updates the detached copy would look like it worked (no error, sheet
+// closes normally) while never reaching the record that gets saved.
+// Only a record local has never seen at all becomes a new array entry,
+// since there's no existing object for that one to preserve.
 function mergeJournalRecords(remoteList, localList, keyFn) {
   const remoteArr = Array.isArray(remoteList) ? remoteList : [];
   const localArr = Array.isArray(localList) ? localList : [];
-  const merged = new Map();
-  remoteArr.forEach((r) => merged.set(keyFn(r), r));
-  localArr.forEach((l) => {
-    const k = keyFn(l);
-    const existing = merged.get(k);
-    merged.set(k, existing ? { ...existing, ...l } : l);
+  const localByKey = new Map(localArr.map((l) => [keyFn(l), l]));
+  const merged = [...localArr];
+  remoteArr.forEach((r) => {
+    const existingLocal = localByKey.get(keyFn(r));
+    if (existingLocal) {
+      Object.keys(r).forEach((field) => {
+        if (!(field in existingLocal)) existingLocal[field] = r[field];
+      });
+    } else {
+      merged.push(r);
+    }
   });
-  return [...merged.values()];
+  return merged;
 }
 
 function mergeRemoteBeforeSave(remote, local) {
@@ -5422,7 +5438,17 @@ const CYCLE_PHASE_INFO = [
 // the Cycle quick-log sheet so the diagram doubles as a "here's where you
 // are" reminder, not just reference material. Omitted entirely for the
 // plain info-popup use, which has nothing to highlight.
-function buildCyclePhaseInfoBody(activeValue) {
+// onSelectPhase is only passed from the actual logging sheet
+// (openCyclePhaseSheet) — the plain "what does this mean" info popup
+// (openFieldInfo) calls this with no second argument, so those cards stay
+// purely informational there. Where it IS passed, the cards themselves
+// become the tap target: "click it and be able to select" was the whole
+// point of pulling this diagram out from behind an (i) button in the
+// first place, so a separate row of buttons below it as the ONLY way to
+// actually log was never going to read as obvious — someone can tap
+// squarely on "Ovulatory" here, watch nothing happen, and reasonably
+// think they just logged it.
+function buildCyclePhaseInfoBody(activeValue, onSelectPhase) {
   const body = el(`<div></div>`);
   body.appendChild(el(`<p class="muted" style="font-size:13px;margin:0 0 14px 0;line-height:1.5;">A general guide to a typical 28-day cycle — yours may run shorter, longer, or less predictably, and that's normal.</p>`));
   const track = el(`<div class="cycle-phase-track"></div>`);
@@ -5433,15 +5459,22 @@ function buildCyclePhaseInfoBody(activeValue) {
   const cards = el(`<div class="cycle-phase-cards"></div>`);
   CYCLE_PHASE_INFO.forEach((p) => {
     const isActive = activeValue && p.label.toLowerCase().includes(activeValue.toLowerCase());
-    cards.appendChild(el(`
-      <div class="cycle-phase-card${isActive ? " active" : ""}">
+    const card = el(`
+      <div class="cycle-phase-card${isActive ? " active" : ""}${onSelectPhase ? " tappable" : ""}">
         <div class="cycle-phase-card-dot cycle-phase-${p.key}"></div>
-        <div>
+        <div class="cycle-phase-card-body">
           <div class="cycle-phase-card-title">${escapeHtml(p.label)} <span class="muted" style="font-weight:400;">&middot; ${escapeHtml(p.days)}</span></div>
           <div class="cycle-phase-card-desc">${escapeHtml(p.desc)}</div>
         </div>
+        ${onSelectPhase ? `<div class="cycle-phase-card-tap">${isActive ? "Logged" : "Tap to log"}</div>` : ""}
       </div>
-    `));
+    `);
+    if (onSelectPhase) {
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+      card.addEventListener("click", () => onSelectPhase(p.label.replace(/^\d+\.\s*/, "")));
+    }
+    cards.appendChild(card);
   });
   body.appendChild(cards);
   body.appendChild(el(`<p class="muted" style="font-size:12px;margin:14px 0 0 0;line-height:1.5;">General education, not medical advice. If your cycle has been changing a lot, that's worth mentioning to your doctor.</p>`));
@@ -6941,25 +6974,18 @@ function openCyclePhaseSheet(todaysEntry, today, onDone) {
       </div>
     </div>
   `);
-  const box = overlay.querySelector(".cycle-sheet-box");
-  box.appendChild(buildCyclePhaseInfoBody(currentPhase));
+  const logPhase = (phaseValue) => {
+    todaysEntry.cyclePhase = phaseValue;
+    scheduleSave();
+    overlay.remove();
+    onDone();
+  };
 
-  const logLabel = el(`<div class="cycle-log-label">Log today as</div>`);
-  box.appendChild(logLabel);
-  const logRow = el(`<div class="cycle-log-row"></div>`);
-  CYCLE_PHASE_INFO.forEach((p) => {
-    const phaseValue = p.label.replace(/^\d+\.\s*/, "");
-    const isActive = currentPhase === phaseValue;
-    const btn = el(`<button type="button" class="cycle-log-btn cycle-log-${p.key}${isActive ? " active" : ""}">${escapeHtml(phaseValue)}</button>`);
-    btn.addEventListener("click", () => {
-      todaysEntry.cyclePhase = phaseValue;
-      scheduleSave();
-      overlay.remove();
-      onDone();
-    });
-    logRow.appendChild(btn);
-  });
-  box.appendChild(logRow);
+  // One way to log, not two: the diagram cards ARE the buttons now (see
+  // buildCyclePhaseInfoBody's "tappable" mode) — an extra row of the same
+  // four choices underneath was just the same action twice.
+  const box = overlay.querySelector(".cycle-sheet-box");
+  box.appendChild(buildCyclePhaseInfoBody(currentPhase, logPhase));
 
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
