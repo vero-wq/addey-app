@@ -286,6 +286,48 @@ async function loadStateFromSupabase(userId) {
   return data?.data ?? null;
 }
 
+// Saving uploads this whole device's in-memory `state` as one JSON blob —
+// simple, but it means a save is a blind overwrite. Using the app on two
+// devices (or two tabs) close together, whichever one saves LAST wins
+// outright: it has no idea what the other device just wrote, so its own
+// (older) copy of that data erases it. That's exactly what happened when
+// logging today's Cycle phase on one device got silently wiped out by
+// the next autosave from another device/tab that never had it in memory.
+//
+// The fix: before every save, pull the latest remote copy and merge it
+// into what's about to be written, record-by-record, for the handful of
+// collections that are pure journal entries — added or updated, never
+// deleted through the UI (today's wellness record, a day's reading-log
+// entry). This device's own field values always win on a shared record,
+// but a field or a whole day's entry the OTHER device wrote and this one
+// never saw is kept instead of dropped.
+//
+// Deliberately NOT applied to anything with a delete button (book list
+// items, social connections, to-do items, custom sheets themselves) —
+// merging those the same way would resurrect an item the instant it's
+// deleted, since "missing locally" would look identical to "deleted
+// locally." Two devices editing the exact same list within moments of
+// each other can still race the old way; this closes the specific gap
+// that bit the wellness/cycle log, not every possible collision.
+function mergeJournalRecords(remoteList, localList, keyFn) {
+  const remoteArr = Array.isArray(remoteList) ? remoteList : [];
+  const localArr = Array.isArray(localList) ? localList : [];
+  const merged = new Map();
+  remoteArr.forEach((r) => merged.set(keyFn(r), r));
+  localArr.forEach((l) => {
+    const k = keyFn(l);
+    const existing = merged.get(k);
+    merged.set(k, existing ? { ...existing, ...l } : l);
+  });
+  return [...merged.values()];
+}
+
+function mergeRemoteBeforeSave(remote, local) {
+  if (!remote) return; // nothing saved yet from anywhere — nothing to merge with
+  local.wellness = mergeJournalRecords(remote.wellness, local.wellness, (w) => w.logDate);
+  local.learningLog = mergeJournalRecords(remote.learningLog, local.learningLog, (l) => l.date);
+}
+
 async function saveStateToSupabase(userId, stateToSave) {
   const { error } = await sb.from("app_state").upsert({ user_id: userId, data: stateToSave });
   if (error) throw error;
@@ -378,6 +420,8 @@ function scheduleSave() {
 
 async function doSave() {
   try {
+    const remote = await loadStateFromSupabase(currentUserId);
+    mergeRemoteBeforeSave(remote, state);
     await saveStateToSupabase(currentUserId, state);
     // Saves happen constantly and silently — flashing "Saving…" briefly is
     // enough to show something's happening; there's no need for a lingering
