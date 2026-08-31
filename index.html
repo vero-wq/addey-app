@@ -721,15 +721,17 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cycle-phase-card-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .cycle-phase-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .cycle-phase-card-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+.cycle-phase-card-body { flex: 1; }
 .cycle-phase-card.active { background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 8px 10px; margin: -6px -10px 6px; }
+/* Only present when this diagram is the actual logging control (the
+   sheet, not the plain info popup) — the card itself is the tap target,
+   so it needs to look and behave like one even without hover on touch. */
+.cycle-phase-card.tappable { cursor: pointer; border-radius: 10px; padding: 8px 10px; margin: -8px -10px; -webkit-tap-highlight-color: transparent; }
+.cycle-phase-card.tappable:active { background: var(--bg); }
+.cycle-phase-card.tappable.active { background: var(--bg); border: 1.5px solid var(--border); margin: -8px -10px; }
+.cycle-phase-card-tap { align-self: center; font-size: 10.5px; font-weight: 700; color: var(--accent-dark); white-space: nowrap; padding-left: 4px; }
+.cycle-phase-card.active .cycle-phase-card-tap { color: var(--good); }
 .cycle-sheet-box { max-height: 82vh; overflow-y: auto; }
-.cycle-log-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 4px 0 8px; }
-.cycle-log-row { display: flex; gap: 8px; }
-.cycle-log-btn { flex: 1; padding: 11px 4px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); font-size: 11.5px; font-weight: 700; text-align: center; color: var(--text); font-family: inherit; cursor: pointer; }
-.cycle-log-btn.active.cycle-log-menstrual { background: #B3543E; border-color: #B3543E; color: #fff; }
-.cycle-log-btn.active.cycle-log-follicular { background: #C98A4B; border-color: #C98A4B; color: #fff; }
-.cycle-log-btn.active.cycle-log-ovulatory { background: #6E9B6A; border-color: #6E9B6A; color: #fff; }
-.cycle-log-btn.active.cycle-log-luteal { background: #5B7A93; border-color: #5B7A93; color: #fff; }
 .btn-danger { background: #B3543E; color: #fff; border: none; border-radius: 7px; padding: 9px 16px; font-size: 13px; font-weight: 600; }
 .btn-danger:hover { background: #97402D; }
 
