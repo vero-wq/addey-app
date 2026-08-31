@@ -6386,11 +6386,17 @@ function renderWellness() {
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
     if (todays[key] !== "Yes") return;
     const wrap = el(`<div class="wellness-journal-activity-item"></div>`);
-    wrap.appendChild(el(`<label class="muted wellness-journal-activity-label">${escapeHtml(label)}</label>`));
+    wrap.appendChild(el(`<label class="muted wellness-journal-activity-label">${escapeHtml(label)} &mdash; what did you do?</label>`));
     attachPillarActivityField(wrap, key, today);
     activityStack.appendChild(wrap);
   });
-  if (activityStack.children.length) journalCard.appendChild(activityStack);
+  if (activityStack.children.length) {
+    // These fields default to whatever space auto-marked the pillar (e.g.
+    // "Church", "Book List") so there's always something here — but
+    // they're plain editable text, not a repeat of the tile above it.
+    journalCard.appendChild(el(`<div class="wellness-journal-activity-hint muted">Filled in from the space that marked it &mdash; edit any of these to add real detail.</div>`));
+    journalCard.appendChild(activityStack);
+  }
 
   WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
     const q = el(`<div class="journal-q"></div>`);
