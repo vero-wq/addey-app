@@ -557,6 +557,16 @@ td input:hover { border-color: var(--border); }
 .bible-pace-badge.onpace { background: #F1E7CF; color: #8A6A1F; }
 .bible-pace-badge.pending { background: var(--border); color: var(--muted); }
 
+.bible-ring-row { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.bible-ring { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.bible-ring-inner { width: 50px; height: 50px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; }
+.bible-ring-pct { font-size: 14px; font-weight: 700; color: var(--text); }
+.bible-ring-caption { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.bible-ring-caption strong { color: var(--text); }
+.bible-pace-mini-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.bible-pace-mini-row label { font-size: 11px; }
+.bible-pace-mini-row .bible-start-date, .bible-pace-mini-row .quran-start-date { font-size: 13px; padding: 4px 7px; }
+
 /* ---------- Settings ---------- */
 .settings-sub { font-size: 13px; color: var(--muted); margin: 0 0 22px 0; }
 .settings-group-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 22px 0 4px 0; }
@@ -668,6 +678,7 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .trend-insight-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid #E3D1AC; color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .trend-insight-text { font-size: 13.5px; line-height: 1.45; padding-top: 3px; }
 .trend-insight-text strong { color: var(--accent-dark); }
+.insight-hero-eyebrow { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-dark); margin-bottom: 3px; }
 
 /* "Days you showed up" pulse chart — one line instead of five rows of squares. */
 .pulse-card { margin-bottom: 14px; }
@@ -1164,17 +1175,10 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .home-deposit-track-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
 .home-deposit-track-label { font-size: 11.5px; font-weight: 700; color: var(--text); }
 .home-deposit-track-count { font-size: 11.5px; font-weight: 700; color: var(--accent-dark); }
-.home-deposit-track-bar { height: 8px; border-radius: 5px; background: var(--border); overflow: hidden; }
-.home-deposit-track-fill { height: 100%; background: var(--accent-dark); border-radius: 5px; }
-.home-cycle-caption { font-size: 10.5px; color: var(--muted); margin-top: 6px; }
-
-/* Milestone savings nudge */
-.home-nudge-card { background: #FBF3E6; border: 1px solid #ECD9B4; border-radius: 12px; padding: 13px 14px; margin-bottom: 14px; }
-.home-nudge-title { font-family: "Source Serif 4", Georgia, serif; font-size: 14.5px; margin-bottom: 5px; }
-.home-nudge-body { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
-.home-nudge-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.home-nudge-btn-primary { flex: 1; background: var(--accent-dark); color: #fff; border: none; border-radius: 100px; padding: 9px; font-weight: 700; font-size: 12.5px; font-family: inherit; cursor: pointer; }
-.home-nudge-btn-ghost { background: none; border: 1px solid var(--border); border-radius: 100px; color: var(--accent-dark); font-weight: 700; font-size: 12.5px; font-family: inherit; cursor: pointer; padding: 8px 16px; }
+.home-deposit-track-bar { position: relative; height: 8px; border-radius: 5px; background: var(--border); }
+.home-deposit-track-fill { height: 100%; border-radius: 5px; background: var(--accent-dark); }
+.home-deposit-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--accent); opacity: 0.55; }
+.home-deposit-tick.passed { background: rgba(255, 255, 255, 0.65); opacity: 1; }
 .home-pillar { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; border-radius: 12px; border: 1px solid transparent; background: #F1DAD3; cursor: pointer; font-family: inherit; }
 .home-pillar.done { background: #E4E9E0; }
 .home-pillar-icon { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
@@ -1334,7 +1338,6 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
         <section id="panel-investments" class="panel"></section>
         <section id="panel-bible" class="panel"></section>
         <section id="panel-sleep" class="panel"></section>
-        <section id="panel-wellness" class="panel"></section>
         <section id="panel-appearance" class="panel"></section>
         <section id="panel-settings" class="panel"></section>
       </main>
