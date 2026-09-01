@@ -924,6 +924,10 @@ function openAccountSheet() {
           ${iconSvg('<circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>')}
           <span>Appearance</span>
         </button>
+        <button type="button" class="you-list-row" id="you-notifications-row">
+          ${iconSvg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>')}
+          <span>Notifications</span>
+        </button>
 
         <div class="you-list-divider"></div>
 
@@ -967,6 +971,10 @@ function openAccountSheet() {
   overlay.querySelector("#you-appearance-row").addEventListener("click", () => {
     close();
     activateTab("appearance");
+  });
+  overlay.querySelector("#you-notifications-row").addEventListener("click", () => {
+    close();
+    openNotificationsModal();
   });
   overlay.querySelector("#account-password-btn").addEventListener("click", () => {
     close();
@@ -1608,49 +1616,37 @@ function renderSettings() {
   `);
   appearanceSection.querySelector("#settings-appearance-btn").addEventListener("click", () => activateTab("appearance"));
   panel.appendChild(appearanceSection);
-
-  panel.appendChild(buildNotificationsSection());
 }
 
-// Cached so renderSettings() doesn't have to be async — refreshed lazily
-// (see refreshPushStatus) and the whole Settings panel just re-renders
-// once the real answer comes back, same pattern as everything else here.
+// Cached so building the section doesn't have to be async — refreshed
+// lazily (see refreshPushStatus) and re-rendered via the caller-supplied
+// callback once the real answer comes back.
 let pushStatusCache = null;
 // Set only when turning notifications on just failed, so the reason
 // (blocked permission, a network hiccup) shows right under the toggle
 // instead of vanishing silently — cleared on the next attempt.
 let pushErrorMessage = null;
 
-function refreshPushStatus() {
+function refreshPushStatus(onDone) {
   getPushStatus().then((status) => {
     pushStatusCache = status;
-    // Settings renders once at boot (see renderAll) and again only when
-    // something on the page itself changes — activateTab() doesn't
-    // re-render it on every tab switch the way Home/Wellness do. Gating
-    // this on "is Settings the active tab right now" meant the very
-    // first boot-time check (before she's ever opened Settings) never
-    // qualified, leaving the toggle stuck on "Checking…" forever the
-    // first time she actually looked at it. Just re-render unconditionally
-    // — renderSettings() no-ops safely if the panel isn't in the DOM.
-    renderSettings();
+    onDone();
   });
 }
 
 // Notifications — celebratory streak/deposit milestones plus a gentle
-// evening nudge if pillars are still open. Deliberately its own section
-// rather than folded into Appearance: this one asks the browser for a
-// real permission and can fail in ways worth explaining (blocked,
-// unsupported), which the theme picker never does.
-function buildNotificationsSection() {
-  const section = el(`
-    <div class="account-section">
-      <div class="account-section-label">Notifications</div>
-    </div>
-  `);
+// evening nudge if pillars are still open. Lives in its own modal off the
+// You sheet (see openNotificationsModal) rather than buried in Settings'
+// space-management scroll — reachable in one tap, the same way Appearance
+// and Pillar Mapping already are. `rerender` is called both when the
+// async status check first resolves and after every toggle, so the modal
+// (the only place this renders now) always reflects the latest state.
+function buildNotificationsSection(rerender) {
+  const section = el(`<div></div>`);
 
   if (!pushStatusCache) {
     section.appendChild(el(`<div class="settings-note">Checking notification status&hellip;</div>`));
-    refreshPushStatus();
+    refreshPushStatus(rerender);
     return section;
   }
 
@@ -1696,7 +1692,7 @@ function buildNotificationsSection() {
         if (!result.ok) pushErrorMessage = result.reason || "Couldn't turn on notifications.";
       }
       pushStatusCache = null;
-      renderSettings();
+      rerender();
     });
   }
 
@@ -1705,6 +1701,35 @@ function buildNotificationsSection() {
     section.appendChild(el(`<div class="settings-note" style="margin-top:8px;">${escapeHtml(pushErrorMessage)}</div>`));
   }
   return section;
+}
+
+// Reached from You → "Notifications" — a single-purpose modal, same
+// weight as Email & password or Plan & Billing, instead of a section
+// tucked at the bottom of Settings' space-management scroll.
+function openNotificationsModal() {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3>Notifications</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div id="notifications-modal-body"></div>
+      </div>
+    </div>
+  `);
+  const body = overlay.querySelector("#notifications-modal-body");
+  const rerender = () => {
+    body.innerHTML = "";
+    body.appendChild(buildNotificationsSection(rerender));
+  };
+  rerender();
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
 }
 
 function renderChecklistSheet(id) {
@@ -7062,6 +7087,88 @@ function renderHome() {
   panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a space below to open it.</div>`));
 }
 
+// The streak flame's own color climbs from a dark ember to a bright gold
+// as the streak grows, so the color alone hints at the streak length
+// before you even read the number — mockups (three directions, then
+// three color/depth variants of this one) confirmed with Veronika before
+// building. Stops are hand-picked at the same milestone days the push
+// notifications celebrate (3/7/14/30/60/100/365); colors interpolate
+// smoothly between them so every day of progress shows, not just the
+// milestone days themselves.
+const FLAME_COLOR_STOPS = [
+  { day: 0, deep: "#8A7F70", mid: "#8A7F70", light: "#8A7F70" }, // unlit — no streak yet
+  { day: 1, deep: "#5A3A2A", mid: "#8C5030", light: "#B8724A" },
+  { day: 7, deep: "#6B4326", mid: "#A05F30", light: "#CC8850" },
+  { day: 14, deep: "#7C5236", mid: "#B8763F", light: "#E0A868" },
+  { day: 30, deep: "#8A5C2E", mid: "#C6883F", light: "#EEC078" },
+  { day: 60, deep: "#946026", mid: "#D89A3A", light: "#F5D28A" },
+  { day: 100, deep: "#9C6318", mid: "#E6A928", light: "#FADE9E" },
+  { day: 365, deep: "#A46A00", mid: "#F0BB1E", light: "#FFEAB0" },
+];
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgbToHex(rgb) {
+  return (
+    "#" +
+    rgb
+      .map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+function lerpColor(hexA, hexB, t) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  return rgbToHex(a.map((v, i) => v + (b[i] - v) * t));
+}
+
+// Finds the two stops the streak falls between and interpolates — a
+// 20-day streak reads as partway from the 14-day color toward the
+// 30-day color, not a hard jump at either boundary.
+function flameColorsForStreak(days) {
+  if (days <= 0) return FLAME_COLOR_STOPS[0];
+  let i = 1;
+  while (i < FLAME_COLOR_STOPS.length - 1 && days > FLAME_COLOR_STOPS[i].day) i++;
+  const lo = FLAME_COLOR_STOPS[i - 1];
+  const hi = FLAME_COLOR_STOPS[i];
+  const span = hi.day - lo.day || 1;
+  const t = Math.max(0, Math.min(1, (days - lo.day) / span));
+  return {
+    deep: lerpColor(lo.deep, hi.deep, t),
+    mid: lerpColor(lo.mid, hi.mid, t),
+    light: lerpColor(lo.light, hi.light, t),
+  };
+}
+
+// Lucide's "flame" glyph — a real flame silhouette rather than a flat
+// emoji, so it renders identically across iOS/Android/desktop instead of
+// however each platform happens to draw 🔥, and so it can actually carry
+// a gradient.
+const FLAME_GLYPH_PATH =
+  "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z";
+const FLAME_CORE_PATH =
+  "M9.2 15.2c.3 1.6 1.6 2.6 3 2.4 1.8-.3 2.6-2 2.3-3.7-.2-1-.9-1.7-1.1-2.7.9 1.5.4 3-.6 3.6-1 .6-2.2.1-2.6-1-.4-1 .1-2 .8-3-1.3.9-2.1 2.7-1.8 4.4z";
+let flameGradientSeq = 0;
+
+function homeStreakFlameSvg(days) {
+  const c = flameColorsForStreak(days);
+  const gradId = `flameGrad${flameGradientSeq++}`;
+  return `
+    <svg viewBox="0 0 24 24" width="28" height="28" style="overflow:visible;flex-shrink:0;">
+      <defs>
+        <linearGradient id="${gradId}" x1="0.2" y1="1" x2="0.8" y2="0">
+          <stop offset="0%" stop-color="${c.deep}"/>
+          <stop offset="55%" stop-color="${c.mid}"/>
+          <stop offset="100%" stop-color="${c.light}"/>
+        </linearGradient>
+      </defs>
+      <path d="${FLAME_GLYPH_PATH}" fill="url(#${gradId})"/>
+      <path d="${FLAME_CORE_PATH}" fill="#fff" opacity="0.3"/>
+    </svg>`;
+}
+
 // The new front door: wellness ring + reward + today's four pillars, all in
 // one card, so Wellness no longer needs its own bottom-bar slot — Home
 // *is* Wellness plus the reward now. Tapping an unfilled pillar logs a
@@ -7088,7 +7195,7 @@ function renderHomeHero(today) {
   hero.appendChild(el(`
     <div class="home-streak-flame">
       <div class="home-streak-flame-top">
-        <span class="home-streak-flame-icon">${streak.current > 0 ? "🔥" : "〰️"}</span>
+        <span class="home-streak-flame-icon">${streak.current > 0 ? homeStreakFlameSvg(streak.current) : "〰️"}</span>
         <span class="home-streak-flame-num">${streak.current}</span>
         <span class="home-streak-flame-label">day streak</span>
       </div>
