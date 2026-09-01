@@ -1278,6 +1278,16 @@ function addSheetFromTemplate(tpl) {
     ...(isActivity ? { activitySchemaV: 1, customTypes: [], weeklyGoalMinutes: ACTIVITY_WEEKLY_GOAL_DEFAULT } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
+  // Adding a space that fits a pillar IS the opt-in — don't also make
+  // the person go find Pillar Mapping and check a box before it counts.
+  const pillarKey = pillarKeyForTemplateKey(tpl.key);
+  if (pillarKey) {
+    state.pillarSourceMap ||= {};
+    state.pillarSourceMap[pillarKey] ||= [];
+    if (!state.pillarSourceMap[pillarKey].includes(id)) {
+      state.pillarSourceMap[pillarKey] = [...state.pillarSourceMap[pillarKey], id];
+    }
+  }
   scheduleSave();
   ensureCustomPanels();
   renderCustomSheet(id);
@@ -5934,6 +5944,18 @@ function pillarCandidateSheets(key) {
     });
   }
   return results;
+}
+
+// Which pillar (if any) a gallery template belongs to. Used to auto-map
+// a newly created space into that pillar's sources at creation time —
+// adding a space is already an opt-in, so Pillar Mapping in Settings is
+// where you opt back OUT, not where you go to turn it on.
+function pillarKeyForTemplateKey(templateKey) {
+  if (templateKey === "quran") return "spiritualAnchor";
+  if (templateKey === "workout" || templateKey === "activity") return "movement";
+  if (templateKey === "books") return "learning";
+  if (templateKey === "social") return "socialConnection";
+  return null;
 }
 
 // When a pillar has exactly one space that fits it and nothing's chosen
