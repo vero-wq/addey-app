@@ -40,7 +40,7 @@ const SHEET_GALLERY = [
   },
   {
     key: "quran",
-    label: "Quran Reading Plan",
+    label: "Quran Plan",
     icon: `<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h8M9 11h8M9 15h5"></path>`,
     desc: "31 reading segments with the same pace tracker as your Bible plan.",
     starterItems: [],
@@ -54,7 +54,7 @@ const SHEET_GALLERY = [
   },
   {
     key: "social",
-    label: "Connections Log",
+    label: "Connections",
     icon: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>`,
     desc: "A quick log of who you connected with today — a call, coffee, a real conversation.",
     starterItems: [],
@@ -65,7 +65,7 @@ const SHEET_GALLERY = [
   // just no longer featured as a core habit-wellness offering.
   {
     key: "wardrobe",
-    label: "Capsule Wardrobe",
+    label: "Wardrobe",
     icon: `<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path>`,
     desc: "Checklist for what's in rotation this season, by category — a general wardrobe utility, not a habit pillar.",
     starterItems: ["Tops", "Bottoms", "Outerwear", "Shoes", "Accessories"],
@@ -7846,6 +7846,25 @@ async function boot() {
     state.homeAbsorbsWellnessV1Applied = true;
   }
   state.customSheets ||= {};
+  // One-time: shortened three gallery template labels ("Connections Log",
+  // "Quran Reading Plan", "Capsule Wardrobe") so they stay well clear of
+  // truncating on the mobile bottom bar — "Connections Log" was confirmed
+  // cut off there, and even "Bible Reading" (13 chars) turns out to clip
+  // by a hair at some widths, so the replacements go shorter than that
+  // rather than just under it. Only touches a space still carrying the
+  // old default label; anything she's renamed herself afterward is left
+  // alone.
+  if (!state.sheetLabelShortenV1Applied) {
+    const OLD_TO_NEW_SHEET_LABELS = {
+      "Connections Log": "Connections",
+      "Quran Reading Plan": "Quran Plan",
+      "Capsule Wardrobe": "Wardrobe",
+    };
+    Object.values(state.customSheets).forEach((cs) => {
+      if (OLD_TO_NEW_SHEET_LABELS[cs.label]) cs.label = OLD_TO_NEW_SHEET_LABELS[cs.label];
+    });
+    state.sheetLabelShortenV1Applied = true;
+  }
   // Pillar Mapping — which spaces auto-complete each pillar. Defaults to
   // Bible for Spiritual anchor once, the first time someone has a Bible
   // sheet, since that matched what was already in use; everything else
