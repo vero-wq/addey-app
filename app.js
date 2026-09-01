@@ -688,15 +688,10 @@ function activateTab(tab) {
   if (homeRow) homeRow.classList.toggle("active", tab === "home");
   const homeCircle = document.getElementById("home-tab-circle");
   if (homeCircle) homeCircle.classList.toggle("active", tab === "home");
-  // Home always re-renders itself on every switch, so its pillar tiles are
-  // never stale. Wellness needs the same treatment — it shows the exact
-  // same per-day record (state.wellness), and a pillar quick-logged from
-  // Home only calls renderHome() afterward, never renderWellness(). Without
-  // this, switching to Wellness could show whatever it looked like the
-  // last time IT was rendered (at boot, or last time something changed
-  // from inside it) — stale relative to anything logged from Home since.
+  // Home always re-renders itself on every switch, so its pillar tiles
+  // (and everything absorbed from the old separate Wellness page) are
+  // never stale.
   if (tab === "home") renderHome();
-  if (tab === "wellness") renderWellness();
   state.activeTab = tab;
   scheduleSave();
   // Auto-growing textareas measure scrollHeight, which is 0 while their
@@ -832,7 +827,6 @@ function renderAll() {
   renderInvestments();
   renderBible();
   renderSleep();
-  renderWellness();
   Object.keys(state.customSheets).forEach((id) => renderCustomSheet(id));
   renderAppearance();
   renderSettings();
@@ -1550,7 +1544,7 @@ function renderSettings() {
   });
   minePanel.appendChild(card);
   minePanel.appendChild(
-    el(`<div class="settings-note">Wellness isn't a space you add or hide — it's the trend view behind Home. Open it anytime from "See full wellness history" on Home.</div>`)
+    el(`<div class="settings-note">Wellness isn't a space you add or hide — it's built into Home now, not a separate page.</div>`)
   );
 
   panel.appendChild(minePanel);
@@ -2172,21 +2166,24 @@ function renderQuranPace(panel, sheet, doneCount, total) {
   }
 
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
+  const finishLabel = remaining <= 0 ? "Finished!" : projectedEnd ? fmt(projectedEnd) : "—";
 
+  // Mirrors the Bible sheet's ring treatment exactly — same reasoning:
+  // one shared visual language for "percent of something done."
   const card = el(`
     <div class="card bible-pace-card">
-      <div class="bible-pace-stats">
-        <div class="bible-pace-stat">
-          <label class="muted">Start date</label>
-          <input type="date" class="quran-start-date" value="${settings.startDate}" />
+      <div class="bible-ring-row">
+        <div class="bible-ring" style="background:conic-gradient(var(--accent) ${pct}%, var(--border) ${pct}% 100%);">
+          <div class="bible-ring-inner"><div class="bible-ring-pct">${pct}%</div></div>
         </div>
-        <div class="bible-pace-stat">
-          <label class="muted">Projected finish</label>
-          <div class="bible-pace-stat-value">${remaining <= 0 ? "Finished!" : projectedEnd ? fmt(projectedEnd) : "—"}</div>
-        </div>
+        <div class="bible-ring-caption"><strong>${doneCount} of ${total}</strong> readings done<br/>Projected finish: <strong>${finishLabel}</strong></div>
       </div>
       <div class="bible-pace-track" title="${doneCount} of ${total} readings (${pct}%)">
         <div class="bible-pace-track-fill" style="width:${pct}%;"></div>
+      </div>
+      <div class="bible-pace-mini-row">
+        <label class="muted">Start date</label>
+        <input type="date" class="quran-start-date" value="${settings.startDate}" />
       </div>
     </div>
   `);
@@ -2210,15 +2207,6 @@ function renderQuranSheet(id) {
 
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
-  panel.appendChild(el(`
-    <div class="top-summary">
-      <div>
-        <div class="muted">Overall progress</div>
-        <div class="value serif">${total ? Math.round((doneCount / total) * 100) : 0}%</div>
-      </div>
-      <div class="muted">${doneCount} of ${total} readings</div>
-    </div>
-  `));
   renderQuranPace(panel, sheet, doneCount, total);
 
   const list = el(`<div class="quran-list"></div>`);
@@ -5145,21 +5133,26 @@ function renderBiblePace(panel, doneCount, total) {
   }
 
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
+  const finishLabel = remaining <= 0 ? "Finished!" : projectedEnd ? fmt(projectedEnd) : "—";
 
+  // Ring replaces the old plain "73%" text, matching the same
+  // conic-gradient ring used on Wellness and Home — one visual language
+  // for "percent of something done" across the app, per Veronika's
+  // walkthrough approval (mockup: bible_and_pattern_mockups.html).
   const card = el(`
     <div class="card bible-pace-card">
-      <div class="bible-pace-stats">
-        <div class="bible-pace-stat">
-          <label class="muted">Start date</label>
-          <input type="date" class="bible-start-date" value="${settings.startDate}" />
+      <div class="bible-ring-row">
+        <div class="bible-ring" style="background:conic-gradient(var(--accent) ${pct}%, var(--border) ${pct}% 100%);">
+          <div class="bible-ring-inner"><div class="bible-ring-pct">${pct}%</div></div>
         </div>
-        <div class="bible-pace-stat">
-          <label class="muted">Projected finish</label>
-          <div class="bible-pace-stat-value">${remaining <= 0 ? "Finished!" : projectedEnd ? fmt(projectedEnd) : "—"}</div>
-        </div>
+        <div class="bible-ring-caption"><strong>${doneCount} of ${total}</strong> chapters read<br/>Projected finish: <strong>${finishLabel}</strong></div>
       </div>
       <div class="bible-pace-track" title="${doneCount} of ${total} chapters (${pct}%)">
         <div class="bible-pace-track-fill" style="width:${pct}%;"></div>
+      </div>
+      <div class="bible-pace-mini-row">
+        <label class="muted">Start date</label>
+        <input type="date" class="bible-start-date" value="${settings.startDate}" />
       </div>
     </div>
   `);
@@ -5180,15 +5173,6 @@ function renderBible() {
   const doneCount = rows.filter((r) => r.done).length;
 
   panel.innerHTML = "";
-  panel.appendChild(el(`
-    <div class="top-summary">
-      <div>
-        <div class="muted">Overall progress</div>
-        <div class="value serif">${total ? Math.round((doneCount / total) * 100) : 0}%</div>
-      </div>
-      <div class="muted">${doneCount} of ${total} chapters</div>
-    </div>
-  `));
   renderBiblePace(panel, doneCount, total);
 
   const books = [];
@@ -6681,116 +6665,33 @@ function computeNotableCooccurrences(today) {
   return [...byPair.values()].sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 2);
 }
 
+// Promoted to hero placement (right under the streak banner) per
+// Veronika's UI/UX audit walkthrough — reuses the same trend-insight-banner
+// gradient card as the streak banner above it, with its own eyebrow label,
+// rather than the plain dashed cards it used to sit in further down the
+// page. Quietly renders nothing when there's not enough data yet, same as
+// the streak banner does, since a "not enough data" hero card would read
+// as an error in this prominent a spot.
+function wellnessPillarLabel(k) {
+  return WELLNESS_YESNO_FIELDS.find(([key]) => key === k)?.[1] || k;
+}
+
 function renderCooccurrenceCard(panel, today) {
-  const labelFor = (k) => WELLNESS_YESNO_FIELDS.find(([key]) => key === k)?.[1] || k;
+  const labelFor = wellnessPillarLabel;
   const notable = computeNotableCooccurrences(today);
-  if (!notable.length) {
-    panel.appendChild(el(`<div class="trend-pattern-card">Not enough data yet to compare pillars &mdash; needs a few weeks of both logged.</div>`));
-    return;
-  }
+  if (!notable.length) return;
   notable.forEach((r) => {
     panel.appendChild(el(`
-      <div class="trend-pattern-card">On days you logged <b>${escapeHtml(labelFor(r.keyA))}</b>, <b>${escapeHtml(labelFor(r.keyB))}</b> was also true <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>
+      <div class="trend-insight-banner">
+        <div class="trend-insight-icon">🔗</div>
+        <div class="trend-insight-text">
+          <div class="insight-hero-eyebrow">Pattern spotted</div>
+          On days you logged <b>${escapeHtml(labelFor(r.keyA))}</b>, <b>${escapeHtml(labelFor(r.keyB))}</b> was also true <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
+        </div>
+      </div>
     `));
   });
   panel.appendChild(el(`<div class="trend-pattern-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
-}
-
-function renderWellness() {
-  const panel = document.getElementById("panel-wellness");
-  const today = todayISO();
-  const todays = ensureTodaysWellnessEntry(today);
-
-  panel.innerHTML = "";
-  panel.appendChild(el(`<h2 class="section-title serif">Daily Wellness</h2>`));
-
-  // Today's card leads the page — same pillar-and-cycle grid Home uses,
-  // plus the reflection questions given real room and a real prompt
-  // instead of three single-line inputs stacked at the bottom of a grid
-  // of dropdowns. This is the thing you actually do here every day; the
-  // progress bar and trend charts are the look-back half of the page,
-  // so they come after it, not before.
-  const journalCard = el(`<div class="card wellness-journal-card"></div>`);
-  journalCard.appendChild(el(`<div class="wellness-journal-head"><div class="wellness-journal-title serif">Today</div><div class="muted wellness-journal-date">${escapeHtml(today)}</div></div>`));
-  journalCard.appendChild(el(`<div class="muted wellness-journal-sub">Body first, then how it actually went.</div>`));
-
-  // Cycle phase has its own tile + sheet below (same as Home) — only
-  // Food quality still uses the plain dropdown here.
-  journalCard.appendChild(
-    wellnessSelect("foodQuality", WELLNESS_ENUM_FIELDS.foodQuality.label, WELLNESS_ENUM_FIELDS.foodQuality.options, todays.foodQuality || "", (val) => {
-      todays.foodQuality = val;
-      scheduleSave();
-    })
-  );
-
-  journalCard.appendChild(el(`<div class="wellness-journal-pillars-label">Pillars</div>`));
-  journalCard.appendChild(renderPillarCycleGrid(todays, today, () => renderWellness()));
-
-  const activityStack = el(`<div class="wellness-journal-activity-stack"></div>`);
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    if (todays[key] !== "Yes") return;
-    const wrap = el(`<div class="wellness-journal-activity-item"></div>`);
-    wrap.appendChild(el(`<label class="muted wellness-journal-activity-label">${escapeHtml(label)} &mdash; what did you do?</label>`));
-    attachPillarActivityField(wrap, key, today);
-    activityStack.appendChild(wrap);
-  });
-  if (activityStack.children.length) {
-    // These fields default to whatever space auto-marked the pillar (e.g.
-    // "Church", "Book List") so there's always something here — but
-    // they're plain editable text, not a repeat of the tile above it.
-    journalCard.appendChild(el(`<div class="wellness-journal-activity-hint muted">Filled in from the space that marked it &mdash; edit any of these to add real detail.</div>`));
-    journalCard.appendChild(activityStack);
-  }
-
-  WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
-    const q = el(`<div class="journal-q"></div>`);
-    q.appendChild(el(`<label>${escapeHtml(label)}</label>`));
-    const textarea = document.createElement("textarea");
-    textarea.className = "auto-grow";
-    textarea.rows = 1;
-    textarea.placeholder = "…";
-    textarea.value = todays[key] || "";
-    const autoGrow = () => {
-      textarea.style.height = "auto";
-      textarea.style.height = textarea.scrollHeight + "px";
-    };
-    textarea.addEventListener("input", autoGrow);
-    textarea.addEventListener("change", () => {
-      todays[key] = textarea.value || null;
-      scheduleSave();
-    });
-    q.appendChild(textarea);
-    journalCard.appendChild(q);
-    requestAnimationFrame(autoGrow);
-  });
-  panel.appendChild(journalCard);
-
-  const wellnessHere = computeWellnessProgress(today);
-  panel.appendChild(
-    buildProgressCard(
-      "Wellness Progress",
-      wellnessHere.pct,
-      `<strong>${wellnessHere.stats.goodCount} of ${wellnessHere.stats.totalCount}</strong> good days so far this cycle<br/>${wellnessHere.prize.cycleStartDate} &mdash; ${wellnessHere.stats.endDate}`,
-      wellnessHere.tones,
-      "Last 14 days",
-      null
-    )
-  );
-
-  panel.appendChild(el(`<div class="social-circle-title" style="margin-top:4px;">Trends</div>`));
-  renderTrendInsightBanner(panel, today);
-  renderPulseChart(panel, today);
-  panel.appendChild(el(`<div class="trend-title" style="margin:2px 0 8px;">Streaks right now</div>`));
-  renderPillarStreakList(panel, today);
-  panel.appendChild(el(`<div class="trend-title" style="margin:2px 0 8px;">Pattern worth noticing</div>`));
-  renderCooccurrenceCard(panel, today);
-
-  renderIdentityQuote(panel);
-
-  const bonusStats = computeBonusCycleStats(state.veronikasPrize, today);
-  renderQuarterlyProgress(panel, today, bonusStats);
-  renderBonusPrize(panel, today, bonusStats);
-  renderWellnessHistory(panel, today);
 }
 
 // Shared editor for a single day's wellness log, whether that's a day with
@@ -7005,25 +6906,9 @@ function computeDepositStats(prize, today) {
 }
 
 // Milestones are fractions of the deposit goal, not fixed counts, so they
-// scale with whatever goal a prize ends up with. Each one nudges exactly
-// once per cycle — state.veronikasPrize.nudgedMilestones remembers which
-// fractions have already shown their card, so re-opening Home after
-// dismissing one doesn't bring it right back.
+// scale with whatever goal a prize ends up with — marked as ticks right on
+// the deposit bar (see renderHomeHero) rather than a separate callout card.
 const DEPOSIT_MILESTONE_FRACTIONS = [0.25, 0.5, 0.75];
-function depositMilestoneThresholds(goal) {
-  return DEPOSIT_MILESTONE_FRACTIONS.map((f) => Math.round(goal * f));
-}
-function nextUnnudgedMilestone(prize, depositStats) {
-  const thresholds = depositMilestoneThresholds(depositStats.goal);
-  for (let i = 0; i < DEPOSIT_MILESTONE_FRACTIONS.length; i++) {
-    const fraction = DEPOSIT_MILESTONE_FRACTIONS[i];
-    const threshold = thresholds[i];
-    if (depositStats.deposits >= threshold && !(prize.nudgedMilestones || []).includes(fraction)) {
-      return { fraction, threshold };
-    }
-  }
-  return null;
-}
 
 // ------------------------------------------------------------------
 // Streaks — consecutive "good" days (same 80%-of-logged-pillars bar as
@@ -7081,7 +6966,27 @@ function renderHome() {
 
   panel.appendChild(el(`<div class="home-greeting">Good ${homeGreetingTime()}</div>`));
 
+  // One page now, not two — Wellness's unique content (the reward, today's
+  // pillars/reflection, trends, history) lives here. The reward image
+  // stays as high as possible, right after the streak/deposits, with as
+  // little text stacked ahead of it as the milestone nudge allows — per
+  // Veronika's call, that matters more than pillars being the literal
+  // first thing on the page. Pillars and reflection follow the image,
+  // then the lower-frequency look-back stuff collapsed out of the way.
+  // See the 2026-09 Home/Wellness merge discussion for the reasoning
+  // behind cutting the old progress ring and calendar — Deposits above
+  // already said the same thing more concretely.
   panel.appendChild(renderHomeHero(today));
+  panel.appendChild(renderHomeRewardCard(today));
+  panel.appendChild(renderHomeTodayPillarsCard(today));
+  panel.appendChild(renderHomeTodayDetailsCard(today));
+
+  renderTrendInsightBanner(panel, today);
+  renderCooccurrenceCard(panel, today);
+  renderHomeTrendsSection(panel, today);
+  renderIdentityQuote(panel);
+  renderWellnessHistory(panel, today);
+
   panel.appendChild(renderYourSpaces());
 
   panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a space below to open it.</div>`));
@@ -7206,66 +7111,252 @@ function renderHomeHero(today) {
   // Streak and Deposits are deliberately two different numbers, and the
   // small label under Deposits exists specifically to keep them from
   // reading as the same thing: streak resets the moment a day is missed,
-  // while deposits only ever accumulate across the whole cycle.
+  // while deposits only ever accumulate across the whole cycle. The old
+  // "Cumulative this cycle" caption and the separate "Milestone reached"
+  // callout card are gone per Veronika's call — the caption's target
+  // date/ready-to-claim info already shows on the reward card right
+  // below, and milestones are marked directly on the bar as ticks instead
+  // of a dismissible text card that showed up unexplained.
   hero.appendChild(el(`
     <div class="home-deposit-track">
       <div class="home-deposit-track-row">
         <span class="home-deposit-track-label">Deposits toward ${escapeHtml(prize.itemName || "your reward")}</span>
         <span class="home-deposit-track-count">${deposits.deposits} of ${deposits.goal}</span>
       </div>
-      <div class="home-deposit-track-bar"><div class="home-deposit-track-fill" style="width:${deposits.pct}%;"></div></div>
-      <div class="home-cycle-caption">Cumulative this cycle &middot; <strong>${wellness.stats.goodCount} of ${wellness.stats.totalCount}</strong> days logged &middot; ${wellness.stats.reached ? "ready to claim" : `target ${wellness.stats.endDate}`}</div>
-    </div>
-  `));
-
-  const milestone = nextUnnudgedMilestone(prize, deposits);
-  if (milestone) {
-    // A suggestion, not a call to action into Budget — Budget isn't a
-    // space this nudge should be steering anyone toward, so this just
-    // says the thing out loud and gets out of the way. Addley never
-    // moves money itself; this is the whole nudge, not a first step
-    // toward a bigger flow.
-    const nudge = el(`
-      <div class="home-nudge-card">
-        <div class="home-nudge-title">Milestone reached &mdash; ${milestone.threshold} deposits</div>
-        <div class="home-nudge-body">Consider moving some money toward ${escapeHtml(prize.itemName || "your reward")} &mdash; Addley just nudges, it never moves money itself.</div>
-        <div class="home-nudge-actions">
-          <button type="button" class="home-nudge-btn-ghost">Got it</button>
-        </div>
+      <div class="home-deposit-track-bar">
+        <div class="home-deposit-track-fill" style="width:${deposits.pct}%;"></div>
+        ${DEPOSIT_MILESTONE_FRACTIONS.map((f) => `<div class="home-deposit-tick ${deposits.deposits >= Math.round(deposits.goal * f) ? "passed" : ""}" style="left:${f * 100}%;" title="${Math.round(deposits.goal * f)} deposits"></div>`).join("")}
       </div>
-    `);
-    const dismiss = () => {
-      prize.nudgedMilestones = [...(prize.nudgedMilestones || []), milestone.fraction];
-      scheduleSave();
-      renderHome();
-    };
-    nudge.querySelector(".home-nudge-btn-ghost").addEventListener("click", dismiss);
-    hero.appendChild(nudge);
-  }
-
-  const prizeBanner = el(`<div class="home-hero-prize-banner"></div>`);
-  if (prize.itemPhoto) {
-    prizeBanner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
-  } else {
-    prizeBanner.appendChild(el(`<div class="home-hero-prize-banner-noimg">No photo yet — tap to add one</div>`));
-  }
-  prizeBanner.appendChild(el(`
-    <div class="home-hero-prize-scrim">
-      <div class="home-hero-prize-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
-      <div class="home-hero-prize-sub">${wellness.stats.reached ? "Ready to claim" : `Unlocks ${wellness.stats.endDate}`}</div>
     </div>
   `));
-  prizeBanner.addEventListener("click", () => activateTab("wellness"));
-  hero.appendChild(prizeBanner);
-
-  hero.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
-  hero.appendChild(renderPillarCycleGrid(todaysEntry, today, () => renderHome()));
-
-  const historyLink = el(`<button type="button" class="home-hero-history-link">See full wellness history &rarr;</button>`);
-  historyLink.addEventListener("click", () => activateTab("wellness"));
-  hero.appendChild(historyLink);
 
   return hero;
+}
+
+// The tap grid on its own card, kept visually light (no streak/deposit
+// text stacked above it) — per Veronika's call, the reward photo needs to
+// stay high up with as little text ahead of it as possible, so the grid
+// moved to right after the reward instead of piling more text-heavy
+// content between the hero and the image.
+function renderHomeTodayPillarsCard(today) {
+  const todaysEntry = ensureTodaysWellnessEntry(today);
+  const card = el(`<div class="card"></div>`);
+  card.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
+  card.appendChild(renderPillarCycleGrid(todaysEntry, today, () => renderHome()));
+  return card;
+}
+
+// Food quality, per-pillar activity detail, and the three reflection
+// questions — this used to be the Wellness page's own "Today" card, one
+// page away from the pillar taps above. Same fields, same behavior, now
+// living right under them since it's the same "today" either way.
+function renderHomeTodayDetailsCard(today) {
+  const todaysEntry = ensureTodaysWellnessEntry(today);
+  const card = el(`<div class="card wellness-journal-card"></div>`);
+  card.appendChild(el(`<div class="wellness-journal-title serif">How today went</div>`));
+
+  card.appendChild(
+    wellnessSelect("foodQuality", WELLNESS_ENUM_FIELDS.foodQuality.label, WELLNESS_ENUM_FIELDS.foodQuality.options, todaysEntry.foodQuality || "", (val) => {
+      todaysEntry.foodQuality = val;
+      scheduleSave();
+    })
+  );
+
+  const activityStack = el(`<div class="wellness-journal-activity-stack"></div>`);
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    if (todaysEntry[key] !== "Yes") return;
+    const wrap = el(`<div class="wellness-journal-activity-item"></div>`);
+    wrap.appendChild(el(`<label class="muted wellness-journal-activity-label">${escapeHtml(label)} &mdash; what did you do?</label>`));
+    attachPillarActivityField(wrap, key, today);
+    activityStack.appendChild(wrap);
+  });
+  if (activityStack.children.length) {
+    card.appendChild(el(`<div class="wellness-journal-activity-hint muted">Filled in from the space that marked it &mdash; edit any of these to add real detail.</div>`));
+    card.appendChild(activityStack);
+  }
+
+  WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
+    const q = el(`<div class="journal-q"></div>`);
+    q.appendChild(el(`<label>${escapeHtml(label)}</label>`));
+    const textarea = document.createElement("textarea");
+    textarea.className = "auto-grow";
+    textarea.rows = 1;
+    textarea.placeholder = "…";
+    textarea.value = todaysEntry[key] || "";
+    const autoGrow = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    };
+    textarea.addEventListener("input", autoGrow);
+    textarea.addEventListener("change", () => {
+      todaysEntry[key] = textarea.value || null;
+      scheduleSave();
+    });
+    q.appendChild(textarea);
+    card.appendChild(q);
+    requestAnimationFrame(autoGrow);
+  });
+
+  return card;
+}
+
+// The reward card — photo + name + unlock date, tap the photo to change
+// it, "Edit reward" for name/timeframe. Replaces three separate views of
+// the same prize that used to exist (this banner, the old "My Bonus to
+// Myself" card, and a date range on the old progress ring) with one.
+function renderHomeRewardCard(today) {
+  const prize = state.veronikasPrize;
+  const stats = computeBonusCycleStats(prize, today);
+  const card = el(`<div class="card"></div>`);
+
+  const banner = el(`<div class="home-hero-prize-banner"></div>`);
+  if (prize.itemPhoto) {
+    banner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
+  } else {
+    banner.appendChild(el(`<div class="home-hero-prize-banner-noimg">No photo yet — tap to add one</div>`));
+  }
+  banner.appendChild(el(`
+    <div class="home-hero-prize-scrim">
+      <div class="home-hero-prize-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
+      <div class="home-hero-prize-sub">${stats.reached ? "Ready to claim" : `Unlocks ${stats.endDate}`}</div>
+    </div>
+  `));
+  const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
+  banner.appendChild(photoInput);
+  banner.addEventListener("click", () => photoInput.click());
+  photoInput.addEventListener("change", () => {
+    const file = photoInput.files[0];
+    if (!file) return;
+    resizeImageToDataUrl(file).then((dataUrl) => {
+      prize.itemPhoto = dataUrl;
+      scheduleSave();
+      renderHome();
+    });
+  });
+  card.appendChild(banner);
+
+  const editRow = el(`<button type="button" class="mini-link" style="margin-top:8px;">Edit reward &rarr;</button>`);
+  editRow.addEventListener("click", () => openRewardSettingsModal());
+  card.appendChild(editRow);
+
+  if (stats.reached) {
+    card.appendChild(el(`<div class="prize-divider"></div>`));
+    card.appendChild(el(`<div class="muted" style="text-align:center;margin:8px 0 12px;">${stats.goodCount} of the last ${stats.totalCount} days were good days.</div>`));
+
+    const actionRow = el(`<div style="display:flex;gap:10px;"></div>`);
+    const itemLabel = prize.itemName ? prize.itemName : "your prize";
+    const claimBtn = el(`<button type="button" class="btn-primary" style="flex:1;">Claim ${escapeHtml(itemLabel)}</button>`);
+    const extendBtn = el(`<button type="button" class="btn-ghost" style="flex:1;">Give myself more time</button>`);
+    actionRow.appendChild(claimBtn);
+    actionRow.appendChild(extendBtn);
+    card.appendChild(actionRow);
+
+    const extendChips = el(`<div style="display:none;gap:8px;margin-top:10px;justify-content:center;"></div>`);
+    [30, 60, 90].forEach((days) => {
+      const chip = el(`<button type="button" class="split-chip">+${days} days</button>`);
+      chip.addEventListener("click", () => {
+        prize.cycleLengthDays += days;
+        scheduleSave();
+        renderHome();
+      });
+      extendChips.appendChild(chip);
+    });
+    card.appendChild(extendChips);
+
+    claimBtn.addEventListener("click", () => {
+      prize.cycleStartDate = todayISO();
+      prize.cycleLengthDays = 90;
+      prize.itemName = "";
+      prize.itemPhoto = null;
+      scheduleSave();
+      renderHome();
+    });
+    extendBtn.addEventListener("click", () => {
+      extendChips.style.display = extendChips.style.display === "none" ? "flex" : "none";
+    });
+  }
+
+  return card;
+}
+
+// Name + timeframe, the two things about the reward that change rarely
+// enough to be worth tucking behind an explicit "Edit" rather than
+// sitting on the main card — replaces the old always-visible progress
+// ring/calendar's timeframe form.
+function openRewardSettingsModal() {
+  const prize = state.veronikasPrize;
+  const presetLengths = [
+    { value: "30", label: "1 month" },
+    { value: "60", label: "2 months" },
+    { value: "90", label: "Quarterly (3 months)" },
+    { value: "180", label: "6 months" },
+    { value: "custom", label: "Custom" },
+  ];
+  const matchingPreset = presetLengths.find((p) => p.value === String(prize.cycleLengthDays));
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3>Edit reward</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="info-modal-body">
+          <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Name</label>
+          <input type="text" class="reward-name-input" value="${escapeHtml(prize.itemName || "")}" placeholder="Name this cycle's prize" style="width:100%;box-sizing:border-box;margin-bottom:14px;" />
+          <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Timeframe</label>
+          <select class="prize-length-select" style="width:100%;">
+            ${presetLengths
+              .map((p) => {
+                const isSelected = matchingPreset ? p.value === matchingPreset.value : p.value === "custom";
+                return `<option value="${p.value}" ${isSelected ? "selected" : ""}>${p.label}</option>`;
+              })
+              .join("")}
+          </select>
+          <input type="number" min="1" class="prize-length-custom" placeholder="Number of days" value="${matchingPreset ? "" : prize.cycleLengthDays}" style="${matchingPreset ? "display:none;" : ""}margin-top:8px;width:100%;box-sizing:border-box;" />
+          <label class="muted" style="display:block;font-size:12px;margin:14px 0 4px;">Start date</label>
+          <input type="date" class="prize-start-date" value="${prize.cycleStartDate}" style="width:100%;box-sizing:border-box;" />
+          <button type="button" class="btn-primary reward-save-btn" style="margin-top:18px;width:100%;padding:10px;border-radius:8px;border:none;">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+  overlay.querySelector(".prize-length-select").addEventListener("change", (e) => {
+    overlay.querySelector(".prize-length-custom").style.display = e.target.value === "custom" ? "block" : "none";
+  });
+  overlay.querySelector(".reward-save-btn").addEventListener("click", () => {
+    const newName = overlay.querySelector(".reward-name-input").value;
+    const lengthSelect = overlay.querySelector(".prize-length-select").value;
+    const customDays = parseInt(overlay.querySelector(".prize-length-custom").value, 10);
+    const newLength = lengthSelect === "custom" ? customDays : parseInt(lengthSelect, 10);
+    const newStart = overlay.querySelector(".prize-start-date").value;
+    prize.itemName = newName;
+    if (newLength && newLength > 0) prize.cycleLengthDays = newLength;
+    if (newStart) prize.cycleStartDate = newStart;
+    scheduleSave();
+    overlay.remove();
+    renderHome();
+  });
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
+}
+
+// Trends, collapsed by default — the pulse chart and per-pillar streak
+// list, same <details class="card"> pattern as History right below it, so
+// the heavier look-back content doesn't turn Home into an endless scroll.
+function renderHomeTrendsSection(panel, today) {
+  const section = el(`
+    <details class="card">
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="subsection-title serif" style="margin:0;">Trends</span></summary>
+    </details>
+  `);
+  panel.appendChild(section);
+  renderPulseChart(section, today);
+  section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
+  renderPillarStreakList(section, today);
 }
 
 // Tapping an undone pillar — a bottom sheet instead of a silent toggle,
@@ -7274,6 +7365,57 @@ function renderHomeHero(today) {
 // manual labels; "+ New" is a one-line prompt for anything not seen
 // before; "Just mark done" keeps the zero-friction path fully intact for
 // days you don't want to bother with the detail.
+// Which currently-mapped spaces for this pillar are actually visible/
+// navigable right now — same mapping as pillarSourceLabel, but returning
+// real sheet ids so a tap can jump straight there instead of just naming
+// it in a caption.
+function pillarSourceSheets(key) {
+  const ids = state.pillarSourceMap?.[key] || [];
+  return ids
+    .map((id) => {
+      const sheet = state.sheets.find((s) => s.id === id && s.visible);
+      return sheet ? { id, label: sheetLabel(sheet) } : null;
+    })
+    .filter(Boolean);
+}
+
+// A pillar with a connected space gets one extra tap before logging,
+// instead of jumping straight there or always opening the manual popup —
+// per Veronika's call: some days you're about to go do the real thing
+// (open Bible Reading and actually read), other days you already did it
+// off-app and just want to say so (manual). Reuses the exact same
+// pillarql-* styling as the manual popup right below it so the two read
+// as one flow, not two different modals.
+function openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDone) {
+  const overlay = el(`
+    <div class="modal-overlay sheet">
+      <div class="modal-box pillarql-box">
+        <div class="pillarql-title">${escapeHtml(label)}</div>
+        <div class="pillarql-sub">Go log it there, or just mark it done here.</div>
+        <div class="pillarql-chip-row"></div>
+        <button type="button" class="pillarql-skip">Mark done manually</button>
+      </div>
+    </div>
+  `);
+  const row = overlay.querySelector(".pillarql-chip-row");
+  sources.forEach(({ id, label: sourceLabel }) => {
+    const btn = el(`<button type="button" class="pillarql-chip">Open ${escapeHtml(sourceLabel)}</button>`);
+    btn.addEventListener("click", () => {
+      overlay.remove();
+      activateTab(id);
+    });
+    row.appendChild(btn);
+  });
+  overlay.querySelector(".pillarql-skip").addEventListener("click", () => {
+    overlay.remove();
+    openPillarQuickLogModal(key, label, today, todaysEntry, onDone);
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
 function openPillarQuickLogModal(key, label, today, todaysEntry, onDone) {
   const history = pillarManualLabelHistory(key);
   const overlay = el(`
@@ -7333,6 +7475,11 @@ function renderPillarCycleGrid(todaysEntry, today, onDone) {
     tile.addEventListener("click", () => {
       if (done) {
         openWellnessDayEditor(today, onDone);
+        return;
+      }
+      const sources = pillarSourceSheets(key);
+      if (sources.length) {
+        openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDone);
       } else {
         openPillarQuickLogModal(key, label, today, todaysEntry, onDone);
       }
@@ -7481,146 +7628,6 @@ function renderIdentityQuote(panel) {
   panel.appendChild(card);
 }
 
-function renderQuarterlyProgress(panel, today, stats) {
-  const prize = state.veronikasPrize;
-  const { endDate, days } = stats;
-
-  const card = el(`<div class="card"></div>`);
-  const headerRow = el(`
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">
-      <div style="font-weight:600;">Wellness Progress</div>
-      <button type="button" class="btn-ghost small prize-edit-toggle">Edit</button>
-    </div>
-  `);
-  card.appendChild(headerRow);
-  card.appendChild(el(`<div class="muted" style="font-size:13px;margin-bottom:2px;">${prize.cycleStartDate} &mdash; ${endDate} &middot; from Daily Wellness</div>`));
-
-  const presetLengths = [
-    { value: "30", label: "1 month" },
-    { value: "60", label: "2 months" },
-    { value: "90", label: "Quarterly (3 months)" },
-    { value: "180", label: "6 months" },
-    { value: "custom", label: "Custom" },
-  ];
-  const matchingPreset = presetLengths.find((p) => p.value === String(prize.cycleLengthDays));
-  const settingsForm = el(`
-    <div class="prize-settings-form" style="display:none;">
-      <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Timeframe</label>
-      <select class="prize-length-select">
-        ${presetLengths
-          .map((p) => {
-            const isSelected = matchingPreset ? p.value === matchingPreset.value : p.value === "custom";
-            return `<option value="${p.value}" ${isSelected ? "selected" : ""}>${p.label}</option>`;
-          })
-          .join("")}
-      </select>
-      <input type="number" min="1" class="prize-length-custom" placeholder="Number of days" value="${matchingPreset ? "" : prize.cycleLengthDays}" style="${matchingPreset ? "display:none;" : ""}margin-top:8px;width:100%;box-sizing:border-box;" />
-      <label class="muted" style="display:block;font-size:12px;margin:10px 0 4px 0;">Start date</label>
-      <input type="date" class="prize-start-date" value="${prize.cycleStartDate}" style="width:100%;box-sizing:border-box;" />
-      <button type="button" class="btn-primary small prize-save-settings" style="margin-top:10px;width:100%;">Save timeframe</button>
-    </div>
-  `);
-  card.appendChild(settingsForm);
-
-  headerRow.querySelector(".prize-edit-toggle").addEventListener("click", () => {
-    settingsForm.style.display = settingsForm.style.display === "none" ? "block" : "none";
-  });
-  settingsForm.querySelector(".prize-length-select").addEventListener("change", (e) => {
-    settingsForm.querySelector(".prize-length-custom").style.display = e.target.value === "custom" ? "block" : "none";
-  });
-  settingsForm.querySelector(".prize-save-settings").addEventListener("click", () => {
-    const lengthSelect = settingsForm.querySelector(".prize-length-select").value;
-    const customDays = parseInt(settingsForm.querySelector(".prize-length-custom").value, 10);
-    const newLength = lengthSelect === "custom" ? customDays : parseInt(lengthSelect, 10);
-    const newStart = settingsForm.querySelector(".prize-start-date").value;
-    if (newLength && newLength > 0) prize.cycleLengthDays = newLength;
-    if (newStart) prize.cycleStartDate = newStart;
-    scheduleSave();
-    renderWellness();
-  });
-
-  const calGrid = el(`<div class="prize-cal-grid"></div>`);
-  days.forEach(({ positive }) => {
-    calGrid.appendChild(el(`<div class="prize-cal-cell ${positive ? "good" : ""}"></div>`));
-  });
-  card.appendChild(calGrid);
-
-  panel.appendChild(card);
-}
-
-function renderBonusPrize(panel, today, stats) {
-  const prize = state.veronikasPrize;
-  const { endDate, reached, goodCount, totalCount } = stats;
-
-  const card = el(`<div class="card"></div>`);
-  card.appendChild(el(`<div style="font-weight:600;margin-bottom:10px;">My Bonus to Myself</div>`));
-
-  const photoWrap = el(`<div class="prize-photo-wrap"></div>`);
-  const photoEl = prize.itemPhoto
-    ? el(`<img class="prize-photo" src="${prize.itemPhoto}" title="Click to change photo" />`)
-    : el(`<div class="prize-photo-placeholder">Add a photo</div>`);
-  photoWrap.appendChild(photoEl);
-  const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
-  photoWrap.appendChild(photoInput);
-  photoEl.addEventListener("click", () => photoInput.click());
-  photoInput.addEventListener("change", () => {
-    const file = photoInput.files[0];
-    if (!file) return;
-    resizeImageToDataUrl(file).then((dataUrl) => {
-      prize.itemPhoto = dataUrl;
-      scheduleSave();
-      renderWellness();
-    });
-  });
-  card.appendChild(photoWrap);
-
-  const itemNameInput = el(`<input type="text" class="prize-item-name" value="${escapeHtml(prize.itemName)}" placeholder="Name this cycle's prize" />`);
-  itemNameInput.addEventListener("change", (e) => {
-    prize.itemName = e.target.value;
-    scheduleSave();
-  });
-  card.appendChild(itemNameInput);
-  card.appendChild(el(`<div class="muted" style="text-align:center;font-size:12px;">${endDate}</div>`));
-
-  if (reached) {
-    card.appendChild(el(`<div class="prize-divider"></div>`));
-    card.appendChild(el(`<div class="muted" style="text-align:center;margin-bottom:12px;">${goodCount} of the last ${totalCount} days were good days.</div>`));
-
-    const actionRow = el(`<div style="display:flex;gap:10px;"></div>`);
-    const itemLabel = prize.itemName ? prize.itemName : "your prize";
-    const claimBtn = el(`<button type="button" class="btn-primary" style="flex:1;">Claim ${escapeHtml(itemLabel)}</button>`);
-    const extendBtn = el(`<button type="button" class="btn-ghost" style="flex:1;">Give myself more time</button>`);
-    actionRow.appendChild(claimBtn);
-    actionRow.appendChild(extendBtn);
-    card.appendChild(actionRow);
-
-    const extendChips = el(`<div style="display:none;gap:8px;margin-top:10px;justify-content:center;"></div>`);
-    [30, 60, 90].forEach((days) => {
-      const chip = el(`<button type="button" class="split-chip">+${days} days</button>`);
-      chip.addEventListener("click", () => {
-        prize.cycleLengthDays += days;
-        scheduleSave();
-        renderWellness();
-      });
-      extendChips.appendChild(chip);
-    });
-    card.appendChild(extendChips);
-
-    claimBtn.addEventListener("click", () => {
-      prize.cycleStartDate = todayISO();
-      prize.cycleLengthDays = 90;
-      prize.itemName = "";
-      prize.itemPhoto = null;
-      scheduleSave();
-      renderWellness();
-    });
-    extendBtn.addEventListener("click", () => {
-      extendChips.style.display = extendChips.style.display === "none" ? "flex" : "none";
-    });
-  }
-
-  panel.appendChild(card);
-}
 
 function renderWellnessHistory(panel, today) {
   const section = el(`
@@ -7678,7 +7685,7 @@ function renderWellnessHistory(panel, today) {
           </div>
         `);
         entryEl.querySelector(".wellness-history-edit-btn").addEventListener("click", () => {
-          openWellnessDayEditor(l.logDate, () => renderWellness());
+          openWellnessDayEditor(l.logDate, () => renderHome());
         });
         monthDetails.appendChild(entryEl);
       });
