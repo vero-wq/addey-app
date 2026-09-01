@@ -277,13 +277,63 @@ function showAuthGate(onSignedIn) {
   }
 }
 
+// Returns null ONLY for the one case where a blank slate is actually
+// correct: this account genuinely has no row yet (PGRST116 — "no rows
+// returned" from .single()). The signup trigger creates that row the
+// instant an account is created, so in practice this should only ever
+// fire for a brand-new sign-up. Anything else — a dropped connection, a
+// timeout, a Supabase hiccup — THROWS instead of returning null. That
+// distinction matters: this function used to return null for every kind
+// of failure alike, which meant a plain network blip while opening the
+// app looked identical to "new account with nothing saved." boot() would
+// then start on a blank slate and write it straight back — silently
+// overwriting months of real budget/investment/wellness/journal history
+// with nothing, all from a moment of bad connectivity. Callers now have
+// to handle the thrown error deliberately rather than data loss just
+// falling out of an unrelated bug.
 async function loadStateFromSupabase(userId) {
   const { data, error } = await sb.from("app_state").select("data").eq("user_id", userId).single();
   if (error) {
-    console.error("Could not load saved data:", error);
-    return null;
+    if (error.code === "PGRST116") return null;
+    throw error;
   }
   return data?.data ?? null;
+}
+
+// A few retries with short backoff before giving up — most load failures
+// at boot are a brief connection hiccup that clears up within a couple
+// of seconds, not something worth immediately dropping into an error
+// screen over.
+async function loadStateWithRetries(userId, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await loadStateFromSupabase(userId);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** i));
+    }
+  }
+  throw lastErr;
+}
+
+// Shown when boot() truly can't reach the account's data after retrying —
+// reuses the same boot-loading overlay instead of a separate screen, with
+// a manual retry since at this point auto-retrying quietly hasn't worked.
+function showBootLoadError() {
+  const overlay = document.getElementById("boot-loading");
+  if (!overlay) return;
+  overlay.classList.remove("hide");
+  overlay.innerHTML = `
+    <div class="boot-loading-grid"><div></div><div></div><div></div><div></div></div>
+    <div class="boot-loading-text" style="max-width:260px; text-align:center; line-height:1.5;">
+      Couldn't load your data. This is usually just a dropped connection &mdash; check you're online and try again.
+    </div>
+    <button type="button" class="btn-primary" id="boot-retry-btn">Try again</button>
+  `;
+  document.getElementById("boot-retry-btn").addEventListener("click", () => {
+    location.reload();
+  });
 }
 
 // Saving uploads this whole device's in-memory `state` as one JSON blob —
@@ -7543,10 +7593,21 @@ async function boot() {
 
   // Load this account's row. The signup trigger on the database side
   // creates it automatically the moment someone creates an account, so
-  // missing entirely here means something went wrong rather than "new
-  // user" — falling back to a blank slate either way keeps this from
-  // ever showing a dead screen.
-  state = await loadStateFromSupabase(currentUserId);
+  // a genuinely missing row (loadStateFromSupabase returning null) means
+  // "new user" and starting blank below is correct. A THROWN error is a
+  // different thing entirely — a dropped connection, a timeout, a
+  // Supabase hiccup — and must stop boot() here rather than falling
+  // through to a blank slate, which would get written straight back to
+  // the database a few lines down and silently erase everything real
+  // that was there before. Retries a few times first since most of these
+  // clear up within a couple of seconds on their own.
+  try {
+    state = await loadStateWithRetries(currentUserId);
+  } catch (err) {
+    console.error("Could not load your data after retrying:", err);
+    showBootLoadError();
+    return;
+  }
   if (!state) {
     state = { todos: [], budget: [], investmentAccounts: [], bible: [], goals: [], wellness: [], nextId: 1 };
   }
