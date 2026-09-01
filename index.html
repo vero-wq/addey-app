@@ -663,7 +663,7 @@ td input:hover { border-color: var(--border); }
 
 /* Headline insight banner — one plain-language sentence about the
    strongest pillar, instead of leading with raw grids. */
-.trend-insight-banner { background: linear-gradient(135deg, #F3E7D2, #EFE0C4); border: 1px solid #E3D1AC; border-radius: 16px; padding: 14px 16px; margin-bottom: 14px; display: flex; gap: 12px; align-items: flex-start; }
+.trend-insight-banner { background: linear-gradient(135deg, #F3E7D2, #EFE0C4); border: 1px solid #E3D1AC; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; display: flex; gap: 12px; align-items: flex-start; }
 html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(135deg, #3A3324, #2E2A1E); border-color: #4A4230; }
 .trend-insight-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid #E3D1AC; color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .trend-insight-text { font-size: 13.5px; line-height: 1.45; padding-top: 3px; }
@@ -679,7 +679,7 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
    regardless of how many pillars there are, unlike a 2-up grid with an
    odd one left stranded alone on its own row. */
 .streak-chip-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-.streak-chip { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.streak-chip { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .sc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .sc-label { font-size: 13px; font-weight: 500; width: 108px; flex-shrink: 0; }
 .sc-mini { display: flex; gap: 2.5px; flex: 1; }
@@ -688,7 +688,7 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .sc-streak { font-size: 12.5px; font-weight: 600; color: var(--accent-dark); white-space: nowrap; width: 30px; text-align: right; }
 
 /* Between-pillar pattern card, styled as a quiet aside rather than a data table. */
-.trend-pattern-card { background: var(--surface); border: 1px dashed var(--border); border-radius: 14px; padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.5; font-style: italic; }
+.trend-pattern-card { background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.5; font-style: italic; }
 .trend-pattern-card b { color: var(--text); font-style: normal; }
 .trend-pattern-card + .trend-pattern-card { margin-top: 8px; }
 .trend-pattern-note { font-size: 10.5px; color: var(--muted); margin-top: 8px; font-style: italic; }
@@ -1153,8 +1153,8 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 
 /* Streak */
 .home-streak-flame { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
-.home-streak-flame-top { display: flex; align-items: baseline; gap: 8px; }
-.home-streak-flame-icon { font-size: 22px; line-height: 1; }
+.home-streak-flame-top { display: flex; align-items: center; gap: 8px; }
+.home-streak-flame-icon { font-size: 22px; line-height: 1; display: inline-flex; }
 .home-streak-flame-num { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 26px; color: var(--accent-dark); }
 .home-streak-flame-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .home-streak-flame-longest { font-size: 11px; color: var(--muted); margin-top: 4px; }
