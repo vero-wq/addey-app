@@ -7233,11 +7233,21 @@ function renderHomeRewardCard(today) {
       renderHome();
     });
   });
-  card.appendChild(banner);
 
-  const editRow = el(`<button type="button" class="mini-link" style="margin-top:8px;">Edit reward &rarr;</button>`);
-  editRow.addEventListener("click", () => openRewardSettingsModal());
-  card.appendChild(editRow);
+  // A small pencil in the corner opens the settings modal (name, timeframe,
+  // start date) — tapping the rest of the photo still swaps the picture.
+  const editBtn = el(`
+    <button type="button" class="home-hero-prize-edit-btn" aria-label="Edit reward">
+      ${iconSvg('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>')}
+    </button>
+  `);
+  editBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openRewardSettingsModal();
+  });
+  banner.appendChild(editBtn);
+
+  card.appendChild(banner);
 
   if (stats.reached) {
     card.appendChild(el(`<div class="prize-divider"></div>`));
