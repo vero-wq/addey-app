@@ -32,6 +32,13 @@ const SHEET_GALLERY = [
     starterItems: ["Upper body — Monday", "Lower body — Wednesday", "Full body — Friday"],
   },
   {
+    key: "activity",
+    label: "Activity Log",
+    icon: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>`,
+    desc: "Walks, hikes, runs, rides — anything that's not sets and reps. Workout Log's sibling for Movement.",
+    starterItems: [],
+  },
+  {
     key: "meals",
     label: "Meal Planner",
     icon: `<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>`,
@@ -1250,6 +1257,7 @@ function addSheetFromTemplate(tpl) {
   const isBooks = tpl.key === "books";
   const isWorkout = tpl.key === "workout";
   const isSocial = tpl.key === "social";
+  const isActivity = tpl.key === "activity";
   state.customSheets[id] = {
     label: tpl.label,
     templateKey: tpl.key,
@@ -1259,7 +1267,7 @@ function addSheetFromTemplate(tpl) {
       ? seedQuranItems()
       : isBooks
       ? seedBookItems()
-      : isWorkout || isSocial
+      : isWorkout || isSocial || isActivity
       ? []
       : tpl.starterItems.map((text) => ({ id: nextId(), text, done: false })),
     ...(isWardrobe ? { wardrobeSchemaV: 2, openCategories: {}, activeSeason: null } : {}),
@@ -1267,6 +1275,7 @@ function addSheetFromTemplate(tpl) {
     ...(isBooks ? { booksSchemaV: 1, openCategories: {}, activeStatus: "toread" } : {}),
     ...(isWorkout ? seedWorkoutSheetData() : {}),
     ...(isSocial ? { socialSchemaV: 2, people: [] } : {}),
+    ...(isActivity ? { activitySchemaV: 1, customTypes: [], weeklyGoalMinutes: ACTIVITY_WEEKLY_GOAL_DEFAULT } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
   scheduleSave();
@@ -1291,6 +1300,8 @@ function renderCustomSheet(id) {
     renderWorkoutSheet(id);
   } else if (sheet && sheet.templateKey === "social") {
     renderSocialSheet(id);
+  } else if (sheet && sheet.templateKey === "activity") {
+    renderActivitySheet(id);
   } else {
     renderChecklistSheet(id);
   }
@@ -2748,6 +2759,528 @@ function socialQuickLog(sheetId, personId) {
   renderHome();
 }
 
+// ------------------------------------------------------------------
+// Activity Log — Workout Log's sibling under the Movement pillar for
+// everything that isn't sets and reps: a walk, a hike, a run, a ride.
+// Deliberately manual-only (duration + optional distance, no elevation,
+// no GPS) since this runs as a web app with no device sensor access.
+// Always logs as today, on purpose — no date field, so a missed day is
+// genuinely missed rather than quietly backfilled, the same "it's
+// alive" logic the streak already runs on. An already-logged entry can
+// still be corrected afterward (fixing a typo in History), just never
+// backdated into existence.
+// ------------------------------------------------------------------
+const ACTIVITY_CORE_TYPES = [
+  { key: "walk", label: "Walk", icon: "🚶" },
+  { key: "hike", label: "Hike", icon: "🥾" },
+  { key: "run", label: "Run", icon: "🏃" },
+  { key: "bike", label: "Bike", icon: "🚴" },
+  { key: "swim", label: "Swim", icon: "🏊" },
+  { key: "yoga", label: "Yoga", icon: "🧘" },
+  { key: "climbing", label: "Climbing", icon: "🧗" },
+];
+const ACTIVITY_ADD_ICON_SUGGESTIONS = ["🏈", "🏒", "⚽", "🎾", "🏓", "⛹️", "🤾", "🚣"];
+const ACTIVITY_WEEKLY_GOAL_DEFAULT = 150;
+// The grid only ever shows this many tiles, plus "Add new" as the
+// eighth — otherwise it would grow forever as custom types pile up.
+// Which seven make the cut is driven by actual use (see
+// activityTypesForGrid), not creation order, so whatever you're
+// actually doing lately surfaces on its own and something you've
+// stopped doing quietly drifts out of the way — never deleted, just
+// not competing for space up top.
+const ACTIVITY_GRID_CAP = 7;
+
+// Session-only UI state (which chip is selected, whether "Add new" is
+// open) — resets each session, not persisted, same treatment as
+// settingsSubTab/bookSearchQuery. Keyed by sheet id in case more than
+// one Activity Log space ever exists.
+let activityUiStateBySheet = {};
+function activityUiState(id) {
+  return (activityUiStateBySheet[id] ||= { selectedTypeKey: ACTIVITY_CORE_TYPES[0].key, addingNew: false });
+}
+
+function activityTypesFor(sheet) {
+  return ACTIVITY_CORE_TYPES.concat(sheet.customTypes || []);
+}
+function activityTypeByKey(sheet, key) {
+  return activityTypesFor(sheet).find((t) => t.key === key) || { key, label: "Activity", icon: "🏃" };
+}
+
+// Most-recently-logged first (ties broken by definition order — core
+// types in their fixed order, then custom types in the order they were
+// added), so whatever you've actually been doing lately floats to the
+// front of the grid the same way Connections Log's quick-log chips
+// already reorder by who you last talked to. A type you've never used
+// sorts to the back, not off the list — it still shows once there's
+// room, just never displaces something you use.
+function activityTypesByRecency(sheet) {
+  const all = activityTypesFor(sheet);
+  const lastUsed = new Map();
+  sheet.items.forEach((entry) => {
+    const prev = lastUsed.get(entry.typeKey);
+    if (!prev || entry.date > prev) lastUsed.set(entry.typeKey, entry.date);
+  });
+  return all
+    .map((t, i) => ({ t, order: i, used: lastUsed.get(t.key) || null }))
+    .sort((a, b) => {
+      if (a.used && b.used) return a.used < b.used ? 1 : a.used > b.used ? -1 : a.order - b.order;
+      if (a.used) return -1;
+      if (b.used) return 1;
+      return a.order - b.order;
+    })
+    .map((x) => x.t);
+}
+// The grid's visible slice — capped so it never grows without bound.
+function activityTypesForGrid(sheet) {
+  return activityTypesByRecency(sheet).slice(0, ACTIVITY_GRID_CAP);
+}
+function activityDateShort(dateStr) {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+}
+function activityDurationLabel(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+// Consecutive days with at least one logged entry — same "today gets a
+// grace day" logic as computeStreakStats, so logging later today still
+// counts even before you've gotten to it.
+function computeActivityStreak(sheet, today) {
+  let current = 0;
+  let cursor = today;
+  let isToday = true;
+  while (true) {
+    const active = sheet.items.some((i) => i.date === cursor);
+    if (active) current++;
+    else if (!isToday) break;
+    isToday = false;
+    cursor = addDays(cursor, -1);
+  }
+  return current;
+}
+
+// Minutes logged in the rolling 7-day window ending today (not a
+// calendar week) — matches how the rest of the app measures windows
+// (deposit cycles, the sleep trend) as "last N days" rather than
+// resetting on a fixed weekday.
+function computeActivityWeeklyMinutes(sheet, today) {
+  let total = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(today, -i);
+    sheet.items.forEach((entry) => {
+      if (entry.date === d) total += entry.durationMin || 0;
+    });
+  }
+  return total;
+}
+
+// The mix pulls from every space actually mapped to Movement, not just
+// this one — so a week of strength training shows up here too, instead
+// of the chart implying nothing happened when Workout Log tells a
+// different story.
+function computeMovementMix(sheet, today) {
+  const WINDOW = 30;
+  const counts = new Map(); // label -> count
+  for (let i = 0; i < WINDOW; i++) {
+    const d = addDays(today, -i);
+    sheet.items.forEach((entry) => {
+      if (entry.date !== d) return;
+      const t = activityTypeByKey(sheet, entry.typeKey);
+      counts.set(t.label, (counts.get(t.label) || 0) + 1);
+    });
+  }
+  (state.pillarSourceMap?.movement || []).forEach((sheetId) => {
+    const other = state.customSheets[sheetId];
+    if (!other || other.templateKey !== "workout") return;
+    const goodDays = flattenWorkoutDays(other).slice(-WINDOW).filter((d) => d.tone === "good").length;
+    if (goodDays) {
+      const otherSheet = state.sheets.find((s) => s.id === sheetId);
+      const label = `Strength (${otherSheet ? sheetLabel(otherSheet) : "Workout Log"})`;
+      counts.set(label, (counts.get(label) || 0) + goodDays);
+    }
+  });
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count, pct: total ? Math.round((count / total) * 100) : 0 }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// Permanent, cumulative — unlike the streak above, these never reset.
+// Each returns a fraction toward the goal so an unearned milestone can
+// still show real progress instead of just looking locked.
+const ACTIVITY_MILESTONES = [
+  {
+    key: "first5milehike",
+    label: "First 5-mile hike",
+    icon: "🥾",
+    progress: (sheet) => {
+      const best = Math.max(0, ...sheet.items.filter((i) => i.typeKey === "hike").map((i) => i.distanceMi || 0));
+      return { earned: best >= 5, frac: Math.min(1, best / 5), caption: `${best.toFixed(1)} of 5 mi` };
+    },
+  },
+  {
+    key: "fiftyMilesWalked",
+    label: "50 miles walked",
+    icon: "🔥",
+    progress: (sheet) => {
+      const sum = sheet.items.filter((i) => i.typeKey === "walk").reduce((a, i) => a + (i.distanceMi || 0), 0);
+      return { earned: sum >= 50, frac: Math.min(1, sum / 50), caption: `${Math.round(sum)} of 50 mi` };
+    },
+  },
+  {
+    key: "hundredActivities",
+    label: "100 activities logged",
+    icon: "🏅",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
+    },
+  },
+  {
+    key: "fiftyHours",
+    label: "50 hours total",
+    icon: "⏱️",
+    progress: (sheet) => {
+      const hours = sheet.items.reduce((a, i) => a + (i.durationMin || 0), 0) / 60;
+      return { earned: hours >= 50, frac: Math.min(1, hours / 50), caption: `${hours.toFixed(1)} of 50h` };
+    },
+  },
+];
+
+function renderActivitySheet(id) {
+  const panel = document.getElementById(`panel-${id}`);
+  const sheet = state.customSheets[id];
+  if (!panel || !sheet) return;
+  sheet.items ||= [];
+  sheet.customTypes ||= [];
+  sheet.weeklyGoalMinutes ||= ACTIVITY_WEEKLY_GOAL_DEFAULT;
+  sheet.milestonesEarned ||= {};
+  const ui = activityUiState(id);
+  const today = todayISO();
+  panel.innerHTML = "";
+
+  // Record the first day each milestone actually clears the bar — never
+  // overwritten once set, so the date shown always reflects when it was
+  // truly first earned, not the last time this page happened to render.
+  let earnedChanged = false;
+  ACTIVITY_MILESTONES.forEach((m) => {
+    const p = m.progress(sheet);
+    if (p.earned && !sheet.milestonesEarned[m.key]) {
+      sheet.milestonesEarned[m.key] = today;
+      earnedChanged = true;
+    }
+  });
+  if (earnedChanged) scheduleSave();
+
+  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  // ---- Summary: weekly minutes + streak ----
+  const weeklyMinutes = computeActivityWeeklyMinutes(sheet, today);
+  const goal = sheet.weeklyGoalMinutes;
+  const barPct = goal ? Math.min(100, Math.round((weeklyMinutes / goal) * 100)) : 0;
+  const streak = computeActivityStreak(sheet, today);
+  const summaryCard = el(`
+    <div class="card">
+      <div class="al-summary-row">
+        <span class="al-summary-label">Active minutes this week</span>
+        <span class="al-summary-count">${weeklyMinutes} of <span class="al-goal-edit" title="Tap to change your weekly goal">${goal}</span></span>
+      </div>
+      <div class="al-bar" style="margin-bottom:12px;"><div class="al-bar-fill" style="width:${barPct}%;"></div></div>
+      <div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">day movement streak</span></div>
+    </div>
+  `);
+  summaryCard.querySelector(".al-goal-edit").addEventListener("click", () => {
+    const next = window.prompt("Weekly active-minutes goal:", String(goal));
+    if (next == null) return;
+    const n = parseInt(next, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    sheet.weeklyGoalMinutes = n;
+    scheduleSave();
+    renderActivitySheet(id);
+  });
+  panel.appendChild(summaryCard);
+
+  // ---- Log an activity ----
+  const logCard = el(`<div class="card"></div>`);
+  logCard.appendChild(el(`<div class="al-card-title">Log an activity</div>`));
+  const chipRow = el(`<div class="al-chip-row"></div>`);
+  const gridTypes = activityTypesForGrid(sheet);
+  const overflowTypes = activityTypesByRecency(sheet).slice(ACTIVITY_GRID_CAP);
+  gridTypes.forEach((t) => {
+    const chip = el(`<button type="button" class="al-chip${t.key === ui.selectedTypeKey ? " active" : ""}"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
+    chip.addEventListener("click", () => {
+      ui.selectedTypeKey = t.key;
+      ui.addingNew = false;
+      renderActivitySheet(id);
+    });
+    chipRow.appendChild(chip);
+  });
+  const addChip = el(`<button type="button" class="al-chip al-chip-add${ui.addingNew ? " active" : ""}"><span class="em">➕</span>Add new</button>`);
+  addChip.addEventListener("click", () => {
+    ui.addingNew = !ui.addingNew;
+    renderActivitySheet(id);
+  });
+  chipRow.appendChild(addChip);
+  logCard.appendChild(chipRow);
+
+  if (ui.addingNew) {
+    const addBox = el(`
+      <div class="al-add-box">
+        ${
+          overflowTypes.length
+            ? `<label class="muted">Already have one of these? Tap it instead of adding a duplicate</label>
+               <div class="al-chip-row al-overflow-row"></div>
+               <div class="al-add-hint" style="margin-top:0;">Bumped off the grid above since it hasn't been used in a while — still yours, just tap to bring it back.</div>`
+            : ""
+        }
+        <label class="muted" style="margin-top:${overflowTypes.length ? "12px" : "0"};">Or add something new</label>
+        <input type="text" class="al-add-name" placeholder="e.g. Football" />
+        <label class="muted" style="margin-top:10px;">Pick an icon</label>
+        <div class="al-icon-swatch-row"></div>
+        <label class="muted" style="margin-top:2px;">Or pick literally any emoji</label>
+        <input type="text" class="al-add-emoji" maxlength="4" placeholder="😀" />
+        <div class="al-add-hint">Tap in, then switch to your phone's emoji keyboard — anything there works, not just what's suggested above.</div>
+        <button type="button" class="al-save-btn al-add-save">Add to my activities</button>
+      </div>
+    `);
+    if (overflowTypes.length) {
+      const overflowRow = addBox.querySelector(".al-overflow-row");
+      overflowTypes.forEach((t) => {
+        const chip = el(`<button type="button" class="al-chip"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
+        chip.addEventListener("click", () => {
+          ui.selectedTypeKey = t.key;
+          ui.addingNew = false;
+          renderActivitySheet(id);
+        });
+        overflowRow.appendChild(chip);
+      });
+    }
+    let chosenIcon = ACTIVITY_ADD_ICON_SUGGESTIONS[0];
+    const swatchRow = addBox.querySelector(".al-icon-swatch-row");
+    const emojiInput = addBox.querySelector(".al-add-emoji");
+    ACTIVITY_ADD_ICON_SUGGESTIONS.forEach((icon, i) => {
+      const sw = el(`<button type="button" class="al-icon-swatch${i === 0 ? " sel" : ""}">${icon}</button>`);
+      sw.addEventListener("click", () => {
+        chosenIcon = icon;
+        emojiInput.value = "";
+        swatchRow.querySelectorAll(".al-icon-swatch").forEach((n) => n.classList.remove("sel"));
+        sw.classList.add("sel");
+      });
+      swatchRow.appendChild(sw);
+    });
+    emojiInput.addEventListener("input", () => {
+      if (emojiInput.value.trim()) {
+        chosenIcon = emojiInput.value.trim();
+        swatchRow.querySelectorAll(".al-icon-swatch").forEach((n) => n.classList.remove("sel"));
+      }
+    });
+    addBox.querySelector(".al-add-save").addEventListener("click", () => {
+      const name = addBox.querySelector(".al-add-name").value.trim();
+      if (!name) return;
+      const key = `custom_${nextId()}`;
+      sheet.customTypes.push({ key, label: name, icon: chosenIcon });
+      ui.selectedTypeKey = key;
+      ui.addingNew = false;
+      scheduleSave();
+      renderActivitySheet(id);
+    });
+    logCard.appendChild(addBox);
+  }
+
+  const fieldRow1 = el(`
+    <div class="al-field-row">
+      <div class="al-field"><label>Duration (min)</label><input type="number" min="0" class="al-f-duration" /></div>
+      <div class="al-field"><label>Distance (mi, optional)</label><input type="number" min="0" step="0.1" class="al-f-distance" /></div>
+    </div>
+  `);
+  const fieldRow2 = el(`<div class="al-field-row"><div class="al-field"><label>Notes (optional)</label><input type="text" class="al-f-notes" /></div></div>`);
+  logCard.appendChild(fieldRow1);
+  logCard.appendChild(fieldRow2);
+  const saveBtn = el(`<button type="button" class="al-save-btn">Save activity</button>`);
+  saveBtn.addEventListener("click", () => {
+    const durationMin = parseInt(logCard.querySelector(".al-f-duration").value, 10);
+    if (!Number.isFinite(durationMin) || durationMin <= 0) {
+      logCard.querySelector(".al-f-duration").focus();
+      return;
+    }
+    const distanceRaw = logCard.querySelector(".al-f-distance").value;
+    const distanceMi = distanceRaw ? parseFloat(distanceRaw) : null;
+    const notes = logCard.querySelector(".al-f-notes").value.trim();
+    sheet.items.push({ id: nextId(), typeKey: ui.selectedTypeKey, date: today, durationMin, distanceMi, notes });
+    scheduleSave();
+    renderActivitySheet(id);
+    renderHome();
+  });
+  logCard.appendChild(saveBtn);
+  logCard.appendChild(el(`<div class="al-note-line">Always logs as today &mdash; no backdating. Miss the day, miss the entry.</div>`));
+  panel.appendChild(logCard);
+
+  // ---- Milestones (right under logging — permanent, so it's worth
+  // seeing before scrolling, unlike the lower-frequency lookback stuff
+  // below) ----
+  const milestonesCard = el(`<div class="card"></div>`);
+  milestonesCard.appendChild(el(`<div class="al-card-title">Milestones</div>`));
+  milestonesCard.appendChild(el(`<div class="al-note-line" style="margin-bottom:14px;">Permanent, once earned &mdash; unlike the streak above, these never reset.</div>`));
+  const badgeRow = el(`<div class="al-badge-row"></div>`);
+  ACTIVITY_MILESTONES.forEach((m) => {
+    const p = m.progress(sheet);
+    const earnedDate = sheet.milestonesEarned[m.key];
+    const badge = earnedDate
+      ? el(`
+          <div class="al-badge">
+            <div class="al-badge-medal earned">${m.icon}</div>
+            <div class="lbl">${escapeHtml(m.label)}</div>
+            <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
+          </div>
+        `)
+      : el(`
+          <div class="al-badge">
+            <div class="al-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${Math.round(p.frac * 100)}%, var(--border) ${Math.round(p.frac * 100)}% 100%);">
+              <div class="al-badge-medal-inner">${m.icon}</div>
+            </div>
+            <div class="lbl">${escapeHtml(m.label)}</div>
+            <div class="sub">${escapeHtml(p.caption)}</div>
+          </div>
+        `);
+    badgeRow.appendChild(badge);
+  });
+  milestonesCard.appendChild(badgeRow);
+  panel.appendChild(milestonesCard);
+
+  // ---- Movement mix — collapsible, same treatment as Home's Trends
+  // section: interesting to check in on, not something that needs to
+  // sit open on every visit ----
+  const mix = computeMovementMix(sheet, today);
+  if (mix.length) {
+    const mixDetails = el(`
+      <details class="card">
+        <summary class="book-summary" style="margin-bottom:2px;"><span class="al-card-title" style="margin:0;">Movement mix &middot; last 30 days</span></summary>
+      </details>
+    `);
+    const mixWrap = el(`<div class="al-mix-wrap" style="margin-top:12px;"></div>`);
+    // Cumulative stops use each slice's exact fraction of the total, not
+    // the rounded display percentage — rounding five slices independently
+    // (as the legend does) can overshoot 100% and visibly clip the wedge.
+    const mixTotal = mix.reduce((a, m) => a + m.count, 0) || 1;
+    let acc = 0;
+    const stops = mix
+      .map((m, i) => {
+        const from = acc;
+        acc += (m.count / mixTotal) * 100;
+        const color = ["#A9804F", "#7C5C36", "#C7A876", "#DCC9A6", "#EFE3CF"][i % 5];
+        return `${color} ${from}% ${acc}%`;
+      })
+      .join(", ");
+    mixWrap.appendChild(el(`<div class="al-donut" style="background: conic-gradient(${stops});"></div>`));
+    const legend = el(`<div class="al-legend"></div>`);
+    mix.forEach((m, i) => {
+      const color = ["#A9804F", "#7C5C36", "#C7A876", "#DCC9A6", "#EFE3CF"][i % 5];
+      legend.appendChild(el(`<div class="al-legend-row"><span class="al-legend-dot" style="background:${color};"></span>${escapeHtml(m.label)}<span class="al-legend-pct">${m.pct}%</span></div>`));
+    });
+    mixWrap.appendChild(legend);
+    mixDetails.appendChild(mixWrap);
+    panel.appendChild(mixDetails);
+  }
+
+  // ---- History — the lookback list, at the bottom ----
+  const historyCard = el(`<div class="card"></div>`);
+  historyCard.appendChild(el(`<div class="al-card-title">History</div>`));
+  const recent = [...sheet.items].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 20);
+  if (!recent.length) {
+    historyCard.appendChild(el(`<div class="muted">Nothing logged yet.</div>`));
+  } else {
+    historyCard.appendChild(el(`<div class="al-note-line" style="margin-bottom:6px;">Tap an entry to fix a typo &mdash; this corrects what you logged, it doesn't add a new day.</div>`));
+    recent.forEach((entry) => {
+      const t = activityTypeByKey(sheet, entry.typeKey);
+      const metaParts = [activityDurationLabel(entry.durationMin)];
+      if (entry.distanceMi) metaParts.push(`${entry.distanceMi} mi`);
+      const dateLabel = entry.date === today ? "Today" : entry.date === addDays(today, -1) ? "Yesterday" : activityDateShort(entry.date);
+      const row = el(`
+        <button type="button" class="al-hist-row">
+          <span class="al-hist-icon">${t.icon}</span>
+          <span class="al-hist-main">
+            <span class="al-hist-type">${escapeHtml(t.label)}${entry.notes ? ` &middot; ${escapeHtml(entry.notes)}` : ""}</span>
+            <span class="al-hist-meta">${metaParts.join(" &middot; ")}</span>
+          </span>
+          <span class="al-hist-date">${dateLabel}</span>
+        </button>
+      `);
+      row.addEventListener("click", () => openActivityEntryEditor(id, entry.id));
+      historyCard.appendChild(row);
+    });
+  }
+  panel.appendChild(historyCard);
+}
+
+// Corrects an already-logged entry (type, duration, distance, notes) —
+// deliberately no date field here, same reasoning as the log form
+// itself: this fixes a mistake in something you really did log, it
+// never lets a new day get added after the fact.
+function openActivityEntryEditor(sheetId, entryId) {
+  const sheet = state.customSheets[sheetId];
+  const entry = sheet?.items.find((i) => i.id === entryId);
+  if (!sheet || !entry) return;
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Edit activity</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">Type</label>
+          <div class="mp-kind-row ael-type-row">
+            ${activityTypesFor(sheet)
+              .map((t) => `<button type="button" class="mp-kind ael-type-opt${t.key === entry.typeKey ? " sel" : ""}" data-key="${escapeHtml(t.key)}">${t.icon} ${escapeHtml(t.label)}</button>`)
+              .join("")}
+          </div>
+          <label class="muted">Duration (min)</label>
+          <input type="number" min="0" class="ael-f-duration" value="${entry.durationMin}" />
+          <label class="muted">Distance (mi, optional)</label>
+          <input type="number" min="0" step="0.1" class="ael-f-distance" value="${entry.distanceMi || ""}" />
+          <label class="muted">Notes</label>
+          <textarea class="ael-f-notes" rows="2">${escapeHtml(entry.notes || "")}</textarea>
+        </div>
+        <div class="modal-actions" style="justify-content:space-between;">
+          <button type="button" class="btn-ghost danger ael-delete">Delete</button>
+          <button type="button" class="btn-primary ael-save">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+  let selectedKey = entry.typeKey;
+  overlay.querySelectorAll(".ael-type-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedKey = btn.dataset.key;
+      overlay.querySelectorAll(".ael-type-opt").forEach((b) => b.classList.toggle("sel", b === btn));
+    });
+  });
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector(".ael-delete").addEventListener("click", () => {
+    sheet.items = sheet.items.filter((i) => i.id !== entryId);
+    scheduleSave();
+    close();
+    renderActivitySheet(sheetId);
+    renderHome();
+  });
+  overlay.querySelector(".ael-save").addEventListener("click", () => {
+    const durationMin = parseInt(overlay.querySelector(".ael-f-duration").value, 10);
+    if (!Number.isFinite(durationMin) || durationMin <= 0) return;
+    const distanceRaw = overlay.querySelector(".ael-f-distance").value;
+    entry.typeKey = selectedKey;
+    entry.durationMin = durationMin;
+    entry.distanceMi = distanceRaw ? parseFloat(distanceRaw) : null;
+    entry.notes = overlay.querySelector(".ael-f-notes").value.trim();
+    scheduleSave();
+    close();
+    renderActivitySheet(sheetId);
+    renderHome();
+  });
+  document.body.appendChild(overlay);
+}
+
 function renderSocialSheet(id) {
   const panel = document.getElementById(`panel-${id}`);
   const sheet = state.customSheets[id];
@@ -2956,8 +3489,11 @@ function openSocialEntryModal(sheetId, itemId, presetPersonId) {
             ${SOCIAL_KIND_OPTIONS.map((k) => `<button type="button" class="mp-kind sc-kind-opt${item.kind === k ? " sel" : ""}" data-kind="${escapeHtml(k)}">${escapeHtml(k)}</button>`).join("")}
           </div>
 
-          <label class="muted">When</label>
-          <input type="date" class="sc-f-date" value="${item.date}" />
+          ${
+            isNew
+              ? ""
+              : `<label class="muted">When</label><div class="sc-f-date-fixed">${escapeHtml(item.date)}</div>`
+          }
 
           <label class="muted">Notes</label>
           <textarea class="sc-f-notes" rows="3" placeholder="Optional">${escapeHtml(item.notes)}</textarea>
@@ -2966,6 +3502,7 @@ function openSocialEntryModal(sheetId, itemId, presetPersonId) {
           <div>${isNew ? "" : `<button type="button" class="btn-ghost danger sc-delete">Delete</button>`}</div>
           <button type="button" class="btn-primary sc-save">${isNew ? "Log it" : "Save"}</button>
         </div>
+        ${isNew ? `<div class="al-note-line" style="text-align:center;margin-top:2px;">Always logs as today &mdash; no backdating. Miss the day, miss the entry.</div>` : `<div class="al-note-line" style="text-align:center;margin-top:2px;">The date can't be changed &mdash; delete and re-log it today if it's wrong.</div>`}
       </div>
     </div>
   `);
@@ -2985,7 +3522,7 @@ function openSocialEntryModal(sheetId, itemId, presetPersonId) {
 
   overlay.querySelector(".sc-save").addEventListener("click", () => {
     const name = overlay.querySelector(".sc-f-who").value.trim();
-    const date = overlay.querySelector(".sc-f-date").value || todayISO();
+    const date = isNew ? todayISO() : item.date;
     const notes = overlay.querySelector(".sc-f-notes").value.trim();
     if (!name) return;
 
@@ -5378,7 +5915,7 @@ function pillarCandidateSheets(key) {
     state.sheets.forEach((s) => {
       if (s.kind !== "custom" || !s.visible) return;
       const cs = state.customSheets[s.id];
-      if (cs && cs.templateKey === "workout") results.push({ id: s.id, label: sheetLabel(s) });
+      if (cs && (cs.templateKey === "workout" || cs.templateKey === "activity")) results.push({ id: s.id, label: sheetLabel(s) });
     });
   } else if (key === "sleepProtected") {
     const sleepSheet = state.sheets.find((s) => s.id === "sleep" && s.visible);
@@ -5442,6 +5979,10 @@ function sheetActiveToday(sheetId, today) {
   if (cs && cs.templateKey === "social") {
     // Social connection completes off a real logged entry today — who,
     // what, when — not a flat yes/no toggle.
+    return cs.items.some((i) => i.date === today);
+  }
+  if (cs && cs.templateKey === "activity") {
+    // Same shape as Social: a real logged activity today, not a toggle.
     return cs.items.some((i) => i.date === today);
   }
   if (!cs || !Array.isArray(cs.items)) return false;
