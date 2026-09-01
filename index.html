@@ -852,6 +852,66 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .mp-kind { font-size: 10.5px; font-weight: 700; padding: 7px 11px; border-radius: 100px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; cursor: pointer; }
 .mp-kind.sel { background: var(--accent-dark); color: #fff; border-color: var(--accent-dark); }
 
+/* ---------- Activity Log ---------- */
+.al-card-title { font-weight: 700; font-size: 13.5px; margin-bottom: 10px; }
+.al-note-line { font-size: 10.5px; color: var(--muted); margin-top: 8px; }
+.sc-f-date-fixed { font-size: 13px; color: var(--muted); padding: 8px 0; }
+
+.al-summary-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.al-summary-label { font-size: 12px; font-weight: 700; }
+.al-summary-count { font-size: 12px; font-weight: 700; color: var(--accent-dark); }
+.al-goal-edit { text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+.al-bar { height: 8px; border-radius: 5px; background: var(--border); overflow: hidden; }
+.al-bar-fill { height: 100%; background: var(--accent-dark); border-radius: 5px; }
+
+.al-streak-chip { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 100px; background: #FBF3E4; border: 1px solid #EBD8AE; width: fit-content; }
+.al-streak-chip .num { font-size: 14px; font-weight: 800; color: var(--accent-dark); }
+.al-streak-chip .lbl { font-size: 10px; color: var(--muted); font-weight: 600; }
+
+.al-chip-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.al-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); font-size: 10.5px; font-weight: 600; color: var(--muted); font-family: inherit; cursor: pointer; }
+.al-chip .em { font-size: 18px; }
+.al-chip.active { border-color: var(--accent); background: #F3E9DA; color: var(--accent-dark); }
+.al-chip-add { border-style: dashed; border-color: var(--accent); color: var(--accent-dark); background: #FBF7EF; }
+
+.al-add-box { border: 1px dashed var(--accent); border-radius: 10px; padding: 12px; margin-bottom: 14px; background: #FBF7EF; }
+.al-add-box input[type="text"] { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px; font-size: 13px; font-family: inherit; margin-top: 4px; }
+.al-icon-swatch-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; margin-bottom: 8px; }
+.al-icon-swatch { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-family: inherit; }
+.al-icon-swatch.sel { border: 2px solid var(--accent); }
+.al-add-emoji { width: 44px !important; height: 40px; text-align: center; font-size: 18px; margin-top: 4px; }
+.al-add-hint { font-size: 10.5px; color: var(--muted); margin: 6px 0 10px; }
+
+.al-field-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.al-field { flex: 1; }
+.al-field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.al-field input { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 8px 9px; font-size: 13px; font-family: inherit; }
+.al-save-btn { width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; }
+
+.al-hist-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; width: 100%; background: none; border-left: none; border-right: none; border-top: none; text-align: left; cursor: pointer; font-family: inherit; }
+.al-hist-row:last-child { border-bottom: none; }
+.al-hist-icon { width: 30px; height: 30px; border-radius: 50%; background: #F3E9DA; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.al-hist-main { flex: 1; display: flex; flex-direction: column; }
+.al-hist-type { font-weight: 600; color: var(--text); }
+.al-hist-meta { color: var(--muted); font-size: 11.5px; }
+.al-hist-date { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+.al-mix-wrap { display: flex; align-items: center; gap: 18px; }
+.al-donut { width: 92px; height: 92px; border-radius: 50%; flex-shrink: 0; }
+.al-legend { flex: 1; font-size: 12px; }
+.al-legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.al-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.al-legend-pct { margin-left: auto; font-weight: 600; color: var(--accent-dark); }
+
+.al-badge-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.al-badge { width: 92px; text-align: center; }
+.al-badge-medal { width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; position: relative; }
+.al-badge-medal.earned { background: radial-gradient(circle at 35% 30%, #F5D28A, #C6883F 70%); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.5), 0 2px 6px rgba(124,92,54,0.35); }
+.al-badge-medal-inner { position: absolute; inset: 5px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.al-badge .lbl { font-size: 10.5px; font-weight: 700; line-height: 1.25; margin-bottom: 2px; }
+.al-badge .sub { font-size: 9.5px; color: var(--muted); }
+.al-badge .sub.earned-date { color: var(--accent-dark); font-weight: 600; }
+
 /* ---------- Workout Log ---------- */
 .workout-week-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .workout-week-pills { display: flex; gap: 6px; flex-wrap: wrap; }
