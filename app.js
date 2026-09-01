@@ -471,6 +471,143 @@ window.addEventListener("online", () => {
   }
 });
 
+// ------------------------------------------------------------------
+// Push notifications — celebratory only (streak milestones, deposit
+// milestones) plus one gentle non-urgent evening nudge if pillars are
+// still open. The actual decision of what to send and when lives
+// server-side (the send-notifications Edge Function, on a cron); this
+// client-side half is just: register the service worker that can
+// receive a push while the app isn't open, and manage this device's
+// subscription (permission + endpoint) in push_subscriptions.
+// ------------------------------------------------------------------
+const VAPID_PUBLIC_KEY = "BFH67al5heVMTybTkWgshd7zXlvaYULnqokLIxaWs1jkyQamCN533j58AgRrVHJ2O7UdFv_d3fEEt3G1ziFNWrQ";
+
+// Web Push wants the VAPID public key as a raw Uint8Array, but it's only
+// ever handed to us (and to the server) as a base64url string.
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+// Registers sw.js as early as possible so it's ready by the time she
+// turns notifications on in Settings — a service worker has to be
+// registered before pushManager.subscribe() can be called on it.
+// Silently no-ops on browsers/contexts without support (e.g. an older
+// browser, or Safari on a tab that isn't the installed Home Screen app)
+// rather than treating that as an error.
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("sw.js").catch((err) => {
+    console.error("Service worker registration failed:", err);
+  });
+}
+
+// navigator.serviceWorker.ready only resolves once a worker actually
+// activates for this page — if registration failed (blocked, an
+// unsupported context, a slow network) it hangs forever rather than
+// rejecting, which would leave the Settings toggle stuck on "Checking…"
+// permanently. getRegistration() resolves immediately either way, and a
+// short race against .ready covers the ordinary case where the worker
+// registered at boot just hasn't finished activating yet by the time the
+// user opens Settings.
+async function getServiceWorkerRegistration() {
+  if (!("serviceWorker" in navigator)) return null;
+  let reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) {
+    try {
+      reg = await navigator.serviceWorker.register("sw.js");
+    } catch (err) {
+      return null;
+    }
+  }
+  if (reg.active) return reg;
+  return Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(() => resolve(reg), 4000))]);
+}
+
+// Current status, for the Settings toggle to render correctly: whether
+// push is even possible here, whether permission was granted/denied/not
+// asked yet, and whether this specific device already has a live
+// subscription row saved.
+async function getPushStatus() {
+  const supported = "serviceWorker" in navigator && "PushManager" in window;
+  if (!supported) return { supported: false, permission: "unsupported", subscribed: false };
+  const permission = Notification.permission; // "granted" | "denied" | "default"
+  let subscribed = false;
+  try {
+    const reg = await getServiceWorkerRegistration();
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    subscribed = !!sub;
+  } catch (err) {
+    // Service worker not ready yet or not registered — treat as not subscribed.
+  }
+  return { supported: true, permission, subscribed };
+}
+
+// Asks for permission (if not already decided), subscribes this device
+// with the VAPID public key, and saves the subscription server-side so
+// the notification job can find it. Returns { ok: true } or
+// { ok: false, reason } so the Settings UI can show a real message
+// instead of a silent failure.
+async function subscribeToPush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return { ok: false, reason: "Push notifications aren't supported in this browser." };
+  }
+  let permission = Notification.permission;
+  if (permission === "default") {
+    permission = await Notification.requestPermission();
+  }
+  if (permission !== "granted") {
+    return {
+      ok: false,
+      reason:
+        permission === "denied"
+          ? "Notifications are blocked for Addley in this browser's settings — you'll need to allow them there first."
+          : "Permission wasn't granted.",
+    };
+  }
+  try {
+    const reg = await getServiceWorkerRegistration();
+    if (!reg) return { ok: false, reason: "Couldn't set up notifications for this browser — please try again." };
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const { error } = await sb.from("push_subscriptions").upsert(
+      { user_id: currentUserId, endpoint: sub.endpoint, subscription: sub.toJSON() },
+      { onConflict: "endpoint" }
+    );
+    if (error) throw error;
+    return { ok: true };
+  } catch (err) {
+    console.error("Push subscribe failed:", err);
+    return { ok: false, reason: "Something went wrong turning notifications on — please try again." };
+  }
+}
+
+// Unsubscribes this device both locally and from push_subscriptions.
+// Deliberately only removes THIS device's row (matched by endpoint) —
+// turning notifications off on her phone shouldn't silently turn them
+// off on a desktop browser she also enabled them on.
+async function unsubscribeFromPush() {
+  try {
+    const reg = await getServiceWorkerRegistration();
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    if (sub) {
+      await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+      await sub.unsubscribe();
+    }
+  } catch (err) {
+    console.error("Push unsubscribe failed:", err);
+  }
+}
+
 // A reorder, a toggle, any edit — scheduleSave() waits 300ms before it even
 // starts talking to the network, so switching apps, swiping a mobile
 // browser tab away, or closing the tab right after making a change can
@@ -1421,6 +1558,103 @@ function renderSettings() {
   `);
   appearanceSection.querySelector("#settings-appearance-btn").addEventListener("click", () => activateTab("appearance"));
   panel.appendChild(appearanceSection);
+
+  panel.appendChild(buildNotificationsSection());
+}
+
+// Cached so renderSettings() doesn't have to be async — refreshed lazily
+// (see refreshPushStatus) and the whole Settings panel just re-renders
+// once the real answer comes back, same pattern as everything else here.
+let pushStatusCache = null;
+// Set only when turning notifications on just failed, so the reason
+// (blocked permission, a network hiccup) shows right under the toggle
+// instead of vanishing silently — cleared on the next attempt.
+let pushErrorMessage = null;
+
+function refreshPushStatus() {
+  getPushStatus().then((status) => {
+    pushStatusCache = status;
+    // Settings renders once at boot (see renderAll) and again only when
+    // something on the page itself changes — activateTab() doesn't
+    // re-render it on every tab switch the way Home/Wellness do. Gating
+    // this on "is Settings the active tab right now" meant the very
+    // first boot-time check (before she's ever opened Settings) never
+    // qualified, leaving the toggle stuck on "Checking…" forever the
+    // first time she actually looked at it. Just re-render unconditionally
+    // — renderSettings() no-ops safely if the panel isn't in the DOM.
+    renderSettings();
+  });
+}
+
+// Notifications — celebratory streak/deposit milestones plus a gentle
+// evening nudge if pillars are still open. Deliberately its own section
+// rather than folded into Appearance: this one asks the browser for a
+// real permission and can fail in ways worth explaining (blocked,
+// unsupported), which the theme picker never does.
+function buildNotificationsSection() {
+  const section = el(`
+    <div class="account-section">
+      <div class="account-section-label">Notifications</div>
+    </div>
+  `);
+
+  if (!pushStatusCache) {
+    section.appendChild(el(`<div class="settings-note">Checking notification status&hellip;</div>`));
+    refreshPushStatus();
+    return section;
+  }
+
+  const status = pushStatusCache;
+
+  if (!status.supported) {
+    section.appendChild(
+      el(
+        `<div class="settings-note">Push notifications aren't supported in this browser. On an iPhone, add Addley to your Home Screen first (Share &rarr; Add to Home Screen), then open it from there.</div>`
+      )
+    );
+    return section;
+  }
+
+  const isOn = status.permission === "granted" && status.subscribed;
+  const row = el(`
+    <div class="prog-field-row" style="align-items:center;">
+      <label style="font-weight:500;">
+        Celebrate streaks &amp; deposits
+        <span class="account-btn-sub" style="display:block;margin-top:2px;">
+          ${
+            status.permission === "denied"
+              ? "Blocked in this browser's site settings — allow notifications for Addley there, then come back."
+              : isOn
+              ? "On for this device &mdash; milestone celebrations and a gentle evening nudge if a pillar's still open."
+              : "Off. Turn on for streak &amp; deposit milestone pushes, plus a gentle evening nudge."
+          }
+        </span>
+      </label>
+      <div class="toggle-switch ${isOn ? "on" : ""} ${status.permission === "denied" ? "disabled" : ""}" id="push-toggle" style="flex-shrink:0;"></div>
+    </div>
+  `);
+
+  if (status.permission !== "denied") {
+    row.querySelector("#push-toggle").addEventListener("click", async () => {
+      const toggle = row.querySelector("#push-toggle");
+      toggle.style.opacity = "0.5";
+      pushErrorMessage = null;
+      if (isOn) {
+        await unsubscribeFromPush();
+      } else {
+        const result = await subscribeToPush();
+        if (!result.ok) pushErrorMessage = result.reason || "Couldn't turn on notifications.";
+      }
+      pushStatusCache = null;
+      renderSettings();
+    });
+  }
+
+  section.appendChild(row);
+  if (pushErrorMessage) {
+    section.appendChild(el(`<div class="settings-note" style="margin-top:8px;">${escapeHtml(pushErrorMessage)}</div>`));
+  }
+  return section;
 }
 
 function renderChecklistSheet(id) {
@@ -6291,32 +6525,34 @@ function renderPulseChart(panel, today) {
   `));
 }
 
-// One ring per pillar — % of the trend window it was a "Yes", plus the
-// current streak — replacing the old per-pillar squares-and-stats cards.
-function renderPillarRingsGrid(panel, today) {
-  const grid = el(`<div class="ring-grid"></div>`);
+// One full-width row per pillar — a colored dot, the label, a mini strip
+// of the last 7 days, and the current streak on the right. Five items in
+// a single column always reads evenly; the earlier 2-up ring grid left an
+// odd one stranded alone on its own row, which is what this replaces.
+function renderPillarStreakList(panel, today) {
+  const list = el(`<div class="streak-chip-list"></div>`);
+  const last7 = [];
+  for (let i = 6; i >= 0; i--) last7.push(addDays(today, -i));
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    const trend = pillarTrendBreakdown(key, today);
     const streak = pillarCurrentStreak(key, today);
-    const pct = trend.totalDays ? Math.round((trend.activeCount / trend.totalDays) * 100) : 0;
     const color = PILLAR_TREND_COLOR[key] || "var(--accent)";
-    const r = 30, c = 2 * Math.PI * r;
-    const offset = c - (pct / 100) * c;
-    grid.appendChild(el(`
-      <div class="ring-card">
-        <div class="ring-wrap">
-          <svg width="74" height="74">
-            <circle cx="37" cy="37" r="${r}" fill="none" stroke="var(--border)" stroke-width="7"/>
-            <circle cx="37" cy="37" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${offset}" transform="rotate(-90 37 37)"/>
-          </svg>
-          <div class="ring-pct">${pct}%</div>
-        </div>
-        <div class="ring-label">${escapeHtml(label)}</div>
-        <div class="ring-streak">${streak ? `${streak}-day streak` : "no streak yet"}</div>
+    const dots = last7
+      .map((d) => {
+        const entry = state.wellness.find((w) => w.logDate === d);
+        const on = entry && entry[key] === "Yes";
+        return `<i class="${on ? "on" : ""}" style="${on ? `background:${color}` : ""}"></i>`;
+      })
+      .join("");
+    list.appendChild(el(`
+      <div class="streak-chip">
+        <span class="sc-dot" style="background:${color}"></span>
+        <span class="sc-label">${escapeHtml(label)}</span>
+        <span class="sc-mini">${dots}</span>
+        <span class="sc-streak">${streak ? `${streak}d` : "&mdash;"}</span>
       </div>
     `));
   });
-  panel.appendChild(grid);
+  panel.appendChild(list);
 }
 
 // Plain conditional frequency between two pillars over a longer window —
@@ -6470,7 +6706,7 @@ function renderWellness() {
   renderTrendInsightBanner(panel, today);
   renderPulseChart(panel, today);
   panel.appendChild(el(`<div class="trend-title" style="margin:2px 0 8px;">Streaks right now</div>`));
-  renderPillarRingsGrid(panel, today);
+  renderPillarStreakList(panel, today);
   panel.appendChild(el(`<div class="trend-title" style="margin:2px 0 8px;">Pattern worth noticing</div>`));
   renderCooccurrenceCard(panel, today);
 
@@ -7596,6 +7832,21 @@ async function boot() {
   bibleTestament = state.bibleTestament;
   portfolioChoice = state.portfolioChoice;
 
+  // Capture this device's live IANA timezone on every boot (not just
+  // once) — the notification backend reads state.timezone to know when
+  // "evening" is and what day "today" is for each account. Re-reading it
+  // every time rather than storing it once means it self-corrects the
+  // next time she opens the app after traveling, with no setting to
+  // remember to change.
+  try {
+    const liveTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (liveTz) state.timezone = liveTz;
+  } catch (err) {
+    // Very old browsers without Intl support just keep whatever was
+    // saved before (or none) — the reminder/milestone timing falls back
+    // to UTC server-side rather than breaking anything.
+  }
+
   // Write straight back after any migrations above so the row reflects
   // the current shape immediately, rather than waiting for the first
   // real edit to trigger a save.
@@ -7607,6 +7858,7 @@ async function boot() {
   renderAll();
   syncTopbarHeight();
   window.addEventListener("resize", syncTopbarHeight);
+  registerServiceWorker();
 
   // The boot-loading overlay (see index.html) covers the very first paint —
   // hide it now that there's something real underneath it. The fade is
