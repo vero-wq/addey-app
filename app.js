@@ -66,6 +66,20 @@ const SHEET_GALLERY = [
     desc: "A quick log of who you connected with today — a call, coffee, a real conversation.",
     starterItems: [],
   },
+  {
+    key: "prayer",
+    label: "Prayer Log",
+    icon: `<path d="M12 2v6"></path><path d="M8.5 8c0 2 1 3.5 3.5 3.5S15.5 10 15.5 8"></path><rect x="9.5" y="11" width="5" height="10" rx="1"></rect>`,
+    desc: "A quick tap for each prayer — the five daily times, plus gratitude, intercession, and protection.",
+    starterItems: [],
+  },
+  {
+    key: "breathe",
+    label: "Breathe",
+    icon: `<circle cx="12" cy="12" r="4"></circle><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"></path>`,
+    desc: "A guided breathing session with a mood check-in before and after — box breathing, a slower breath, and a soft guiding sound.",
+    starterItems: [],
+  },
   // Kept last, deliberately: a genuinely useful utility, but the one
   // gallery space with no habit pillar behind it — same category as the
   // built-in Lists space. Not being removed for anyone already using it,
@@ -1318,6 +1332,8 @@ function addSheetFromTemplate(tpl) {
   const isSocial = tpl.key === "social";
   const isActivity = tpl.key === "activity";
   const isMealLog = tpl.key === "mealLog";
+  const isPrayer = tpl.key === "prayer";
+  const isBreathe = tpl.key === "breathe";
   state.customSheets[id] = {
     label: tpl.label,
     templateKey: tpl.key,
@@ -1327,7 +1343,7 @@ function addSheetFromTemplate(tpl) {
       ? seedQuranItems()
       : isBooks
       ? seedBookItems()
-      : isWorkout || isSocial || isActivity || isMealLog
+      : isWorkout || isSocial || isActivity || isMealLog || isPrayer || isBreathe
       ? []
       : tpl.starterItems.map((text) => ({ id: nextId(), text, done: false })),
     ...(isWardrobe ? { wardrobeSchemaV: 2, openCategories: {}, activeSeason: null } : {}),
@@ -1337,6 +1353,8 @@ function addSheetFromTemplate(tpl) {
     ...(isSocial ? { socialSchemaV: 2, people: [] } : {}),
     ...(isActivity ? { activitySchemaV: 1, customTypes: [], weeklyGoalMinutes: ACTIVITY_WEEKLY_GOAL_DEFAULT } : {}),
     ...(isMealLog ? { mealLogSchemaV: 1 } : {}),
+    ...(isPrayer ? { prayerSchemaV: 1, milestonesEarned: {} } : {}),
+    ...(isBreathe ? { breatheSchemaV: 1, milestonesEarned: {}, soundVoice: "pad" } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
   // Adding a space that fits a pillar IS the opt-in — don't also make
@@ -1375,6 +1393,10 @@ function renderCustomSheet(id) {
     renderActivitySheet(id);
   } else if (sheet && sheet.templateKey === "mealLog") {
     renderMealLogSheet(id);
+  } else if (sheet && sheet.templateKey === "prayer") {
+    renderPrayerSheet(id);
+  } else if (sheet && sheet.templateKey === "breathe") {
+    renderBreatheSheet(id);
   } else {
     renderChecklistSheet(id);
   }
@@ -4161,6 +4183,814 @@ function renderSocialSheet(id) {
   panel.appendChild(buildMilestonesCard(sheet, SOCIAL_MILESTONES, todayStr));
 }
 
+// ------------------------------------------------------------------
+// Prayer Log — the same quick-tap-to-log idea as Connections, but with
+// no "who" to pick first, just "which": one of the five daily prayers,
+// or one of three open-ended kinds (Gratitude, For someone, Protection).
+// Tapping a chip logs immediately; whatever's in the note field at that
+// moment rides along with it, then the field clears for next time.
+// ------------------------------------------------------------------
+const PRAYER_DAILY_TYPES = [
+  { key: "dawn", label: "Dawn", icon: "🌄" },
+  { key: "midday", label: "Midday", icon: "☀️" },
+  { key: "afternoon", label: "Afternoon", icon: "🌇" },
+  { key: "sunset", label: "Sunset", icon: "🌆" },
+  { key: "night", label: "Night", icon: "🌌" },
+];
+const PRAYER_OTHER_TYPES = [
+  { key: "gratitude", label: "Gratitude", icon: "🙌" },
+  { key: "forSomeone", label: "For someone", icon: "🕊️" },
+  { key: "protection", label: "Protection", icon: "🛡️" },
+];
+const PRAYER_ALL_TYPES = [...PRAYER_DAILY_TYPES, ...PRAYER_OTHER_TYPES];
+function prayerTypeByKey(key) {
+  return PRAYER_ALL_TYPES.find((t) => t.key === key) || PRAYER_ALL_TYPES[0];
+}
+
+// Same "any logged entry today" shape as Connections/Activity — always
+// agrees with what Home shows for the Spiritual pillar.
+function computePrayerStreak(sheet, today) {
+  let streak = 0;
+  let d = today;
+  while (sheet.items.some((i) => i.date === d)) {
+    streak++;
+    d = addDays(d, -1);
+  }
+  return streak;
+}
+function computeLongestPrayerStreak(sheet) {
+  const dates = [...new Set(sheet.items.map((i) => i.date))].sort();
+  let longest = 0;
+  let current = 0;
+  let prev = null;
+  dates.forEach((d) => {
+    current = prev && addDays(prev, 1) === d ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    prev = d;
+  });
+  return longest;
+}
+const PRAYER_MILESTONES = [
+  {
+    key: "tenLogged",
+    label: "10 prayers logged",
+    icon: "🙏",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` };
+    },
+  },
+  {
+    key: "fiftyLogged",
+    label: "50 prayers logged",
+    icon: "🕊️",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 50, frac: Math.min(1, n / 50), caption: `${n} of 50` };
+    },
+  },
+  {
+    key: "hundredLogged",
+    label: "100 prayers logged",
+    icon: "✨",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
+    },
+  },
+  {
+    key: "sevenDayStreak",
+    label: "7-day streak",
+    icon: "🔥",
+    progress: (sheet) => {
+      const longest = computeLongestPrayerStreak(sheet);
+      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
+    },
+  },
+];
+
+function renderPrayerSheet(id) {
+  const panel = document.getElementById(`panel-${id}`);
+  const sheet = state.customSheets[id];
+  if (!panel || !sheet) return;
+  sheet.items ||= [];
+  sheet.milestonesEarned ||= {};
+  const today = todayISO();
+  panel.innerHTML = "";
+  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  const streak = computePrayerStreak(sheet, today);
+  panel.appendChild(buildStreakCard(streak, "day prayer streak"));
+
+  const logCard = el(`<div class="card"></div>`);
+  logCard.appendChild(el(`<div class="al-card-title">Log a prayer</div>`));
+  logCard.appendChild(el(`<div class="prayer-quicklog-label">Daily prayers</div>`));
+  const dailyRow = el(`<div class="prayer-quicklog-row"></div>`);
+  const noteInput = el(`<input type="text" class="prayer-note-input" placeholder="Add a note (optional)" />`);
+  const logPrayer = (kind) => {
+    const note = noteInput.value.trim();
+    sheet.items.push({ id: nextId(), date: today, kind, note });
+    scheduleSave();
+    renderHome(); // runs pillar auto-detection first, so Spiritual reflects this immediately
+    renderPrayerSheet(id);
+  };
+  PRAYER_DAILY_TYPES.forEach((t) => {
+    const chip = el(`<button type="button" class="prayer-chip"><span class="prayer-chip-avatar">${t.icon}</span><span class="prayer-chip-lbl">${escapeHtml(t.label)}</span></button>`);
+    chip.addEventListener("click", () => logPrayer(t.key));
+    dailyRow.appendChild(chip);
+  });
+  logCard.appendChild(dailyRow);
+  logCard.appendChild(el(`<div class="prayer-quicklog-label">Other</div>`));
+  const otherRow = el(`<div class="prayer-quicklog-row"></div>`);
+  PRAYER_OTHER_TYPES.forEach((t) => {
+    const chip = el(`<button type="button" class="prayer-chip"><span class="prayer-chip-avatar">${t.icon}</span><span class="prayer-chip-lbl">${escapeHtml(t.label)}</span></button>`);
+    chip.addEventListener("click", () => logPrayer(t.key));
+    otherRow.appendChild(chip);
+  });
+  logCard.appendChild(otherRow);
+  logCard.appendChild(noteInput);
+
+  const todayEntries = sheet.items.filter((i) => i.date === today);
+  const recap = todayEntries.length ? `Today: ${todayEntries.map((e) => prayerTypeByKey(e.kind).label).join(", ")}` : "Nothing logged yet today.";
+  logCard.appendChild(el(`<div class="prayer-today-recap${todayEntries.length ? "" : " muted"}">${escapeHtml(recap)}</div>`));
+  panel.appendChild(logCard);
+
+  // ---- Milestones — permanent, unlike the streak above ----
+  panel.appendChild(buildMilestonesCard(sheet, PRAYER_MILESTONES, today));
+
+  // ---- History ----
+  const historyCard = el(`<div class="card"></div>`);
+  historyCard.appendChild(el(`<div class="al-card-title">History</div>`));
+  const recent = [...sheet.items].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id)).slice(0, 30);
+  if (!recent.length) {
+    historyCard.appendChild(el(`<div class="muted">Nothing logged yet.</div>`));
+  } else {
+    recent.forEach((entry) => {
+      const t = prayerTypeByKey(entry.kind);
+      const dateLabel = entry.date === today ? "Today" : entry.date === addDays(today, -1) ? "Yesterday" : activityDateShort(entry.date);
+      const row = el(`
+        <button type="button" class="al-hist-row">
+          <span class="al-hist-icon">${t.icon}</span>
+          <span class="al-hist-main">
+            <span class="al-hist-type">${escapeHtml(t.label)}${entry.note ? ` &middot; ${escapeHtml(entry.note)}` : ""}</span>
+          </span>
+          <span class="al-hist-date">${dateLabel}</span>
+        </button>
+      `);
+      row.addEventListener("click", () => openPrayerEntryEditor(id, entry.id));
+      historyCard.appendChild(row);
+    });
+  }
+  panel.appendChild(historyCard);
+}
+
+// Corrects an already-logged prayer (which one, the note) — no date
+// field, same reasoning as everywhere else: fixes a mistake, doesn't
+// backdate a new entry.
+function openPrayerEntryEditor(sheetId, entryId) {
+  const sheet = state.customSheets[sheetId];
+  const entry = sheet?.items.find((i) => i.id === entryId);
+  if (!sheet || !entry) return;
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Edit prayer</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">Which one</label>
+          <div class="mp-kind-row prel-kind-row">
+            ${PRAYER_ALL_TYPES.map((t) => `<button type="button" class="mp-kind prel-kind-opt${t.key === entry.kind ? " sel" : ""}" data-key="${escapeHtml(t.key)}">${t.icon} ${escapeHtml(t.label)}</button>`).join("")}
+          </div>
+          <label class="muted">Notes</label>
+          <textarea class="prel-f-notes" rows="2">${escapeHtml(entry.note || "")}</textarea>
+        </div>
+        <div class="modal-actions" style="justify-content:space-between;">
+          <button type="button" class="btn-ghost danger prel-delete">Delete</button>
+          <button type="button" class="btn-primary prel-save">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+  let selectedKind = entry.kind;
+  overlay.querySelectorAll(".prel-kind-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedKind = btn.dataset.key;
+      overlay.querySelectorAll(".prel-kind-opt").forEach((b) => b.classList.toggle("sel", b === btn));
+    });
+  });
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector(".prel-delete").addEventListener("click", () => {
+    sheet.items = sheet.items.filter((i) => i.id !== entryId);
+    scheduleSave();
+    close();
+    renderPrayerSheet(sheetId);
+    renderHome();
+  });
+  overlay.querySelector(".prel-save").addEventListener("click", () => {
+    entry.kind = selectedKind;
+    entry.note = overlay.querySelector(".prel-f-notes").value.trim();
+    scheduleSave();
+    close();
+    renderPrayerSheet(sheetId);
+    renderHome();
+  });
+  document.body.appendChild(overlay);
+}
+
+// ------------------------------------------------------------------
+// Breathe — a guided breathing session (box breathing or a slower
+// inhale/exhale) with a quick mood check-in before and after. Sound is
+// fully generated in-browser (no audio files) via the Web Audio API so
+// there's nothing to license or host; three selectable voices are
+// built from oscillators/noise rather than recordings. Multiple
+// sessions per day are stored as separate timestamped items, same as
+// Prayer Log, so a morning + evening session both count.
+// ------------------------------------------------------------------
+const BREATHE_MOODS_BEFORE = [
+  { key: "tense", label: "Tense", emoji: "😖" },
+  { key: "unsettled", label: "Unsettled", emoji: "😕" },
+  { key: "okay", label: "Okay", emoji: "🙂" },
+];
+const BREATHE_MOODS_AFTER = [
+  { key: "tense", label: "Tense", emoji: "😖" },
+  { key: "unsettled", label: "Unsettled", emoji: "😕" },
+  { key: "calmer", label: "Calmer", emoji: "😌" },
+];
+const BREATHE_METHODS = {
+  box: {
+    label: "Box breathing",
+    sub: "In 4 · hold 4 · out 4 · hold 4",
+    style: "box",
+    cycleSeconds: 16,
+    phases: [
+      { text: "Breathe in", grow: true, seconds: 4 },
+      { text: "Hold", grow: true, seconds: 4, hold: true },
+      { text: "Breathe out", grow: false, seconds: 4 },
+      { text: "Hold", grow: false, seconds: 4, hold: true },
+    ],
+  },
+  slow: {
+    label: "Slow breath",
+    sub: "In 4 · out 6, no holds",
+    style: "slow",
+    cycleSeconds: 10,
+    phases: [
+      { text: "Breathe in", grow: true, seconds: 4 },
+      { text: "Breathe out", grow: false, seconds: 6 },
+    ],
+  },
+};
+const BREATHE_DURATIONS = [2, 5, 10]; // minutes, box only
+const BREATHE_SLOW_MINUTES = 3; // fixed session length for slow breath
+
+function computeBreatheStreak(sheet, today) {
+  let streak = 0;
+  let d = today;
+  while (sheet.items.some((i) => i.date === d)) {
+    streak++;
+    d = addDays(d, -1);
+  }
+  return streak;
+}
+function computeLongestBreatheStreak(sheet) {
+  const dates = [...new Set(sheet.items.map((i) => i.date))].sort();
+  let longest = 0;
+  let current = 0;
+  let prev = null;
+  dates.forEach((d) => {
+    current = prev && addDays(prev, 1) === d ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    prev = d;
+  });
+  return longest;
+}
+const BREATHE_MILESTONES = [
+  { key: "firstSession", label: "First session", icon: "🧘", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 1, frac: Math.min(1, n), caption: n >= 1 ? "Done" : "0 of 1" }; } },
+  { key: "tenSessions", label: "10 sessions", icon: "📿", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` }; } },
+  { key: "fiveCalmer", label: "Felt calmer after, 5 times", icon: "🌤️", progress: (sheet) => { const n = sheet.items.filter((i) => i.moodAfter === "calmer").length; return { earned: n >= 5, frac: Math.min(1, n / 5), caption: `${n} of 5` }; } },
+  { key: "sevenDayStreak", label: "7-day streak", icon: "🔥", progress: (sheet) => { const longest = computeLongestBreatheStreak(sheet); return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` }; } },
+];
+
+// ---- Generative audio engine -------------------------------------
+// Guards against overlapping sound: only one audio "voice" (a preview
+// tap or a live session) is ever allowed to be sounding at once,
+// app-wide, no matter how the user navigates, switches tabs mid-session,
+// or double-taps a sound chip. This is the fix for the "sounds combined"
+// bug found in the mockup — safeCloseCtx() plus this single shared
+// handle are both required, not just one or the other.
+let __breatheActiveAudio = null; // { ctx, stop() }
+function safeCloseCtx(ctx) {
+  if (!ctx || ctx.state === "closed") return;
+  try {
+    ctx.close().catch(() => {});
+  } catch (e) {}
+}
+function stopActiveBreatheAudio() {
+  if (__breatheActiveAudio) {
+    try {
+      __breatheActiveAudio.stop();
+    } catch (e) {}
+    __breatheActiveAudio = null;
+  }
+}
+
+const BREATH_VOICES = {
+  pad: {
+    name: "Warm Pad",
+    build(ctx) {
+      const out = ctx.createGain();
+      out.gain.value = 0;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 500;
+      filter.connect(out);
+      const root = ctx.createOscillator();
+      root.type = "sine";
+      root.frequency.value = 130.81; // C3
+      const fifth = ctx.createOscillator();
+      fifth.type = "sine";
+      fifth.frequency.value = 196.0; // G3
+      const rootGain = ctx.createGain();
+      rootGain.gain.value = 0.6;
+      const fifthGain = ctx.createGain();
+      fifthGain.gain.value = 0.4;
+      root.connect(rootGain).connect(filter);
+      fifth.connect(fifthGain).connect(filter);
+      root.start();
+      fifth.start();
+      return {
+        output: out,
+        modulate(direction, now, tc) {
+          const base = direction === "in" ? 146.83 : 130.81; // lift a whole step on inhale
+          root.frequency.setTargetAtTime(base, now, tc);
+          fifth.frequency.setTargetAtTime(base * 1.5, now, tc);
+          filter.frequency.setTargetAtTime(direction === "in" ? 650 : 450, now, tc);
+        },
+        stop(t) {
+          root.stop(t);
+          fifth.stop(t);
+        },
+      };
+    },
+  },
+  bowl: {
+    name: "Singing Bowl",
+    build(ctx) {
+      const out = ctx.createGain();
+      out.gain.value = 0;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 2200;
+      filter.connect(out);
+      const a = ctx.createOscillator();
+      a.type = "sine";
+      a.frequency.value = 261.63; // C4
+      const b = ctx.createOscillator();
+      b.type = "sine";
+      b.frequency.value = 264.5; // slightly detuned for a natural shimmer/beat
+      const gA = ctx.createGain();
+      gA.gain.value = 0.5;
+      const gB = ctx.createGain();
+      gB.gain.value = 0.5;
+      a.connect(gA).connect(filter);
+      b.connect(gB).connect(filter);
+      a.start();
+      b.start();
+      return {
+        output: out,
+        modulate(direction, now, tc) {
+          const base = direction === "in" ? 293.66 : 261.63;
+          a.frequency.setTargetAtTime(base, now, tc);
+          b.frequency.setTargetAtTime(base + 2.9, now, tc);
+          filter.frequency.setTargetAtTime(direction === "in" ? 2600 : 2000, now, tc);
+        },
+        stop(t) {
+          a.stop(t);
+          b.stop(t);
+        },
+      };
+    },
+  },
+  waves: {
+    name: "Ocean Waves",
+    build(ctx) {
+      const out = ctx.createGain();
+      out.gain.value = 0;
+      const bufferSize = ctx.sampleRate * 2;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      noise.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = 350;
+      filter.Q.value = 0.8;
+      noise.connect(filter).connect(out);
+      noise.start();
+      return {
+        output: out,
+        modulate(direction, now, tc) {
+          filter.frequency.setTargetAtTime(direction === "in" ? 900 : 350, now, tc);
+        },
+        stop(t) {
+          noise.stop(t);
+        },
+      };
+    },
+  },
+};
+
+function createBreathTone(voiceKey) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const master = ctx.createGain();
+  master.gain.value = 0;
+  master.connect(ctx.destination);
+  let voice = BREATH_VOICES[voiceKey] || BREATH_VOICES.pad;
+  let built = voice.build(ctx);
+  built.output.connect(master);
+  let muted = false;
+  const controller = {
+    setVoice(key) {
+      // swap voices by tearing down and rebuilding the sound graph
+      const old = built;
+      voice = BREATH_VOICES[key] || BREATH_VOICES.pad;
+      built = voice.build(ctx);
+      built.output.connect(master);
+      const now = ctx.currentTime;
+      old.output.gain.setTargetAtTime(0, now, 0.3);
+      setTimeout(() => {
+        try {
+          old.stop(ctx.currentTime);
+        } catch (e) {}
+      }, 500);
+    },
+    toggleMute() {
+      muted = !muted;
+      master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.2);
+      return muted;
+    },
+    phase(direction, seconds) {
+      const now = ctx.currentTime;
+      if (!muted) master.gain.setTargetAtTime(0.5, now, 0.4);
+      built.modulate(direction, now, seconds * 0.35);
+    },
+    hold() {
+      // sustain whatever the sound was doing through a hold phase
+    },
+    stop() {
+      const now = ctx.currentTime;
+      master.gain.setTargetAtTime(0, now, 0.3);
+      setTimeout(() => {
+        try {
+          built.stop(ctx.currentTime);
+        } catch (e) {}
+        safeCloseCtx(ctx);
+      }, 600);
+    },
+  };
+  __breatheActiveAudio = { ctx, stop: () => controller.stop() };
+  return controller;
+}
+
+function previewSound(key) {
+  stopActiveBreatheAudio();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const master = ctx.createGain();
+  master.gain.value = 0;
+  master.connect(ctx.destination);
+  const voice = BREATH_VOICES[key] || BREATH_VOICES.pad;
+  const built = voice.build(ctx);
+  built.output.connect(master);
+  const now = ctx.currentTime;
+  master.gain.setTargetAtTime(0.5, now, 0.3);
+  built.modulate("in", now, 1.2);
+  const stop = () => {
+    const t = ctx.currentTime;
+    master.gain.setTargetAtTime(0, t, 0.25);
+    setTimeout(() => {
+      try {
+        built.stop(ctx.currentTime);
+      } catch (e) {}
+      safeCloseCtx(ctx);
+    }, 500);
+  };
+  __breatheActiveAudio = { ctx, stop };
+  setTimeout(() => {
+    if (__breatheActiveAudio && __breatheActiveAudio.ctx === ctx) {
+      stop();
+      __breatheActiveAudio = null;
+    }
+  }, 2200);
+}
+
+function moodByKey(list, key) {
+  return list.find((m) => m.key === key) || list[0];
+}
+
+function renderBreatheSheet(id) {
+  const panel = document.getElementById(`panel-${id}`);
+  const sheet = state.customSheets[id];
+  if (!panel || !sheet) return;
+  sheet.items ||= [];
+  sheet.milestonesEarned ||= {};
+  sheet.soundVoice ||= "pad";
+  const today = todayISO();
+  panel.innerHTML = "";
+  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  const streak = computeBreatheStreak(sheet, today);
+  panel.appendChild(buildStreakCard(streak, "day breathe streak"));
+
+  // ---- local session state (resets whenever this panel re-renders) ----
+  let selectedMethod = "box";
+  let selectedDuration = 5;
+  let moodBefore = "unsettled";
+  let moodAfter = "calmer";
+  let selectedVoice = sheet.soundVoice;
+  let tone = null;
+  let running = false;
+  let sessionMuted = false;
+
+  const card = el(`<div class="card"></div>`);
+  card.appendChild(el(`<div class="al-card-title">New session</div>`));
+
+  const beforeBlock = el(`<div class="breathe-before"></div>`);
+  const afterBlock = el(`<div class="breathe-after" style="display:none;"></div>`);
+
+  // Mood before
+  beforeBlock.appendChild(el(`<div class="prayer-quicklog-label">How are you feeling?</div>`));
+  const moodBeforeRow = el(`<div class="sleep-mood-row"></div>`);
+  BREATHE_MOODS_BEFORE.forEach((m) => {
+    const chip = el(`<button type="button" class="sleep-mood-choice${m.key === moodBefore ? " sel" : ""}"><span class="emoji">${m.emoji}</span><span class="lbl">${escapeHtml(m.label)}</span></button>`);
+    chip.addEventListener("click", () => {
+      moodBefore = m.key;
+      moodBeforeRow.querySelectorAll(".sleep-mood-choice").forEach((b) => b.classList.remove("sel"));
+      chip.classList.add("sel");
+    });
+    moodBeforeRow.appendChild(chip);
+  });
+  beforeBlock.appendChild(moodBeforeRow);
+
+  // Method row
+  beforeBlock.appendChild(el(`<div class="prayer-quicklog-label">Method</div>`));
+  const methodRow = el(`<div class="method-row"></div>`);
+  const durWrap = el(`<div class="dur-row"></div>`);
+  function renderDurChips() {
+    durWrap.innerHTML = "";
+    BREATHE_DURATIONS.forEach((mins) => {
+      const chip = el(`<button type="button" class="dur-chip${mins === selectedDuration ? " sel" : ""}">${mins} min</button>`);
+      chip.addEventListener("click", () => {
+        selectedDuration = mins;
+        durWrap.querySelectorAll(".dur-chip").forEach((b) => b.classList.remove("sel"));
+        chip.classList.add("sel");
+      });
+      durWrap.appendChild(chip);
+    });
+  }
+  renderDurChips();
+  Object.keys(BREATHE_METHODS).forEach((key) => {
+    const m = BREATHE_METHODS[key];
+    const chip = el(`<button type="button" class="method-chip${key === selectedMethod ? " sel" : ""}"><span class="m-name">${escapeHtml(m.label)}</span><span class="m-sub">${escapeHtml(m.sub)}</span></button>`);
+    chip.addEventListener("click", () => {
+      selectedMethod = key;
+      methodRow.querySelectorAll(".method-chip").forEach((b) => b.classList.remove("sel"));
+      chip.classList.add("sel");
+      durWrap.style.display = key === "box" ? "flex" : "none";
+      circleEl.classList.toggle("slow-style", key === "slow");
+    });
+    methodRow.appendChild(chip);
+  });
+  methodRow.appendChild(el(`<button type="button" class="method-chip ghost" disabled><span class="m-name">+ More methods</span><span class="m-sub">Coming soon</span></button>`));
+  beforeBlock.appendChild(methodRow);
+  beforeBlock.appendChild(durWrap);
+
+  // Sound row
+  beforeBlock.appendChild(el(`<div class="prayer-quicklog-label">Sound</div>`));
+  const soundRow = el(`<div class="sound-row"></div>`);
+  Object.keys(BREATH_VOICES).forEach((key) => {
+    const v = BREATH_VOICES[key];
+    const chip = el(`<button type="button" class="sound-chip${key === selectedVoice ? " sel" : ""}"><span class="s-name">${escapeHtml(v.name)}</span><span class="s-preview">▶</span></button>`);
+    chip.addEventListener("click", () => {
+      selectedVoice = key;
+      sheet.soundVoice = key;
+      scheduleSave();
+      soundRow.querySelectorAll(".sound-chip").forEach((b) => b.classList.remove("sel"));
+      chip.classList.add("sel");
+      previewSound(key);
+    });
+    soundRow.appendChild(chip);
+  });
+  beforeBlock.appendChild(soundRow);
+
+  // Breathing stage
+  const stage = el(`
+    <div class="breathe-stage">
+      <div class="breathe-ring-wrap">
+        <div class="breathe-track"></div>
+        <div class="breathe-circle"><span class="breathe-phase-label">Ready</span></div>
+      </div>
+      <div class="breathe-btn-row">
+        <button type="button" class="breathe-start-btn">Begin</button>
+        <button type="button" class="breathe-sound-btn" title="Mute sound">🔊</button>
+      </div>
+    </div>
+  `);
+  beforeBlock.appendChild(stage);
+  const circleEl = stage.querySelector(".breathe-circle");
+  const labelEl = stage.querySelector(".breathe-phase-label");
+  const startBtn = stage.querySelector(".breathe-start-btn");
+  const soundBtn = stage.querySelector(".breathe-sound-btn");
+
+  soundBtn.addEventListener("click", () => {
+    if (!tone) return;
+    sessionMuted = tone.toggleMute();
+    soundBtn.textContent = sessionMuted ? "🔇" : "🔊";
+    soundBtn.classList.toggle("muted", sessionMuted);
+  });
+
+  function step(method, phaseIndex, cyclesDone, totalCycles) {
+    if (!running) return;
+    const phase = method.phases[phaseIndex];
+    labelEl.textContent = phase.text;
+    circleEl.style.transitionDuration = `${phase.seconds}s`;
+    circleEl.classList.toggle("grown", !!phase.grow);
+    if (phase.hold) {
+      if (tone) tone.hold();
+    } else if (tone) {
+      tone.phase(phase.grow ? "in" : "out", phase.seconds);
+    }
+    setTimeout(() => {
+      if (!running) return;
+      const nextIndex = phaseIndex + 1;
+      if (nextIndex >= method.phases.length) {
+        const nextCycles = cyclesDone + 1;
+        if (nextCycles >= totalCycles) {
+          finishSession();
+        } else {
+          step(method, 0, nextCycles, totalCycles);
+        }
+      } else {
+        step(method, nextIndex, cyclesDone, totalCycles);
+      }
+    }, phase.seconds * 1000);
+  }
+
+  function finishSession() {
+    running = false;
+    if (tone) {
+      tone.stop();
+      tone = null;
+    }
+    labelEl.textContent = "Done";
+    circleEl.classList.remove("grown");
+    beforeBlock.style.display = "none";
+    afterBlock.style.display = "block";
+  }
+
+  startBtn.addEventListener("click", () => {
+    if (running) return;
+    stopActiveBreatheAudio();
+    running = true;
+    startBtn.disabled = true;
+    startBtn.textContent = "In progress…";
+    tone = createBreathTone(selectedVoice);
+    if (sessionMuted) tone.toggleMute();
+    const method = BREATHE_METHODS[selectedMethod];
+    const minutes = selectedMethod === "box" ? selectedDuration : BREATHE_SLOW_MINUTES;
+    const totalCycles = Math.max(1, Math.round((minutes * 60) / method.cycleSeconds));
+    step(method, 0, 0, totalCycles);
+  });
+
+  card.appendChild(beforeBlock);
+
+  // After block
+  afterBlock.appendChild(el(`
+    <div class="breathe-complete">
+      <div class="check">✓</div>
+      <div class="msg">Session complete</div>
+    </div>
+  `));
+  afterBlock.appendChild(el(`<div class="prayer-quicklog-label">How do you feel now?</div>`));
+  const moodAfterRow = el(`<div class="sleep-mood-row"></div>`);
+  BREATHE_MOODS_AFTER.forEach((m) => {
+    const chip = el(`<button type="button" class="sleep-mood-choice${m.key === moodAfter ? " sel" : ""}"><span class="emoji">${m.emoji}</span><span class="lbl">${escapeHtml(m.label)}</span></button>`);
+    chip.addEventListener("click", () => {
+      moodAfter = m.key;
+      moodAfterRow.querySelectorAll(".sleep-mood-choice").forEach((b) => b.classList.remove("sel"));
+      chip.classList.add("sel");
+    });
+    moodAfterRow.appendChild(chip);
+  });
+  afterBlock.appendChild(moodAfterRow);
+  const noteInput = el(`<input type="text" class="breathe-note-input" placeholder="Add a note (optional)" />`);
+  afterBlock.appendChild(noteInput);
+  const saveBtn = el(`<button type="button" class="save-session-btn">Save &amp; finish</button>`);
+  saveBtn.addEventListener("click", () => {
+    sheet.items.push({
+      id: nextId(),
+      date: today,
+      method: selectedMethod,
+      moodBefore,
+      moodAfter,
+      note: noteInput.value.trim(),
+    });
+    scheduleSave();
+    renderHome(); // pillar auto-detection first, so Spiritual reflects this immediately
+    renderBreatheSheet(id);
+  });
+  afterBlock.appendChild(saveBtn);
+  card.appendChild(afterBlock);
+
+  panel.appendChild(card);
+  panel.appendChild(buildMilestonesCard(sheet, BREATHE_MILESTONES, today));
+
+  const historyCard = el(`<div class="card"></div>`);
+  historyCard.appendChild(el(`<div class="al-card-title">History</div>`));
+  const recent = [...sheet.items].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id)).slice(0, 30);
+  if (!recent.length) {
+    historyCard.appendChild(el(`<div class="muted">Nothing logged yet.</div>`));
+  } else {
+    recent.forEach((entry) => {
+      const method = BREATHE_METHODS[entry.method] || BREATHE_METHODS.box;
+      const afterMood = moodByKey(BREATHE_MOODS_AFTER, entry.moodAfter);
+      const dateLabel = entry.date === today ? "Today" : entry.date === addDays(today, -1) ? "Yesterday" : activityDateShort(entry.date);
+      const row = el(`
+        <button type="button" class="al-hist-row">
+          <span class="al-hist-icon">${afterMood.emoji}</span>
+          <span class="al-hist-main">
+            <span class="al-hist-type">${escapeHtml(method.label)}${entry.note ? ` &middot; ${escapeHtml(entry.note)}` : ""}</span>
+          </span>
+          <span class="al-hist-date">${dateLabel}</span>
+        </button>
+      `);
+      row.addEventListener("click", () => openBreatheEntryEditor(id, entry.id));
+      historyCard.appendChild(row);
+    });
+  }
+  panel.appendChild(historyCard);
+
+  // Initial dur-row visibility matches default method
+  durWrap.style.display = selectedMethod === "box" ? "flex" : "none";
+}
+
+function openBreatheEntryEditor(sheetId, entryId) {
+  const sheet = state.customSheets[sheetId];
+  const entry = sheet?.items.find((i) => i.id === entryId);
+  if (!sheet || !entry) return;
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Edit session</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">How did you feel after</label>
+          <div class="mp-kind-row prel-kind-row">
+            ${BREATHE_MOODS_AFTER.map((m) => `<button type="button" class="mp-kind breathe-mood-opt${m.key === entry.moodAfter ? " sel" : ""}" data-key="${escapeHtml(m.key)}">${m.emoji} ${escapeHtml(m.label)}</button>`).join("")}
+          </div>
+          <label class="muted">Notes</label>
+          <textarea class="breathe-f-notes" rows="2">${escapeHtml(entry.note || "")}</textarea>
+        </div>
+        <div class="modal-actions" style="justify-content:space-between;">
+          <button type="button" class="btn-ghost danger breathe-delete">Delete</button>
+          <button type="button" class="btn-primary breathe-save">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+  let selectedMood = entry.moodAfter;
+  overlay.querySelectorAll(".breathe-mood-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedMood = btn.dataset.key;
+      overlay.querySelectorAll(".breathe-mood-opt").forEach((b) => b.classList.toggle("sel", b === btn));
+    });
+  });
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector(".breathe-delete").addEventListener("click", () => {
+    sheet.items = sheet.items.filter((i) => i.id !== entryId);
+    scheduleSave();
+    close();
+    renderBreatheSheet(sheetId);
+    renderHome();
+  });
+  overlay.querySelector(".breathe-save").addEventListener("click", () => {
+    entry.moodAfter = selectedMood;
+    entry.note = overlay.querySelector(".breathe-f-notes").value.trim();
+    scheduleSave();
+    close();
+    renderBreatheSheet(sheetId);
+    renderHome();
+  });
+  document.body.appendChild(overlay);
+}
+
 function openSocialPersonRenameModal(sheetId, personId) {
   const sheet = state.customSheets[sheetId];
   const person = sheet.people.find((p) => p.id === personId);
@@ -6849,7 +7679,7 @@ function pillarCandidateSheets(key) {
 // adding a space is already an opt-in, so Pillar Mapping in Settings is
 // where you opt back OUT, not where you go to turn it on.
 function pillarKeyForTemplateKey(templateKey) {
-  if (templateKey === "quran") return "spiritualAnchor";
+  if (templateKey === "quran" || templateKey === "prayer" || templateKey === "breathe") return "spiritualAnchor";
   if (templateKey === "workout" || templateKey === "activity") return "movement";
   if (templateKey === "books") return "learning";
   if (templateKey === "social") return "socialConnection";
@@ -6904,6 +7734,11 @@ function sheetActiveToday(sheetId, today) {
   }
   if (cs && cs.templateKey === "activity") {
     // Same shape as Social: a real logged activity today, not a toggle.
+    return cs.items.some((i) => i.date === today);
+  }
+  if (cs && (cs.templateKey === "prayer" || cs.templateKey === "breathe")) {
+    // Same shape again — a real logged entry (a prayer tapped, a breathing
+    // session saved) today, not a toggle.
     return cs.items.some((i) => i.date === today);
   }
   if (cs && cs.templateKey === "workout") {
