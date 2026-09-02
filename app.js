@@ -3742,25 +3742,46 @@ function renderMealLogSheet(id) {
   const libraryCard = el(`<div class="card"></div>`);
   libraryCard.appendChild(el(`<div class="al-card-title">Meal library</div>`));
   libraryCard.appendChild(
-    el(`<div class="ml-lib-note">Your running collection of go-to meals, not just this week's — add a link or photo if it's a real recipe. Checking one off just marks it made recently; it stays in the library either way.</div>`)
+    el(`<div class="ml-lib-note">Your running collection of go-to meals, not just this week's — add a link or photo if it's a real recipe. Tap one to pick it for the meal you're about to log below; a "Recent" badge just means it's been made in the last week, it isn't a checkbox.</div>`)
   );
   if (sheet.library.length) {
     const list = el(`<div class="ml-lib-list"></div>`);
+    // "Improvised" is pinned as the first row so picking "nothing from the
+    // library" is a tap right here too, not a separate control elsewhere —
+    // this is the single, only place meal selection happens now.
+    const improvRow = el(`
+      <div class="ml-lib-item improv${ui.selectedLibraryId === null ? " selected" : ""}">
+        <div class="ml-lib-main"><span class="ml-lib-text">🎲 Improvised — not from the library</span></div>
+      </div>
+    `);
+    improvRow.addEventListener("click", () => {
+      ui.selectedLibraryId = null;
+      renderMealLogSheet(id);
+    });
+    list.appendChild(improvRow);
+
     sheet.library.forEach((item) => {
       const madeRecently = mealLibraryUsedRecently(sheet, item.id, today);
       const tag = mealLibraryTagByKey(item.tag);
+      const isSelected = ui.selectedLibraryId === item.id;
       const row = el(`
-        <div class="ml-lib-item${madeRecently ? " made" : ""}">
-          <div class="ml-lib-check">${madeRecently ? checkSvg : ""}</div>
+        <div class="ml-lib-item${isSelected ? " selected" : ""}">
           ${item.photo ? `<img class="ml-lib-thumb" src="${item.photo}" />` : ""}
           <div class="ml-lib-main">
             <span class="ml-lib-text">${escapeHtml(item.text)}${tag ? `<span class="ml-lib-tag" title="${escapeHtml(tag.label)}">${tag.icon}</span>` : ""}</span>
             ${item.link ? `<a class="ml-lib-link" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 ${escapeHtml(item.link.replace(/^https?:\/\//, "").slice(0, 28))}</a>` : ""}
           </div>
+          ${madeRecently ? `<span class="ml-lib-recent-badge">Recent</span>` : ""}
           <button type="button" class="icon-btn ml-lib-remove" aria-label="Remove from library">${closeSvg}</button>
         </div>
       `);
-      row.querySelector(".ml-lib-remove").addEventListener("click", () => {
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".ml-lib-remove") || e.target.closest(".ml-lib-link")) return;
+        ui.selectedLibraryId = ui.selectedLibraryId === item.id ? null : item.id;
+        renderMealLogSheet(id);
+      });
+      row.querySelector(".ml-lib-remove").addEventListener("click", (e) => {
+        e.stopPropagation();
         confirmModal("Remove from library?", `${item.text} won't show up as a pick anymore. Past entries you already logged with it are untouched.`, "Remove", () => {
           sheet.library = sheet.library.filter((l) => l.id !== item.id);
           if (ui.selectedLibraryId === item.id) ui.selectedLibraryId = null;
@@ -3878,24 +3899,12 @@ function renderMealLogSheet(id) {
   });
   logCard.appendChild(qualityRow);
 
-  if (sheet.library.length) {
-    const pickRow = el(`<div class="ml-goto-row"></div>`);
-    sheet.library.forEach((item) => {
-      const pick = el(`<button type="button" class="ml-goto${ui.selectedLibraryId === item.id ? " sel" : ""}">📋 ${escapeHtml(item.text)}</button>`);
-      pick.addEventListener("click", () => {
-        ui.selectedLibraryId = ui.selectedLibraryId === item.id ? null : item.id;
-        renderMealLogSheet(id);
-      });
-      pickRow.appendChild(pick);
-    });
-    const improvisedPick = el(`<button type="button" class="ml-goto${ui.selectedLibraryId === null ? " sel" : ""}">🎲 Improvised</button>`);
-    improvisedPick.addEventListener("click", () => {
-      ui.selectedLibraryId = null;
-      renderMealLogSheet(id);
-    });
-    pickRow.appendChild(improvisedPick);
-    logCard.appendChild(pickRow);
-  }
+  // Selection now happens up in the library list itself (tap an item there,
+  // or "Improvised"); this just reflects the current pick so it's clear
+  // what's about to be logged without having to scroll back up.
+  const selectedItem = sheet.library.find((l) => l.id === ui.selectedLibraryId);
+  const currentPickLine = el(`<div class="ml-current-pick">Meal: <strong>${selectedItem ? escapeHtml(selectedItem.text) : "Improvised"}</strong></div>`);
+  logCard.appendChild(currentPickLine);
 
   const notesInput = el(`<input type="text" class="ml-f-notes ml-note-input" placeholder="Add a note (optional)" />`);
   logCard.appendChild(notesInput);
@@ -4607,6 +4616,10 @@ const BREATH_VOICES = {
 
 function createBreathTone(voiceKey) {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  // Some browsers create a new AudioContext already suspended even from
+  // inside a click handler — without this, everything below runs and no
+  // error is ever thrown, but nothing audible ever comes out.
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
   const master = ctx.createGain();
   master.gain.value = 0;
   master.connect(ctx.destination);
@@ -4660,6 +4673,7 @@ function createBreathTone(voiceKey) {
 function previewSound(key) {
   stopActiveBreatheAudio();
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
   const master = ctx.createGain();
   master.gain.value = 0;
   master.connect(ctx.destination);
@@ -4715,6 +4729,7 @@ function renderBreatheSheet(id) {
   let tone = null;
   let running = false;
   let sessionMuted = false;
+  let sessionToken = 0; // bumped on stop/cancel so an in-flight setTimeout chain from a cancelled session can't keep ticking
 
   const card = el(`<div class="card"></div>`);
   card.appendChild(el(`<div class="al-card-title">New session</div>`));
@@ -4745,6 +4760,7 @@ function renderBreatheSheet(id) {
     BREATHE_DURATIONS.forEach((mins) => {
       const chip = el(`<button type="button" class="dur-chip${mins === selectedDuration ? " sel" : ""}">${mins} min</button>`);
       chip.addEventListener("click", () => {
+        if (running) return;
         selectedDuration = mins;
         durWrap.querySelectorAll(".dur-chip").forEach((b) => b.classList.remove("sel"));
         chip.classList.add("sel");
@@ -4757,6 +4773,7 @@ function renderBreatheSheet(id) {
     const m = BREATHE_METHODS[key];
     const chip = el(`<button type="button" class="method-chip${key === selectedMethod ? " sel" : ""}"><span class="m-name">${escapeHtml(m.label)}</span><span class="m-sub">${escapeHtml(m.sub)}</span></button>`);
     chip.addEventListener("click", () => {
+      if (running) return; // method/duration are fixed once a session is underway — restart to change them
       selectedMethod = key;
       methodRow.querySelectorAll(".method-chip").forEach((b) => b.classList.remove("sel"));
       chip.classList.add("sel");
@@ -4781,7 +4798,14 @@ function renderBreatheSheet(id) {
       scheduleSave();
       soundRow.querySelectorAll(".sound-chip").forEach((b) => b.classList.remove("sel"));
       chip.classList.add("sel");
-      previewSound(key);
+      // Sound is the one thing you CAN change mid-session — swap the live
+      // voice in place rather than tearing down and previewing, which
+      // would otherwise cut the running session's audio off entirely.
+      if (running && tone) {
+        tone.setVoice(key);
+      } else {
+        previewSound(key);
+      }
     });
     soundRow.appendChild(chip);
   });
@@ -4813,8 +4837,15 @@ function renderBreatheSheet(id) {
     soundBtn.classList.toggle("muted", sessionMuted);
   });
 
-  function step(method, phaseIndex, cyclesDone, totalCycles) {
-    if (!running) return;
+  function setChipsDisabled(disabled) {
+    methodRow.querySelectorAll(".method-chip:not(.ghost)").forEach((b) => (b.disabled = disabled));
+    durWrap.querySelectorAll(".dur-chip").forEach((b) => (b.disabled = disabled));
+    methodRow.classList.toggle("disabled", disabled);
+    durWrap.classList.toggle("disabled", disabled);
+  }
+
+  function step(method, phaseIndex, cyclesDone, totalCycles, myToken) {
+    if (myToken !== sessionToken) return; // a cancelled/replaced session's old timers land here and stop dead
     const phase = method.phases[phaseIndex];
     labelEl.textContent = phase.text;
     circleEl.style.transitionDuration = `${phase.seconds}s`;
@@ -4825,17 +4856,17 @@ function renderBreatheSheet(id) {
       tone.phase(phase.grow ? "in" : "out", phase.seconds);
     }
     setTimeout(() => {
-      if (!running) return;
+      if (myToken !== sessionToken) return;
       const nextIndex = phaseIndex + 1;
       if (nextIndex >= method.phases.length) {
         const nextCycles = cyclesDone + 1;
         if (nextCycles >= totalCycles) {
           finishSession();
         } else {
-          step(method, 0, nextCycles, totalCycles);
+          step(method, 0, nextCycles, totalCycles, myToken);
         }
       } else {
-        step(method, nextIndex, cyclesDone, totalCycles);
+        step(method, nextIndex, cyclesDone, totalCycles, myToken);
       }
     }, phase.seconds * 1000);
   }
@@ -4852,18 +4883,38 @@ function renderBreatheSheet(id) {
     afterBlock.style.display = "block";
   }
 
+  function cancelSession() {
+    sessionToken++; // invalidates any in-flight step() timers from this session
+    running = false;
+    if (tone) {
+      tone.stop();
+      tone = null;
+    }
+    startBtn.textContent = "Begin";
+    startBtn.classList.remove("stop");
+    setChipsDisabled(false);
+    labelEl.textContent = "Ready";
+    circleEl.classList.remove("grown");
+  }
+
   startBtn.addEventListener("click", () => {
-    if (running) return;
+    if (running) {
+      cancelSession();
+      return;
+    }
     stopActiveBreatheAudio();
     running = true;
-    startBtn.disabled = true;
-    startBtn.textContent = "In progress…";
+    startBtn.textContent = "Stop";
+    startBtn.classList.add("stop");
+    setChipsDisabled(true);
+    sessionToken++;
+    const myToken = sessionToken;
     tone = createBreathTone(selectedVoice);
     if (sessionMuted) tone.toggleMute();
     const method = BREATHE_METHODS[selectedMethod];
     const minutes = selectedMethod === "box" ? selectedDuration : BREATHE_SLOW_MINUTES;
     const totalCycles = Math.max(1, Math.round((minutes * 60) / method.cycleSeconds));
-    step(method, 0, 0, totalCycles);
+    step(method, 0, 0, totalCycles, myToken);
   });
 
   card.appendChild(beforeBlock);
@@ -7641,7 +7692,7 @@ function pillarCandidateSheets(key) {
     state.sheets.forEach((s) => {
       if (s.kind !== "custom" || !s.visible) return;
       const cs = state.customSheets[s.id];
-      if (cs && cs.templateKey === "quran") results.push({ id: s.id, label: sheetLabel(s) });
+      if (cs && (cs.templateKey === "quran" || cs.templateKey === "prayer" || cs.templateKey === "breathe")) results.push({ id: s.id, label: sheetLabel(s) });
     });
   } else if (key === "movement") {
     state.sheets.forEach((s) => {
