@@ -982,13 +982,17 @@ function openAccountSheet() {
         </div>
         <div class="you-status-pill">${statusPill}</div>
 
+        <div class="you-identity-label">Who do you say you are?</div>
+        <div id="you-identity-quote-slot"></div>
+        <div class="you-list-divider"></div>
+
         <button type="button" class="you-list-row" id="you-myspaces-row">
           ${iconSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>')}
           <span>My Practices</span>
         </button>
         <button type="button" class="you-list-row" id="you-gallery-row">
           ${iconSvg('<path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/>')}
-          <span>Gallery</span>
+          <span>Practice Gallery</span>
         </button>
         <button type="button" class="you-list-row" id="you-pillars-row">
           ${iconSvg('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>')}
@@ -1023,6 +1027,7 @@ function openAccountSheet() {
       </div>
     </div>
   `);
+  renderIdentityQuote(overlay.querySelector("#you-identity-quote-slot"), false);
   const close = () => overlay.remove();
   overlay.querySelector(".info-modal-close").addEventListener("click", close);
   overlay.addEventListener("click", (e) => {
@@ -1533,7 +1538,7 @@ function renderSettings() {
   const segment = el(`
     <div class="settings-segment">
       <button type="button" class="${settingsSubTab === "mine" ? "active" : ""}" data-target="mine">My Practices</button>
-      <button type="button" class="${settingsSubTab === "gallery" ? "active" : ""}" data-target="gallery">Gallery</button>
+      <button type="button" class="${settingsSubTab === "gallery" ? "active" : ""}" data-target="gallery">Practice Gallery</button>
     </div>
   `);
   segment.querySelectorAll("button").forEach((btn) => {
@@ -1645,6 +1650,13 @@ function renderSettings() {
       const rect = row.getBoundingClientRect();
       const before = e.clientY - rect.top < rect.height / 2;
       reorderSheet(draggedSheetId, s.id, before);
+    });
+    // Tapping the row itself (not the drag handle, the eye, or the trash
+    // can) goes straight to that practice — this list is a jumping-off
+    // point to a practice you already have, not just a reorder tool.
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".sheet-drag-handle, .sheet-toggle, .sheet-remove, .sheet-remove-lock")) return;
+      activateTab(s.id);
     });
     card.appendChild(row);
   });
@@ -3593,28 +3605,16 @@ const MEAL_QUALITY = [
   { key: "rushed", label: "Rushed", icon: "⏱️" },
 ];
 const MEAL_HEALTHY_QUALITY_KEYS = ["nourishing", "balanced"];
-const MEAL_LIBRARY_TAGS = [
-  { key: "protein", label: "High protein", icon: "🥩" },
-  { key: "treat", label: "Sweet treat", icon: "🍰" },
-  { key: "comfort", label: "Comfort food", icon: "🍲" },
-  { key: "light", label: "Light", icon: "🥬" },
-];
-// How far back a library item still counts as "made recently" on its
-// own card — a loose recency cue, not a strict weekly reset.
-const MEAL_LIBRARY_RECENT_DAYS = 7;
 
 let mealLogUiStateBySheet = {};
 function mealLogUiState(id) {
-  return (mealLogUiStateBySheet[id] ||= { selectedMealType: MEAL_TYPES[0].key, selectedQuality: MEAL_QUALITY[0].key, selectedLibraryId: null, addingLibraryItem: false, libraryExtrasOpen: false, libraryDraftTag: null, libraryDraftPhoto: null });
+  return (mealLogUiStateBySheet[id] ||= { selectedMealType: MEAL_TYPES[0].key, selectedQuality: MEAL_QUALITY[0].key });
 }
 function mealTypeByKey(key) {
   return MEAL_TYPES.find((t) => t.key === key) || MEAL_TYPES[0];
 }
 function mealQualityByKey(key) {
   return MEAL_QUALITY.find((q) => q.key === key) || MEAL_QUALITY[0];
-}
-function mealLibraryTagByKey(key) {
-  return MEAL_LIBRARY_TAGS.find((t) => t.key === key) || null;
 }
 
 // A day "counts" once one real entry that day is Nourishing or Balanced —
@@ -3645,13 +3645,6 @@ function mealLogTodaySummary(sheet, today) {
     counts[i.quality] = (counts[i.quality] || 0) + 1;
   });
   return MEAL_QUALITY.map((q) => ({ ...q, count: counts[q.key] || 0 })).filter((q) => q.count > 0);
-}
-function mealLibraryUsedRecently(sheet, libId, today) {
-  for (let i = 0; i < MEAL_LIBRARY_RECENT_DAYS; i++) {
-    const d = addDays(today, -i);
-    if (sheet.items.some((it) => it.libraryId === libId && it.date === d)) return true;
-  }
-  return false;
 }
 
 // Longest run ever of qualifying (Nourishing/Balanced) days — not the
@@ -3720,7 +3713,6 @@ function renderMealLogSheet(id) {
   const sheet = state.customSheets[id];
   if (!panel || !sheet) return;
   sheet.items ||= [];
-  sheet.library ||= [];
   sheet.milestonesEarned ||= {};
   const ui = mealLogUiState(id);
   const today = todayISO();
@@ -3738,142 +3730,11 @@ function renderMealLogSheet(id) {
     : `<div class="ml-today-recap muted">Nothing logged yet today.</div>`;
   panel.appendChild(buildStreakCard(streak, "day food streak", recapHtml));
 
-  // ---- Meal library ----
-  const libraryCard = el(`<div class="card"></div>`);
-  libraryCard.appendChild(el(`<div class="al-card-title">Meal library</div>`));
-  libraryCard.appendChild(
-    el(`<div class="ml-lib-note">Your running collection of go-to meals, not just this week's — add a link or photo if it's a real recipe. Tap one to pick it for the meal you're about to log below; a "Recent" badge just means it's been made in the last week, it isn't a checkbox.</div>`)
-  );
-  if (sheet.library.length) {
-    const list = el(`<div class="ml-lib-list"></div>`);
-    // "Improvised" is pinned as the first row so picking "nothing from the
-    // library" is a tap right here too, not a separate control elsewhere —
-    // this is the single, only place meal selection happens now.
-    const improvRow = el(`
-      <div class="ml-lib-item improv${ui.selectedLibraryId === null ? " selected" : ""}">
-        <div class="ml-lib-main"><span class="ml-lib-text">🎲 Improvised — not from the library</span></div>
-      </div>
-    `);
-    improvRow.addEventListener("click", () => {
-      ui.selectedLibraryId = null;
-      renderMealLogSheet(id);
-    });
-    list.appendChild(improvRow);
-
-    sheet.library.forEach((item) => {
-      const madeRecently = mealLibraryUsedRecently(sheet, item.id, today);
-      const tag = mealLibraryTagByKey(item.tag);
-      const isSelected = ui.selectedLibraryId === item.id;
-      const row = el(`
-        <div class="ml-lib-item${isSelected ? " selected" : ""}">
-          ${item.photo ? `<img class="ml-lib-thumb" src="${item.photo}" />` : ""}
-          <div class="ml-lib-main">
-            <span class="ml-lib-text">${escapeHtml(item.text)}${tag ? `<span class="ml-lib-tag" title="${escapeHtml(tag.label)}">${tag.icon}</span>` : ""}</span>
-            ${item.link ? `<a class="ml-lib-link" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 ${escapeHtml(item.link.replace(/^https?:\/\//, "").slice(0, 28))}</a>` : ""}
-          </div>
-          ${madeRecently ? `<span class="ml-lib-recent-badge">Recent</span>` : ""}
-          <button type="button" class="icon-btn ml-lib-remove" aria-label="Remove from library">${closeSvg}</button>
-        </div>
-      `);
-      row.addEventListener("click", (e) => {
-        if (e.target.closest(".ml-lib-remove") || e.target.closest(".ml-lib-link")) return;
-        ui.selectedLibraryId = ui.selectedLibraryId === item.id ? null : item.id;
-        renderMealLogSheet(id);
-      });
-      row.querySelector(".ml-lib-remove").addEventListener("click", (e) => {
-        e.stopPropagation();
-        confirmModal("Remove from library?", `${item.text} won't show up as a pick anymore. Past entries you already logged with it are untouched.`, "Remove", () => {
-          sheet.library = sheet.library.filter((l) => l.id !== item.id);
-          if (ui.selectedLibraryId === item.id) ui.selectedLibraryId = null;
-          scheduleSave();
-          renderMealLogSheet(id);
-        });
-      });
-      list.appendChild(row);
-    });
-    libraryCard.appendChild(list);
-  }
-
-  const addRow = el(`
-    <div class="ml-lib-add-row">
-      <input type="text" class="ml-lib-add-name" placeholder="Add something to the library…" />
-      <button type="button" class="ml-lib-add-btn">Add</button>
-    </div>
-  `);
-  const extrasRow = el(`
-    <div class="ml-lib-extras-row">
-      <button type="button" class="ml-lib-extra-btn ml-lib-add-link-btn">🔗 Add a link</button>
-      <button type="button" class="ml-lib-extra-btn ml-lib-add-photo-btn">📷 Add a photo</button>
-      <button type="button" class="ml-lib-extra-btn ml-lib-add-tag-btn">🏷️ Tag it</button>
-    </div>
-  `);
-  // These three (link, tag, photo) are all optional extras attached to a
-  // library item BEFORE it's saved — none of them may trigger a full
-  // panel re-render, or whatever's already typed in the name/link fields
-  // gets wiped out from under the person mid-add. Each just updates its
-  // own bit of DOM directly.
-  const linkInput = el(`<input type="text" class="ml-lib-add-link" placeholder="Paste a link (optional)" style="display:none;" />`);
-  const tagRow = el(`<div class="ml-lib-tag-row" style="display:none;"></div>`);
-  MEAL_LIBRARY_TAGS.forEach((t) => {
-    const chip = el(`<button type="button" class="al-chip${ui.libraryDraftTag === t.key ? " active" : ""}"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
-    chip.addEventListener("click", () => {
-      ui.libraryDraftTag = ui.libraryDraftTag === t.key ? null : t.key;
-      tagRow.querySelectorAll(".al-chip").forEach((c) => c.classList.toggle("active", c === chip && ui.libraryDraftTag === t.key));
-    });
-    tagRow.appendChild(chip);
-  });
-  const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
-  const photoPreviewNote = el(`<div class="ml-lib-photo-note" style="display:none;">Photo attached &mdash; will save with this item.</div>`);
-  if (ui.libraryDraftPhoto) photoPreviewNote.style.display = "block";
-
-  extrasRow.querySelector(".ml-lib-add-link-btn").addEventListener("click", () => {
-    linkInput.style.display = linkInput.style.display === "none" ? "block" : "none";
-  });
-  extrasRow.querySelector(".ml-lib-add-tag-btn").addEventListener("click", () => {
-    tagRow.style.display = tagRow.style.display === "none" ? "grid" : "none";
-  });
-  extrasRow.querySelector(".ml-lib-add-photo-btn").addEventListener("click", () => photoInput.click());
-  photoInput.addEventListener("change", () => {
-    const file = photoInput.files[0];
-    if (!file) return;
-    resizeImageToDataUrl(file, 400, 0.75).then((dataUrl) => {
-      ui.libraryDraftPhoto = dataUrl;
-      photoPreviewNote.style.display = "block";
-    });
-  });
-
-  const commitAdd = () => {
-    const name = addRow.querySelector(".ml-lib-add-name").value.trim();
-    if (!name) return;
-    sheet.library.push({
-      id: nextId(),
-      text: name,
-      link: linkInput.value.trim() || null,
-      photo: ui.libraryDraftPhoto || null,
-      tag: ui.libraryDraftTag || null,
-      addedDate: today,
-    });
-    ui.libraryDraftTag = null;
-    ui.libraryDraftPhoto = null;
-    scheduleSave();
-    renderMealLogSheet(id);
-  };
-  addRow.querySelector(".ml-lib-add-btn").addEventListener("click", commitAdd);
-  addRow.querySelector(".ml-lib-add-name").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") commitAdd();
-  });
-
-  libraryCard.appendChild(addRow);
-  libraryCard.appendChild(extrasRow);
-  libraryCard.appendChild(linkInput);
-  libraryCard.appendChild(tagRow);
-  libraryCard.appendChild(photoInput);
-  libraryCard.appendChild(photoPreviewNote);
-  panel.appendChild(libraryCard);
-
   // ---- Log a meal — meal type and quality are both told apart by their
   // own compact styling rather than a heading label over each one; that's
-  // what keeps this from reading as four separate stacked decisions. ----
+  // what keeps this from reading as four separate stacked decisions. No
+  // library, no picking from a list — just what it was, how it went, and
+  // optionally what it actually was, in the note.
   const logCard = el(`<div class="card"></div>`);
   logCard.appendChild(el(`<div class="al-card-title">Log a meal</div>`));
 
@@ -3899,19 +3760,12 @@ function renderMealLogSheet(id) {
   });
   logCard.appendChild(qualityRow);
 
-  // Selection now happens up in the library list itself (tap an item there,
-  // or "Improvised"); this just reflects the current pick so it's clear
-  // what's about to be logged without having to scroll back up.
-  const selectedItem = sheet.library.find((l) => l.id === ui.selectedLibraryId);
-  const currentPickLine = el(`<div class="ml-current-pick">Meal: <strong>${selectedItem ? escapeHtml(selectedItem.text) : "Improvised"}</strong></div>`);
-  logCard.appendChild(currentPickLine);
-
-  const notesInput = el(`<input type="text" class="ml-f-notes ml-note-input" placeholder="Add a note (optional)" />`);
+  const notesInput = el(`<input type="text" class="ml-f-notes ml-note-input" placeholder="What did you eat? (optional)" />`);
   logCard.appendChild(notesInput);
   const saveBtn = el(`<button type="button" class="al-save-btn">Save meal</button>`);
   saveBtn.addEventListener("click", () => {
     const notes = logCard.querySelector(".ml-f-notes").value.trim();
-    sheet.items.push({ id: nextId(), date: today, mealType: ui.selectedMealType, libraryId: ui.selectedLibraryId, quality: ui.selectedQuality, notes });
+    sheet.items.push({ id: nextId(), date: today, mealType: ui.selectedMealType, quality: ui.selectedQuality, notes });
     scheduleSave();
     renderMealLogSheet(id);
     renderHome();
@@ -3934,14 +3788,13 @@ function renderMealLogSheet(id) {
     recent.forEach((entry) => {
       const mt = mealTypeByKey(entry.mealType);
       const q = mealQualityByKey(entry.quality);
-      const libItem = entry.libraryId ? sheet.library.find((l) => l.id === entry.libraryId) : null;
-      const mainLabel = libItem ? libItem.text : entry.notes || (entry.libraryId === null ? "Improvised" : "");
+      const mainLabel = entry.notes || mt.label;
       const dateLabel = entry.date === today ? "Today" : entry.date === addDays(today, -1) ? "Yesterday" : activityDateShort(entry.date);
       const row = el(`
         <button type="button" class="al-hist-row">
           <span class="al-hist-icon">${mt.icon}</span>
           <span class="al-hist-main">
-            <span class="al-hist-type">${escapeHtml(mainLabel || mt.label)}${libItem && entry.notes ? ` &middot; ${escapeHtml(entry.notes)}` : ""}</span>
+            <span class="al-hist-type">${escapeHtml(mainLabel)}</span>
             <span class="al-hist-meta">${q.icon} ${escapeHtml(q.label)}</span>
           </span>
           <span class="al-hist-date">${dateLabel}</span>
@@ -4644,12 +4497,12 @@ function createBreathTone(voiceKey) {
     },
     toggleMute() {
       muted = !muted;
-      master.gain.setTargetAtTime(muted ? 0 : 0.5, ctx.currentTime, 0.2);
+      master.gain.setTargetAtTime(muted ? 0 : 0.8, ctx.currentTime, 0.2);
       return muted;
     },
     phase(direction, seconds) {
       const now = ctx.currentTime;
-      if (!muted) master.gain.setTargetAtTime(0.5, now, 0.4);
+      if (!muted) master.gain.setTargetAtTime(0.8, now, 0.4);
       built.modulate(direction, now, seconds * 0.35);
     },
     hold() {
@@ -4681,7 +4534,7 @@ function previewSound(key) {
   const built = voice.build(ctx);
   built.output.connect(master);
   const now = ctx.currentTime;
-  master.gain.setTargetAtTime(0.5, now, 0.3);
+  master.gain.setTargetAtTime(0.8, now, 0.3);
   built.modulate("in", now, 1.2);
   const stop = () => {
     const t = ctx.currentTime;
@@ -9423,13 +9276,19 @@ function renderHome() {
   panel.appendChild(renderHomeTodayPillarsCard(today));
   panel.appendChild(renderHomeTodayDetailsCard(today));
 
-  renderTrendInsightBanner(panel, today);
+  // Additional Practices moved up here per the 2026-09 Home reorder — it's
+  // daily-use content (open a practice), so it sits with the rest of
+  // today's stuff instead of buried below the lower-frequency look-back
+  // cards. Trends and History now sit next to each other at the bottom,
+  // and the "strongest habit" line lives inside Trends instead of
+  // floating above it, disconnected from the section it's describing.
+  // The identity quote ("Who do you say you are?") moved to the You
+  // sheet — it was sitting between Trends and History for no real reason.
+  panel.appendChild(renderYourSpaces());
+
   renderCooccurrenceCard(panel, today);
   renderHomeTrendsSection(panel, today);
-  renderIdentityQuote(panel);
   renderWellnessHistory(panel, today);
-
-  panel.appendChild(renderYourSpaces());
 
   panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a practice below to open it.</div>`));
 }
@@ -9797,10 +9656,13 @@ function openRewardSettingsModal() {
 function renderHomeTrendsSection(panel, today) {
   const section = el(`
     <details class="card">
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="subsection-title serif" style="margin:0;">Trends</span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="home-section-icon">📈</span><span class="subsection-title serif" style="margin:0;">Trends</span></span></summary>
     </details>
   `);
   panel.appendChild(section);
+  // The "strongest habit" line lives inside Trends now — it's describing
+  // this section's own data, so it reads as this section's own data.
+  renderTrendInsightBanner(section, today);
   renderPulseChart(section, today);
   section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
   renderPillarStreakList(section, today);
@@ -10062,9 +9924,13 @@ function homeGreetingTime() {
   return "evening";
 }
 
-function renderIdentityQuote(panel) {
+// Lives in the You sheet now, not Home — it used to sit between Trends
+// and History on Home for no real reason connected to either. `wrapInCard`
+// exists because Home wrapped it in its own `.card`, while the You sheet
+// already provides that container.
+function renderIdentityQuote(panel, wrapInCard = true) {
   const prize = state.veronikasPrize;
-  const card = el(`<div class="card"></div>`);
+  const container = wrapInCard ? el(`<div class="card"></div>`) : panel;
 
   const quoteBox = el(`
     <div class="prize-quote">
@@ -10081,17 +9947,17 @@ function renderIdentityQuote(panel) {
     prize.quote = e.target.value;
     scheduleSave();
   });
-  card.appendChild(quoteBox);
+  container.appendChild(quoteBox);
   requestAnimationFrame(autoGrowQuote);
 
-  panel.appendChild(card);
+  if (wrapInCard) panel.appendChild(container);
 }
 
 
 function renderWellnessHistory(panel, today) {
   const section = el(`
     <details class="card">
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="subsection-title serif" style="margin:0;">History</span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="home-section-icon">🗓️</span><span class="subsection-title serif" style="margin:0;">History</span></span></summary>
     </details>
   `);
   panel.appendChild(section);
