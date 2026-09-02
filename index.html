@@ -185,6 +185,24 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .account-btn[disabled]:hover { background: var(--surface); }
 .account-btn.danger { color: #8C3F2B; }
 .account-btn.danger:hover { background: #F1DAD3; border-color: #E0B6A8; }
+
+.grace-token-icon-badge {
+  width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: linear-gradient(145deg, #DCC9A6, #B98F58); box-shadow: 0 2px 6px rgba(124,92,54,.3); color: #fff;
+}
+.grace-token-icon-badge svg { width: 16px; height: 16px; }
+.grace-token-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.grace-token { flex: 1 1 34px; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; }
+.grace-token.filled {
+  background: linear-gradient(145deg, #DCC9A6, #B98F58);
+  box-shadow: 0 3px 7px rgba(124,92,54,.4), inset 0 0 0 2px rgba(255,255,255,.3), inset 0 0 0 3px rgba(122,74,0,.22), inset 0 1px 2px rgba(255,255,255,.55), inset 0 -2px 3px rgba(122,74,0,.3);
+}
+.grace-token.filled svg { width: 18px; height: 18px; }
+.grace-token.empty { background: var(--bg); border: 1.5px dashed var(--border); }
+.grace-token-caption { font-size: 11px; color: var(--muted); text-align: center; margin-bottom: 4px; }
+.grace-earn-row { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; padding: 9px 0; border-top: 1px solid var(--border); }
+.grace-earn-row:first-child { border-top: none; }
+.grace-earn-row b { color: var(--text); }
 .account-btn-sub { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 
 /* "You" page — flat list, no cards, per the Etsy/Slack-style reference. */
@@ -698,10 +716,25 @@ td input:hover { border-color: var(--border); }
 .onboarding-toolbar-slot .ic svg, .onboarding-extra-slot .ic svg { width: 17px; height: 17px; }
 .onboarding-toolbar-slot.dragging { opacity: .35; }
 .onboarding-extra-row { display: flex; gap: 8px; }
-.onboarding-extra-slot { flex: 1; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 10px 4px; font-size: 9.5px; font-weight: 700; text-align: center; cursor: grab; }
+.onboarding-extra-slot { flex: 1; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 10px 4px; font-size: 9.5px; font-weight: 700; text-align: center; cursor: grab; transition: opacity .15s, border-color .15s; }
 .onboarding-extra-slot.dragging { opacity: .35; }
+.onboarding-extra-slot.drag-over { border-color: var(--accent-dark); }
 .onboarding-review-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
-.onboarding-review-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+.onboarding-review-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; display: flex; align-items: baseline; justify-content: space-between; }
+.onboarding-review-card .ic { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(145deg, #F3E7D2, #E3D1AC); box-shadow: inset 0 1px 1px rgba(255,255,255,.5), 0 1px 3px rgba(124,92,54,.18); }
+.onboarding-review-card .ic svg { width: 15px; height: 15px; }
+.drag-hint { font-size: 9.5px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted); opacity: .75; }
+.completion-badge {
+  width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(145deg, #DCC9A6, #B98F58);
+  box-shadow: 0 6px 16px rgba(124,92,54,.4), inset 0 1px 1px rgba(255,255,255,.4);
+  opacity: 0; transform: scale(.6); animation: badgePop .55s cubic-bezier(.34,1.56,.64,1) .05s forwards;
+}
+.completion-badge svg { width: 28px; height: 28px; }
+@keyframes badgePop { to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .completion-badge { animation: none; opacity: 1; transform: none; } }
+.closing-beat { text-align: center; font-family: "Source Serif 4", Georgia, serif; font-size: 14.5px; line-height: 1.55; color: var(--text); padding: 14px 6px 4px; }
+.closing-beat b { color: var(--accent-dark); }
 .onboarding-lock-note { display: flex; gap: 8px; align-items: flex-start; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 11.5px; color: var(--text); line-height: 1.5; margin-bottom: 4px; }
 .onboarding-primary-btn { display: block; width: 100%; margin-top: 18px; background: var(--accent-dark); color: var(--text-inverse); text-align: center; font-weight: 700; font-size: 14px; padding: 14px; border-radius: 12px; border: none; cursor: pointer; font-family: inherit; }
 
@@ -777,6 +810,12 @@ td input:hover { border-color: var(--border); }
 .trend-insight-banner { background: linear-gradient(135deg, #F3E7D2, #EFE0C4); border: 1px solid #E3D1AC; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; display: flex; gap: 12px; align-items: flex-start; }
 html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(135deg, #3A3324, #2E2A1E); border-color: #4A4230; }
 .trend-insight-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid #E3D1AC; color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.grace-banner .grace-icon {
+  width: 40px; height: 40px; border: none; color: #fff;
+  background: linear-gradient(145deg, #DCC9A6, #B98F58);
+  box-shadow: 0 3px 8px rgba(124,92,54,.35), inset 0 1px 1px rgba(255,255,255,.4);
+}
+.grace-banner .grace-icon svg { width: 19px; height: 19px; }
 .trend-insight-text { font-size: 13.5px; line-height: 1.45; padding-top: 3px; }
 .trend-insight-text strong { color: var(--accent-dark); }
 .insight-hero-eyebrow { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-dark); margin-bottom: 3px; }
