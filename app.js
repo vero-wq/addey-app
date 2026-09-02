@@ -395,10 +395,63 @@ function mergeJournalRecords(remoteList, localList, keyFn) {
   return merged;
 }
 
+// A plain settings object (not a journal collection) can't use the
+// field-fill merge above — the field is already present locally, just
+// possibly stale, so "fill in what's missing" would never pick up a
+// genuinely newer edit made on another device. This is what let a
+// stale tab's autosave silently revert Veronika's sleep target back to
+// the default after she'd changed it elsewhere: whichever device
+// saved LAST won, regardless of which one actually held the real edit.
+// Comparing `updatedAt` (stamped only when the value is actually
+// changed, not on every render) picks the real most-recent edit
+// instead of the most-recent save.
+function mergeLastWriteWins(remoteVal, localVal) {
+  if (!remoteVal) return localVal;
+  if (!localVal) return remoteVal;
+  return (remoteVal.updatedAt || 0) > (localVal.updatedAt || 0) ? remoteVal : localVal;
+}
+
+// Union of two string arrays, local entries first (so local's own
+// finish-order is kept) with any remote-only entries appended after.
+// Used for lifetime, append-only records like bibleBooksEverFinished,
+// where the one thing that must never happen is losing an entry either
+// side already has.
+function mergeStringArrayUnion(remoteArr, localArr) {
+  const local = Array.isArray(localArr) ? localArr : [];
+  const remote = Array.isArray(remoteArr) ? remoteArr : [];
+  const seen = new Set(local);
+  const merged = local.slice();
+  remote.forEach((v) => {
+    if (!seen.has(v)) {
+      seen.add(v);
+      merged.push(v);
+    }
+  });
+  return merged;
+}
+
+// Union of two "earned date" maps (milestone key -> date first earned) —
+// whichever side has an earned date for a key wins; a key earned on only
+// one device is never lost by the other device's blind overwrite.
+function mergeEarnedDates(remoteObj, localObj) {
+  const merged = { ...(localObj || {}) };
+  Object.entries(remoteObj || {}).forEach(([key, date]) => {
+    if (!merged[key]) merged[key] = date;
+  });
+  return merged;
+}
+
 function mergeRemoteBeforeSave(remote, local) {
   if (!remote) return; // nothing saved yet from anywhere — nothing to merge with
   local.wellness = mergeJournalRecords(remote.wellness, local.wellness, (w) => w.logDate);
   local.learningLog = mergeJournalRecords(remote.learningLog, local.learningLog, (l) => l.date);
+  local.sleepSettings = mergeLastWriteWins(remote.sleepSettings, local.sleepSettings);
+  // Lifetime Milestones records — permanent by design, so these use
+  // union merges rather than last-write-wins: a milestone earned on one
+  // device must survive a blind overwrite autosaved from another.
+  local.bibleBooksEverFinished = mergeStringArrayUnion(remote.bibleBooksEverFinished, local.bibleBooksEverFinished);
+  local.bibleMilestonesEarned = mergeEarnedDates(remote.bibleMilestonesEarned, local.bibleMilestonesEarned);
+  local.sleepMilestonesEarned = mergeEarnedDates(remote.sleepMilestonesEarned, local.sleepMilestonesEarned);
 }
 
 async function saveStateToSupabase(userId, stateToSave) {
@@ -2215,6 +2268,7 @@ function renderQuranPace(panel, sheet, doneCount, total) {
       <div class="bible-pace-mini-row">
         <label class="muted">Start date</label>
         <input type="date" class="quran-start-date" value="${settings.startDate}" />
+        <button type="button" class="filler-btn quran-start-over-btn">&#8630; Start over</button>
       </div>
     </div>
   `);
@@ -2224,6 +2278,24 @@ function renderQuranPace(panel, sheet, doneCount, total) {
       scheduleSave();
       renderQuranSheet(sheet.__id);
     }
+  });
+  card.querySelector(".quran-start-over-btn").addEventListener("click", () => {
+    // Mirrors the Bible sheet's "Start over" exactly — resets the live
+    // reading progress and pace, nothing else.
+    confirmModal(
+      "Start the reading plan over?",
+      "Every reading goes back to unread and the pace resets from today.",
+      "Start over",
+      () => {
+        sheet.items.forEach((item) => {
+          item.done = false;
+          item.completedDate = null;
+        });
+        settings.startDate = todayISO();
+        scheduleSave();
+        renderQuranSheet(sheet.__id);
+      }
+    );
   });
   panel.appendChild(card);
 }
@@ -2276,14 +2348,19 @@ function renderBookSheet(id) {
   const panel = document.getElementById(`panel-${id}`);
   const sheet = state.customSheets[id];
   if (!panel || !sheet) return;
+  sheet.milestonesEarned ||= {};
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  const todayStr = todayISO();
+
+  // ---- Streak, at the top like the other practices ----
+  panel.appendChild(buildStreakCard(computeReadingStreak(todayStr), "day reading streak"));
 
   // Learning pillar check-in — a real log entry (which book, which
   // chapter), not just a same-day marker. Separate from any single
   // book's finished status, since the habit is reading today, not
   // finishing a book today.
-  const todayStr = todayISO();
   const todaysLog = (state.learningLog || []).find((e) => e.date === todayStr);
   const todaysBook = todaysLog?.bookId ? sheet.items.find((b) => b.id === todaysLog.bookId) : null;
   const learningRow = el(`
@@ -2467,6 +2544,9 @@ function renderBookSheet(id) {
   const addBtn = el(`<button type="button" class="btn-ghost" style="margin-top:16px;">+ Add book</button>`);
   addBtn.addEventListener("click", () => openBookItemModal(id, null));
   panel.appendChild(addBtn);
+
+  // ---- Milestones — permanent, unlike the streak above ----
+  panel.appendChild(buildMilestonesCard(sheet, BOOK_MILESTONES, todayStr));
 }
 
 const BOOK_FORMAT_OPTIONS = ["read", "listen", "listen & read", "listen or read"];
@@ -2719,6 +2799,71 @@ function openReadingLogModal(sheetId, presetBookId) {
   document.body.appendChild(overlay);
 }
 
+// Reading streak — state.learningLog is global (one entry per calendar
+// date, across every Book List sheet, per the "re-logging today just
+// updates the entry" rule above), so this reads off that shared log
+// rather than anything scoped to a particular sheet's own items.
+function computeReadingStreak(today) {
+  const log = state.learningLog || [];
+  let streak = 0;
+  let d = today;
+  while (log.some((e) => e.date === d)) {
+    streak++;
+    d = addDays(d, -1);
+  }
+  return streak;
+}
+function computeLongestReadingStreak() {
+  const dates = [...new Set((state.learningLog || []).map((e) => e.date))].sort();
+  let longest = 0;
+  let current = 0;
+  let prev = null;
+  dates.forEach((d) => {
+    current = prev && addDays(prev, 1) === d ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    prev = d;
+  });
+  return longest;
+}
+const BOOK_MILESTONES = [
+  {
+    key: "tenReadingDays",
+    label: "10 reading days logged",
+    icon: "📖",
+    progress: (sheet) => {
+      const n = (state.learningLog || []).length;
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` };
+    },
+  },
+  {
+    key: "fiveBooksFinished",
+    label: "5 books finished",
+    icon: "📚",
+    progress: (sheet) => {
+      const n = sheet.items.filter((b) => b.read).length;
+      return { earned: n >= 5, frac: Math.min(1, n / 5), caption: `${n} of 5` };
+    },
+  },
+  {
+    key: "twentyBooksFinished",
+    label: "20 books finished",
+    icon: "🏅",
+    progress: (sheet) => {
+      const n = sheet.items.filter((b) => b.read).length;
+      return { earned: n >= 20, frac: Math.min(1, n / 20), caption: `${n} of 20` };
+    },
+  },
+  {
+    key: "weekStreak",
+    label: "7-day streak",
+    icon: "🏆",
+    progress: () => {
+      const longest = computeLongestReadingStreak();
+      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
+    },
+  },
+];
+
 // ------------------------------------------------------------------
 // Connections Log — the Social Connection pillar's home. Built around
 // people, not a plain entry list: each person you've logged becomes a
@@ -2778,6 +2923,70 @@ function socialQuickLog(sheetId, personId) {
   renderSocialSheet(sheetId);
   renderHome();
 }
+
+// Overall "day streak" for Connections, separate from and on top of the
+// per-person cadence tracking above — same qualifying condition the
+// Social pillar already uses (a real entry logged that day, any person,
+// any kind), so this always agrees with what Home shows as Yes/No.
+function computeSocialStreak(sheet, today) {
+  let streak = 0;
+  let d = today;
+  while (sheet.items.some((i) => i.date === d)) {
+    streak++;
+    d = addDays(d, -1);
+  }
+  return streak;
+}
+function computeLongestSocialStreak(sheet) {
+  const dates = [...new Set(sheet.items.map((i) => i.date))].sort();
+  let longest = 0;
+  let current = 0;
+  let prev = null;
+  dates.forEach((d) => {
+    current = prev && addDays(prev, 1) === d ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    prev = d;
+  });
+  return longest;
+}
+const SOCIAL_MILESTONES = [
+  {
+    key: "tenLogged",
+    label: "10 connections logged",
+    icon: "💛",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` };
+    },
+  },
+  {
+    key: "fiftyLogged",
+    label: "50 connections logged",
+    icon: "🌻",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 50, frac: Math.min(1, n / 50), caption: `${n} of 50` };
+    },
+  },
+  {
+    key: "hundredLogged",
+    label: "100 connections logged",
+    icon: "🏅",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
+    },
+  },
+  {
+    key: "weekStreak",
+    label: "7-day streak",
+    icon: "🏆",
+    progress: (sheet) => {
+      const longest = computeLongestSocialStreak(sheet);
+      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
+    },
+  },
+];
 
 // ------------------------------------------------------------------
 // Activity Log — Workout Log's sibling under the Movement pillar for
@@ -2926,9 +3135,75 @@ function computeMovementMix(sheet, today) {
     .sort((a, b) => b.count - a.count);
 }
 
+// ------------------------------------------------------------------
+// Shared practice-page building blocks — the streak chip at the top and
+// the Milestones card near the bottom look and sit the same way across
+// every ongoing practice (Activity Log, Meal Log, Workout Log,
+// Connections, Book List), even though what they're each counting is
+// completely different underneath. One shared builder for each means
+// they can't quietly drift apart from each other again the way they had
+// before this pass.
+// ------------------------------------------------------------------
+function buildStreakCard(streak, label, extraHtml) {
+  return el(`
+    <div class="card">
+      <div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">${escapeHtml(label)}</span></div>
+      ${extraHtml || ""}
+    </div>
+  `);
+}
+
 // Permanent, cumulative — unlike the streak above, these never reset.
 // Each returns a fraction toward the goal so an unearned milestone can
-// still show real progress instead of just looking locked.
+// still show real progress instead of just looking locked. `sheet` here
+// is whatever record the milestone defs' progress() functions expect —
+// almost always a customSheet, but callers decide.
+function buildMilestonesCard(sheet, milestoneDefs, today) {
+  sheet.milestonesEarned ||= {};
+  let earnedChanged = false;
+  milestoneDefs.forEach((m) => {
+    const p = m.progress(sheet);
+    if (p.earned && !sheet.milestonesEarned[m.key]) {
+      sheet.milestonesEarned[m.key] = today;
+      earnedChanged = true;
+    }
+  });
+  if (earnedChanged) scheduleSave();
+
+  const card = el(`<div class="card"></div>`);
+  card.appendChild(el(`<div class="al-card-title">Milestones</div>`));
+  card.appendChild(el(`<div class="al-note-line" style="margin-bottom:14px;">Permanent, once earned &mdash; unlike the streak above, these never reset.</div>`));
+  const badgeRow = el(`<div class="pr-badge-grid"></div>`);
+  milestoneDefs.forEach((m) => {
+    const p = m.progress(sheet);
+    const earnedDate = sheet.milestonesEarned[m.key];
+    const badge = earnedDate
+      ? el(`
+          <div class="pr-badge">
+            <div class="pr-badge-medal earned">${m.icon}</div>
+            <div class="pr-badge-text">
+              <div class="lbl">${escapeHtml(m.label)}</div>
+              <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
+            </div>
+          </div>
+        `)
+      : el(`
+          <div class="pr-badge">
+            <div class="pr-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${Math.round(p.frac * 100)}%, var(--border) ${Math.round(p.frac * 100)}% 100%);">
+              <div class="pr-badge-medal-inner">${m.icon}</div>
+            </div>
+            <div class="pr-badge-text">
+              <div class="lbl">${escapeHtml(m.label)}</div>
+              <div class="sub">${escapeHtml(p.caption)}</div>
+            </div>
+          </div>
+        `);
+    badgeRow.appendChild(badge);
+  });
+  card.appendChild(badgeRow);
+  return card;
+}
+
 const ACTIVITY_MILESTONES = [
   {
     key: "first5milehike",
@@ -2980,26 +3255,18 @@ function renderActivitySheet(id) {
   const today = todayISO();
   panel.innerHTML = "";
 
-  // Record the first day each milestone actually clears the bar — never
-  // overwritten once set, so the date shown always reflects when it was
-  // truly first earned, not the last time this page happened to render.
-  let earnedChanged = false;
-  ACTIVITY_MILESTONES.forEach((m) => {
-    const p = m.progress(sheet);
-    if (p.earned && !sheet.milestonesEarned[m.key]) {
-      sheet.milestonesEarned[m.key] = today;
-      earnedChanged = true;
-    }
-  });
-  if (earnedChanged) scheduleSave();
-
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
   // ---- Summary: weekly minutes + streak ----
   const weeklyMinutes = computeActivityWeeklyMinutes(sheet, today);
   const goal = sheet.weeklyGoalMinutes;
   const barPct = goal ? Math.min(100, Math.round((weeklyMinutes / goal) * 100)) : 0;
-  const streak = computeActivityStreak(sheet, today);
+  // Movement streak is shared with Workout Log — both feed the same
+  // pillar, so a hike here keeps it alive on a day nothing gets lifted,
+  // and vice versa. Reuses Home's existing per-pillar streak instead of
+  // counting only this sheet's own items, which used to quietly
+  // disagree with whatever Workout Log showed for the same pillar.
+  const streak = pillarCurrentStreak("movement", today);
   const summaryCard = el(`
     <div class="card">
       <div class="al-summary-row">
@@ -3129,8 +3396,8 @@ function renderActivitySheet(id) {
     const notes = logCard.querySelector(".al-f-notes").value.trim();
     sheet.items.push({ id: nextId(), typeKey: ui.selectedTypeKey, date: today, durationMin, distanceMi, notes });
     scheduleSave();
+    renderHome(); // runs pillar auto-detection first, so the Movement streak below reflects today
     renderActivitySheet(id);
-    renderHome();
   });
   logCard.appendChild(saveBtn);
   logCard.appendChild(el(`<div class="al-note-line">Always logs as today &mdash; no backdating. Miss the day, miss the entry.</div>`));
@@ -3139,34 +3406,7 @@ function renderActivitySheet(id) {
   // ---- Milestones (right under logging — permanent, so it's worth
   // seeing before scrolling, unlike the lower-frequency lookback stuff
   // below) ----
-  const milestonesCard = el(`<div class="card"></div>`);
-  milestonesCard.appendChild(el(`<div class="al-card-title">Milestones</div>`));
-  milestonesCard.appendChild(el(`<div class="al-note-line" style="margin-bottom:14px;">Permanent, once earned &mdash; unlike the streak above, these never reset.</div>`));
-  const badgeRow = el(`<div class="al-badge-row"></div>`);
-  ACTIVITY_MILESTONES.forEach((m) => {
-    const p = m.progress(sheet);
-    const earnedDate = sheet.milestonesEarned[m.key];
-    const badge = earnedDate
-      ? el(`
-          <div class="al-badge">
-            <div class="al-badge-medal earned">${m.icon}</div>
-            <div class="lbl">${escapeHtml(m.label)}</div>
-            <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
-          </div>
-        `)
-      : el(`
-          <div class="al-badge">
-            <div class="al-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${Math.round(p.frac * 100)}%, var(--border) ${Math.round(p.frac * 100)}% 100%);">
-              <div class="al-badge-medal-inner">${m.icon}</div>
-            </div>
-            <div class="lbl">${escapeHtml(m.label)}</div>
-            <div class="sub">${escapeHtml(p.caption)}</div>
-          </div>
-        `);
-    badgeRow.appendChild(badge);
-  });
-  milestonesCard.appendChild(badgeRow);
-  panel.appendChild(milestonesCard);
+  panel.appendChild(buildMilestonesCard(sheet, ACTIVITY_MILESTONES, today));
 
   // ---- Movement mix — collapsible, same treatment as Home's Trends
   // section: interesting to check in on, not something that needs to
@@ -3464,18 +3704,6 @@ function renderMealLogSheet(id) {
   const today = todayISO();
   panel.innerHTML = "";
 
-  // Record the first day each milestone actually clears the bar — never
-  // overwritten once set, same pattern as Activity Log.
-  let earnedChanged = false;
-  MEAL_MILESTONES.forEach((m) => {
-    const p = m.progress(sheet);
-    if (p.earned && !sheet.milestonesEarned[m.key]) {
-      sheet.milestonesEarned[m.key] = today;
-      earnedChanged = true;
-    }
-  });
-  if (earnedChanged) scheduleSave();
-
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
   // ---- Streak + honest daily recap, at the top like the other practices
@@ -3483,17 +3711,10 @@ function renderMealLogSheet(id) {
   // comment above the completion helpers). ----
   const streak = computeMealLogStreak(sheet, today);
   const todaySummary = mealLogTodaySummary(sheet, today);
-  const summaryCard = el(`
-    <div class="card">
-      <div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">day food streak</span></div>
-      ${
-        todaySummary.length
-          ? `<div class="ml-today-recap">Today: ${todaySummary.map((s) => `${s.count} ${s.label.toLowerCase()}`).join(", ")}</div>`
-          : `<div class="ml-today-recap muted">Nothing logged yet today.</div>`
-      }
-    </div>
-  `);
-  panel.appendChild(summaryCard);
+  const recapHtml = todaySummary.length
+    ? `<div class="ml-today-recap">Today: ${todaySummary.map((s) => `${s.count} ${s.label.toLowerCase()}`).join(", ")}</div>`
+    : `<div class="ml-today-recap muted">Nothing logged yet today.</div>`;
+  panel.appendChild(buildStreakCard(streak, "day food streak", recapHtml));
 
   // ---- Meal library ----
   const libraryCard = el(`<div class="card"></div>`);
@@ -3669,38 +3890,7 @@ function renderMealLogSheet(id) {
   panel.appendChild(logCard);
 
   // ---- Milestones — permanent, unlike the streak above ----
-  const milestonesCard = el(`<div class="card"></div>`);
-  milestonesCard.appendChild(el(`<div class="al-card-title">Milestones</div>`));
-  milestonesCard.appendChild(el(`<div class="al-note-line" style="margin-bottom:14px;">Permanent, once earned &mdash; unlike the streak above, these never reset.</div>`));
-  const badgeRow = el(`<div class="ml-badge-grid"></div>`);
-  MEAL_MILESTONES.forEach((m) => {
-    const p = m.progress(sheet);
-    const earnedDate = sheet.milestonesEarned[m.key];
-    const badge = earnedDate
-      ? el(`
-          <div class="ml-badge">
-            <div class="ml-badge-medal earned">${m.icon}</div>
-            <div class="ml-badge-text">
-              <div class="lbl">${escapeHtml(m.label)}</div>
-              <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
-            </div>
-          </div>
-        `)
-      : el(`
-          <div class="ml-badge">
-            <div class="ml-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${Math.round(p.frac * 100)}%, var(--border) ${Math.round(p.frac * 100)}% 100%);">
-              <div class="ml-badge-medal-inner">${m.icon}</div>
-            </div>
-            <div class="ml-badge-text">
-              <div class="lbl">${escapeHtml(m.label)}</div>
-              <div class="sub">${escapeHtml(p.caption)}</div>
-            </div>
-          </div>
-        `);
-    badgeRow.appendChild(badge);
-  });
-  milestonesCard.appendChild(badgeRow);
-  panel.appendChild(milestonesCard);
+  panel.appendChild(buildMilestonesCard(sheet, MEAL_MILESTONES, today));
 
   // ---- History ----
   const historyCard = el(`<div class="card"></div>`);
@@ -3806,11 +3996,18 @@ function renderSocialSheet(id) {
   const sheet = state.customSheets[id];
   if (!panel || !sheet) return;
   sheet.people ||= [];
+  sheet.milestonesEarned ||= {};
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
   const todayStr = todayISO();
   const cadenceByPerson = new Map(sheet.people.map((p) => [p.id, socialPersonCadence(sheet, p, todayStr)]));
+
+  // ---- Streak, at the top like the other practices — this is the
+  // overall "logged someone today" streak, separate from each person's
+  // own cadence tracked below. ----
+  const socialStreak = computeSocialStreak(sheet, todayStr);
+  panel.appendChild(buildStreakCard(socialStreak, "day connection streak"));
 
   // Quick log — people already logged before, most recently contacted
   // first, so whoever's top of mind is also the fastest to tap again.
@@ -3959,6 +4156,9 @@ function renderSocialSheet(id) {
   } else {
     panel.appendChild(el(`<div class="muted" style="padding:16px 0;">Nothing logged yet — tap "New" above to log who you connected with today.</div>`));
   }
+
+  // ---- Milestones — permanent, unlike the streak above ----
+  panel.appendChild(buildMilestonesCard(sheet, SOCIAL_MILESTONES, todayStr));
 }
 
 function openSocialPersonRenameModal(sheetId, personId) {
@@ -4292,6 +4492,82 @@ function computeWorkoutProgressStats(sheet) {
   return { weekDone, weekTotal, weekPct, weekLabel: activeWeek.label, tones };
 }
 
+// A "day" in Workout Log is a week-relative slot (Day A, Day B), not a
+// calendar date — so streak tracking rides on day.lastLoggedDate, a real
+// date stamped the moment any set's Actual is filled in (see
+// renderWorkoutExercise). This is what actually gives Workout Log a
+// streak at all, matching the other ongoing practices.
+function workoutLoggedDatesSet(sheet) {
+  const dates = new Set();
+  sheet.weeks.forEach((week) => week.days.forEach((day) => { if (day.lastLoggedDate) dates.add(day.lastLoggedDate); }));
+  return dates;
+}
+function computeWorkoutStreak(sheet, today) {
+  const dates = workoutLoggedDatesSet(sheet);
+  let streak = 0;
+  let d = today;
+  while (dates.has(d)) {
+    streak++;
+    d = addDays(d, -1);
+  }
+  return streak;
+}
+function computeLongestWorkoutStreak(sheet) {
+  const sorted = [...workoutLoggedDatesSet(sheet)].sort();
+  let longest = 0;
+  let current = 0;
+  let prev = null;
+  sorted.forEach((d) => {
+    current = prev && addDays(prev, 1) === d ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    prev = d;
+  });
+  return longest;
+}
+function countWorkoutSetsLogged(sheet) {
+  let n = 0;
+  sheet.weeks.forEach((week) => week.days.forEach((day) => day.exercises.forEach((ex) => { n += ex.sets.filter((s) => (s.actual || "").trim() !== "").length; })));
+  return n;
+}
+const WORKOUT_MILESTONES = [
+  {
+    key: "tenDays",
+    label: "10 workout days",
+    icon: "🏋️",
+    progress: (sheet) => {
+      const n = workoutLoggedDatesSet(sheet).size;
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` };
+    },
+  },
+  {
+    key: "fiftyDays",
+    label: "50 workout days",
+    icon: "🔥",
+    progress: (sheet) => {
+      const n = workoutLoggedDatesSet(sheet).size;
+      return { earned: n >= 50, frac: Math.min(1, n / 50), caption: `${n} of 50` };
+    },
+  },
+  {
+    key: "hundredSets",
+    label: "100 sets logged",
+    icon: "🏅",
+    progress: (sheet) => {
+      const n = countWorkoutSetsLogged(sheet);
+      return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
+    },
+  },
+  {
+    key: "weekStreak",
+    label: "7-day streak",
+    icon: "🏆",
+    progress: (sheet) => {
+      const longest = computeLongestWorkoutStreak(sheet);
+      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
+    },
+  },
+];
+
 function openNewWeekModal(sheetId) {
   const sheet = state.customSheets[sheetId];
   const fromWeek = sheet.weeks.find((w) => w.id === sheet.activeWeekId) || sheet.weeks[sheet.weeks.length - 1];
@@ -4486,7 +4762,7 @@ function openWorkoutExerciseModal(sheetId, dayId, exerciseId) {
   document.body.appendChild(overlay);
 }
 
-function renderWorkoutExercise(sheetId, dayId, exercise) {
+function renderWorkoutExercise(sheetId, dayId, exercise, day) {
   const sheet = state.customSheets[sheetId];
   const wasOpen = sheet.openExercises[exercise.id];
   const item = el(`
@@ -4548,6 +4824,20 @@ function renderWorkoutExercise(sheetId, dayId, exercise) {
     });
     row.querySelector(".wset-actual").addEventListener("change", (e) => {
       set.actual = e.target.value.trim();
+      // Stamps the day itself, not just the set — this is what lets a
+      // streak read on Workout Log at all, since a week/day slot has no
+      // calendar date of its own otherwise. Same "always today, never
+      // backdated" rule as everywhere else: clearing a value doesn't
+      // un-stamp a day that was genuinely logged. Only re-renders the
+      // page when this actually moves the streak/milestones, so typing
+      // into Target right after doesn't get interrupted.
+      if (set.actual && day && day.lastLoggedDate !== todayISO()) {
+        day.lastLoggedDate = todayISO();
+        scheduleSave();
+        renderHome(); // runs pillar auto-detection first, so the Movement streak below reflects today
+        renderWorkoutSheet(sheetId);
+        return;
+      }
       scheduleSave();
     });
     row.querySelector(".wset-remove").addEventListener("click", () => {
@@ -4571,8 +4861,15 @@ function renderWorkoutSheet(sheetId) {
   const panel = document.getElementById(`panel-${sheetId}`);
   const sheet = state.customSheets[sheetId];
   if (!panel || !sheet) return;
+  sheet.milestonesEarned ||= {};
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  // ---- Streak, at the top like the other practices — shared with
+  // Activity Log, since both feed Movement. See the matching comment on
+  // renderActivitySheet for why. ----
+  const workoutToday = todayISO();
+  panel.appendChild(buildStreakCard(pillarCurrentStreak("movement", workoutToday), "day movement streak"));
 
   const workoutStatsHere = computeWorkoutProgressStats(sheet);
   if (workoutStatsHere) {
@@ -4651,7 +4948,7 @@ function renderWorkoutSheet(sheetId) {
       });
     });
     const itemsWrap = details.querySelector(".wardrobe-items");
-    day.exercises.forEach((ex) => itemsWrap.appendChild(renderWorkoutExercise(sheetId, day.id, ex)));
+    day.exercises.forEach((ex) => itemsWrap.appendChild(renderWorkoutExercise(sheetId, day.id, ex, day)));
     const addExBtn = el(`<button type="button" class="btn-ghost small" style="margin-top:10px;">+ Add exercise</button>`);
     addExBtn.addEventListener("click", () => openWorkoutExerciseModal(sheetId, day.id, null));
     itemsWrap.appendChild(addExBtn);
@@ -4674,6 +4971,9 @@ function renderWorkoutSheet(sheetId) {
     renderWorkoutSheet(sheetId);
   });
   panel.appendChild(addDayBtn);
+
+  // ---- Milestones — permanent, unlike the streak above ----
+  panel.appendChild(buildMilestonesCard(sheet, WORKOUT_MILESTONES, workoutToday));
 }
 
 // ------------------------------------------------------------------
@@ -6162,6 +6462,61 @@ const OT_BOOKS = new Set([
   "Isaiah", "Jeremiah", "Lamentations", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos",
   "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah", "Haggai", "Zechariah", "Malachi",
 ]);
+const BIBLE_BOOK_COUNT = 66;
+const BIBLE_NT_BOOK_COUNT = BIBLE_BOOK_COUNT - OT_BOOKS.size;
+
+// Lifetime, permanent — books ever fully finished, in the order they were
+// finished. Deliberately separate from state.bible's live done/completedDate
+// flags so a "Start over" on the reading plan can't erase these. sheet-shaped
+// (milestonesEarned + booksEverFinished) so it can go through the same
+// buildMilestonesCard() every other practice uses.
+const BIBLE_MILESTONES = [
+  {
+    key: "firstBookFinished",
+    label: "First book finished",
+    icon: "📗",
+    progress: (sheet) => {
+      const n = sheet.booksEverFinished.length;
+      return { earned: n >= 1, frac: Math.min(1, n / 1), caption: n >= 1 ? sheet.booksEverFinished[0] : "0 of 1" };
+    },
+  },
+  {
+    key: "fiveBooksFinished",
+    label: "5 books finished",
+    icon: "📚",
+    progress: (sheet) => {
+      const n = sheet.booksEverFinished.length;
+      return { earned: n >= 5, frac: Math.min(1, n / 5), caption: `${n} of 5` };
+    },
+  },
+  {
+    key: "otFinished",
+    label: "Old Testament finished",
+    icon: "📜",
+    progress: (sheet) => {
+      const n = sheet.booksEverFinished.filter((b) => OT_BOOKS.has(b)).length;
+      return { earned: n >= OT_BOOKS.size, frac: Math.min(1, n / OT_BOOKS.size), caption: `${n} of ${OT_BOOKS.size} books` };
+    },
+  },
+  {
+    key: "ntFinished",
+    label: "New Testament finished",
+    icon: "✝️",
+    progress: (sheet) => {
+      const n = sheet.booksEverFinished.filter((b) => !OT_BOOKS.has(b)).length;
+      return { earned: n >= BIBLE_NT_BOOK_COUNT, frac: Math.min(1, n / BIBLE_NT_BOOK_COUNT), caption: `${n} of ${BIBLE_NT_BOOK_COUNT} books` };
+    },
+  },
+  {
+    key: "wholeBibleFinished",
+    label: "Whole Bible finished",
+    icon: "🏆",
+    progress: (sheet) => {
+      const n = sheet.booksEverFinished.length;
+      return { earned: n >= BIBLE_BOOK_COUNT, frac: Math.min(1, n / BIBLE_BOOK_COUNT), caption: `${n} of ${BIBLE_BOOK_COUNT} books` };
+    },
+  },
+];
 
 // "all" | "ot" | "nt" — synced from state.bibleTestament at boot.
 let bibleTestament = "all";
@@ -6210,6 +6565,7 @@ function renderBiblePace(panel, doneCount, total) {
       <div class="bible-pace-mini-row">
         <label class="muted">Start date</label>
         <input type="date" class="bible-start-date" value="${settings.startDate}" />
+        <button type="button" class="filler-btn bible-start-over-btn">&#8630; Start over</button>
       </div>
     </div>
   `);
@@ -6219,6 +6575,22 @@ function renderBiblePace(panel, doneCount, total) {
       scheduleSave();
       renderBible();
     }
+  });
+  card.querySelector(".bible-start-over-btn").addEventListener("click", () => {
+    confirmModal(
+      "Start the reading plan over?",
+      "Every chapter goes back to unread and the pace resets from today. Your Milestones below are permanent and won't be affected.",
+      "Start over",
+      () => {
+        state.bible.forEach((r) => {
+          r.done = false;
+          r.completedDate = null;
+        });
+        settings.startDate = todayISO();
+        scheduleSave();
+        renderBible();
+      }
+    );
   });
   panel.appendChild(card);
 }
@@ -6334,6 +6706,12 @@ function renderBible() {
         const original = state.bible.find((x) => x.id === c.id);
         original.done = !original.done;
         if (original.done) original.completedDate = todayISO();
+        // Lifetime Milestones tracking — check whether this book just
+        // became (or is still) fully done, independent of the toggle
+        // above so a book can be un-toggled without ever un-recording it.
+        if (chapters.every((row) => (state.bible.find((x) => x.id === row.id) || {}).done)) {
+          if (!state.bibleBooksEverFinished.includes(book)) state.bibleBooksEverFinished.push(book);
+        }
         scheduleSave();
         renderBible();
       });
@@ -6341,6 +6719,9 @@ function renderBible() {
     });
     panel.appendChild(details);
   });
+
+  const milestonesSheet = { milestonesEarned: state.bibleMilestonesEarned, booksEverFinished: state.bibleBooksEverFinished };
+  panel.appendChild(buildMilestonesCard(milestonesSheet, BIBLE_MILESTONES, todayISO()));
 }
 
 // ------------------------------------------------------------------
@@ -6524,6 +6905,15 @@ function sheetActiveToday(sheetId, today) {
   if (cs && cs.templateKey === "activity") {
     // Same shape as Social: a real logged activity today, not a toggle.
     return cs.items.some((i) => i.date === today);
+  }
+  if (cs && cs.templateKey === "workout") {
+    // A week/day slot has no calendar date of its own — day.lastLoggedDate
+    // is what actually gets stamped the moment a set's Actual is filled
+    // in (see renderWorkoutExercise), so that's what "today" reads on
+    // here. Without this branch, logging a workout never marked Movement
+    // done at all — it fell through to the generic items/completedDate
+    // fallback below, which doesn't apply to Workout Log's shape.
+    return workoutLoggedDatesSet(cs).has(today);
   }
   if (cs && cs.templateKey === "mealLog") {
     // Not just "logged something" — mirrors Sleep protected: only counts
@@ -7008,6 +7398,64 @@ function sleepLoggedNights() {
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
+// Best-ever run of consecutive protected nights, recomputed from the full
+// history each time rather than tracked live — framed as "something to
+// celebrate" per her request, not a streak that can lapse. No live streak
+// chip on Sleep; this is the only streak-shaped thing shown here.
+function computeLongestSleepProtectedStreak() {
+  const dates = state.sleepLogs
+    .filter((e) => sleepNightProtected(e))
+    .map((e) => e.date)
+    .sort();
+  let longest = 0;
+  let current = 0;
+  let prev = null;
+  dates.forEach((d) => {
+    current = prev && addDays(prev, 1) === d ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    prev = d;
+  });
+  return longest;
+}
+const SLEEP_MILESTONES = [
+  {
+    key: "night3",
+    label: "3-night sleep streak",
+    icon: "🌙",
+    progress: () => {
+      const n = computeLongestSleepProtectedStreak();
+      return { earned: n >= 3, frac: Math.min(1, n / 3), caption: `Best: ${n} of 3` };
+    },
+  },
+  {
+    key: "night7",
+    label: "7-night sleep streak",
+    icon: "🌟",
+    progress: () => {
+      const n = computeLongestSleepProtectedStreak();
+      return { earned: n >= 7, frac: Math.min(1, n / 7), caption: `Best: ${n} of 7` };
+    },
+  },
+  {
+    key: "night10",
+    label: "10-night sleep streak",
+    icon: "🏅",
+    progress: () => {
+      const n = computeLongestSleepProtectedStreak();
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `Best: ${n} of 10` };
+    },
+  },
+  {
+    key: "night14",
+    label: "14-night sleep streak",
+    icon: "🏆",
+    progress: () => {
+      const n = computeLongestSleepProtectedStreak();
+      return { earned: n >= 14, frac: Math.min(1, n / 14), caption: `Best: ${n} of 14` };
+    },
+  },
+];
+
 // Plain-language patterns over the most recent logged nights (capped at
 // SLEEP_TREND_WINDOW so it stays a read on current habits, not a lifetime
 // average). Returns null until there's enough data to say anything real;
@@ -7478,21 +7926,38 @@ function openSleepNightEditor(dateStr) {
   document.body.appendChild(overlay);
 }
 
+// Floor at 5 hours — below that isn't really a "target" worth
+// protecting anymore. Rather than silently refusing the tap with no
+// feedback, the minus button explains why it stopped once it's there.
+const SLEEP_TARGET_MIN = 5;
+const SLEEP_TARGET_MAX = 11;
 function renderSleepTargetControl() {
-  const wrap = el(`<div class="sleep-target-row"></div>`);
-  wrap.appendChild(el(`<span class="muted" style="font-size:12px;">Your target</span>`));
+  const wrap = el(`<div class="sleep-target-wrap"></div>`);
+  const row = el(`<div class="sleep-target-row"></div>`);
+  row.appendChild(el(`<span class="muted" style="font-size:12px;">Your target</span>`));
   const big = el(`<span class="sleep-target-value">${state.sleepSettings.targetHours}</span>`);
-  wrap.appendChild(big);
-  wrap.appendChild(el(`<span class="muted" style="font-size:12px;">hrs a night</span>`));
+  row.appendChild(big);
+  row.appendChild(el(`<span class="muted" style="font-size:12px;">hrs a night</span>`));
   const stepper = el(`<div class="sleep-stepper"><button type="button" data-dir="-1">&minus;</button><button type="button" data-dir="1">+</button></div>`);
+  const warning = el(`<div class="sleep-target-warning" style="display:none;">${SLEEP_TARGET_MIN} hours is as low as this goes — anything less isn't much of a target to protect.</div>`);
   stepper.querySelectorAll("button[data-dir]").forEach((b) => {
     b.addEventListener("click", () => {
-      state.sleepSettings.targetHours = Math.max(4, Math.min(11, Math.round((state.sleepSettings.targetHours + Number(b.dataset.dir) * 0.5) * 2) / 2));
+      const dir = Number(b.dataset.dir);
+      if (dir < 0 && state.sleepSettings.targetHours <= SLEEP_TARGET_MIN) {
+        warning.style.display = "block";
+        return;
+      }
+      const next = Math.round((state.sleepSettings.targetHours + dir * 0.5) * 2) / 2;
+      state.sleepSettings.targetHours = Math.max(SLEEP_TARGET_MIN, Math.min(SLEEP_TARGET_MAX, next));
+      state.sleepSettings.updatedAt = Date.now();
+      warning.style.display = "none";
       scheduleSave();
       renderSleep();
     });
   });
-  wrap.appendChild(stepper);
+  row.appendChild(stepper);
+  wrap.appendChild(row);
+  wrap.appendChild(warning);
   return wrap;
 }
 
@@ -7526,6 +7991,10 @@ function renderSleep() {
   }
   const trend = computeSleepTrend();
   panel.appendChild(trend ? renderSleepTrendCard(trend) : renderSleepProgressCard());
+  // Best-ever protected-streak badges — no live streak chip on Sleep by
+  // design (see computeLongestSleepProtectedStreak comment), just this.
+  const sleepMilestonesSheet = { milestonesEarned: state.sleepMilestonesEarned };
+  panel.appendChild(buildMilestonesCard(sleepMilestonesSheet, SLEEP_MILESTONES, today));
   renderSleepHistory(panel);
 }
 
@@ -8894,10 +9363,34 @@ async function boot() {
   }
   state.bible ||= [];
   state.bibleSettings ||= { startDate: "2026-01-01" };
+  // Lifetime Bible Milestones — permanent, survive a "Start over" of the
+  // live reading plan above. See BIBLE_MILESTONES.
+  state.bibleBooksEverFinished ||= [];
+  state.bibleMilestonesEarned ||= {};
+  // One-time: credit any book that was already fully finished before this
+  // feature shipped — otherwise real progress made before today would
+  // start invisible, since normal tracking only notices a book finishing
+  // at the moment a chapter gets toggled (see the chapter-chip handler).
+  if (!state.bibleMilestonesBackfilled) {
+    const byBookInit = new Map();
+    state.bible.forEach((r) => {
+      const { book } = parseBookAndChapter(r.reading);
+      if (!byBookInit.has(book)) byBookInit.set(book, []);
+      byBookInit.get(book).push(r);
+    });
+    byBookInit.forEach((rows, book) => {
+      if (rows.length && rows.every((r) => r.done) && !state.bibleBooksEverFinished.includes(book)) {
+        state.bibleBooksEverFinished.push(book);
+      }
+    });
+    state.bibleMilestonesBackfilled = true;
+  }
   state.goals ||= [];
   state.wellness ||= [];
   state.sleepLogs ||= [];
-  state.sleepSettings ||= { targetHours: 7 };
+  state.sleepMilestonesEarned ||= {};
+  state.sleepSettings ||= { targetHours: 7, updatedAt: 0 };
+  state.sleepSettings.updatedAt ||= 0;
   // Learning pillar — a real reading log: which book, what chapter, what
   // day. Older saves stored this as a plain array of date strings (just
   // "did she read today", not linked to any book) — migrate those
