@@ -10,7 +10,7 @@ const BUILTIN_SHEET_META = {
   budget: { label: "Budget", icon: `<line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>` },
   investments: { label: "Investments", icon: `<polyline points="3 17 9 11 13 15 21 6"></polyline><polyline points="15 6 21 6 21 12"></polyline>` },
   bible: {
-    label: "Bible Reading",
+    label: "Bible",
     icon: `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M13 7v9M10.2 9.6h5.6"></path>`,
   },
   wellness: { label: "Wellness", icon: `<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path>` },
@@ -46,13 +46,6 @@ const SHEET_GALLERY = [
     starterItems: [],
   },
   {
-    key: "meals",
-    label: "Meal Planner",
-    icon: `<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>`,
-    desc: "Plan the week's meals and roll them into your groceries budget.",
-    starterItems: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-  },
-  {
     key: "quran",
     label: "Quran Plan",
     icon: `<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h8M9 11h8M9 15h5"></path>`,
@@ -61,7 +54,7 @@ const SHEET_GALLERY = [
   },
   {
     key: "books",
-    label: "Book List",
+    label: "Books",
     icon: `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h7"></path>`,
     desc: "Your reading list, organized by category — to read and already read.",
     starterItems: [],
@@ -3424,7 +3417,7 @@ function computeLongestMealStreak(sheet) {
 const MEAL_MILESTONES = [
   {
     key: "tenHealthy",
-    label: "10 nourishing/balanced meals",
+    label: "10 healthy meals",
     icon: "🥗",
     progress: (sheet) => {
       const n = sheet.items.filter((i) => MEAL_HEALTHY_QUALITY_KEYS.includes(i.quality)).length;
@@ -3433,7 +3426,7 @@ const MEAL_MILESTONES = [
   },
   {
     key: "fiftyHealthy",
-    label: "50 nourishing/balanced meals",
+    label: "50 healthy meals",
     icon: "🔥",
     progress: (sheet) => {
       const n = sheet.items.filter((i) => MEAL_HEALTHY_QUALITY_KEYS.includes(i.quality)).length;
@@ -3451,11 +3444,11 @@ const MEAL_MILESTONES = [
   },
   {
     key: "weekStreak",
-    label: "7-day food streak",
+    label: "7-day streak",
     icon: "🏆",
     progress: (sheet) => {
       const longest = computeLongestMealStreak(sheet);
-      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best streak: ${longest} of 7 days` };
+      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
     },
   },
 ];
@@ -3518,7 +3511,7 @@ function renderMealLogSheet(id) {
           <div class="ml-lib-check">${madeRecently ? checkSvg : ""}</div>
           ${item.photo ? `<img class="ml-lib-thumb" src="${item.photo}" />` : ""}
           <div class="ml-lib-main">
-            <span class="ml-lib-text">${escapeHtml(item.text)}${tag ? `<span class="ml-lib-tag">${tag.icon} ${escapeHtml(tag.label)}</span>` : ""}</span>
+            <span class="ml-lib-text">${escapeHtml(item.text)}${tag ? `<span class="ml-lib-tag" title="${escapeHtml(tag.label)}">${tag.icon}</span>` : ""}</span>
             ${item.link ? `<a class="ml-lib-link" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 ${escapeHtml(item.link.replace(/^https?:\/\//, "").slice(0, 28))}</a>` : ""}
           </div>
           <button type="button" class="icon-btn ml-lib-remove" aria-label="Remove from library">${closeSvg}</button>
@@ -3614,12 +3607,13 @@ function renderMealLogSheet(id) {
   libraryCard.appendChild(photoPreviewNote);
   panel.appendChild(libraryCard);
 
-  // ---- Log a meal ----
+  // ---- Log a meal — meal type and quality are both told apart by their
+  // own compact styling rather than a heading label over each one; that's
+  // what keeps this from reading as four separate stacked decisions. ----
   const logCard = el(`<div class="card"></div>`);
   logCard.appendChild(el(`<div class="al-card-title">Log a meal</div>`));
 
-  logCard.appendChild(el(`<label class="muted" style="display:block;margin-bottom:6px;">Meal</label>`));
-  const mealRow = el(`<div class="al-chip-row ml-meal-row"></div>`);
+  const mealRow = el(`<div class="ml-type-row"></div>`);
   MEAL_TYPES.forEach((t) => {
     const chip = el(`<button type="button" class="al-chip${t.key === ui.selectedMealType ? " active" : ""}"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
     chip.addEventListener("click", () => {
@@ -3630,28 +3624,7 @@ function renderMealLogSheet(id) {
   });
   logCard.appendChild(mealRow);
 
-  if (sheet.library.length) {
-    logCard.appendChild(el(`<label class="muted" style="display:block;margin:12px 0 6px;">Pick from your library, or improvised</label>`));
-    const pickRow = el(`<div class="ml-pick-row"></div>`);
-    sheet.library.forEach((item) => {
-      const pick = el(`<button type="button" class="ml-pick${ui.selectedLibraryId === item.id ? " sel" : ""}">📋 ${escapeHtml(item.text)}</button>`);
-      pick.addEventListener("click", () => {
-        ui.selectedLibraryId = ui.selectedLibraryId === item.id ? null : item.id;
-        renderMealLogSheet(id);
-      });
-      pickRow.appendChild(pick);
-    });
-    const improvisedPick = el(`<button type="button" class="ml-pick${ui.selectedLibraryId === null ? " sel" : ""}">🎲 Something else (improvised)</button>`);
-    improvisedPick.addEventListener("click", () => {
-      ui.selectedLibraryId = null;
-      renderMealLogSheet(id);
-    });
-    pickRow.appendChild(improvisedPick);
-    logCard.appendChild(pickRow);
-  }
-
-  logCard.appendChild(el(`<label class="muted" style="display:block;margin:12px 0 6px;">How'd it feel</label>`));
-  const qualityRow = el(`<div class="ml-quality-grid"></div>`);
+  const qualityRow = el(`<div class="ml-quality-row"></div>`);
   MEAL_QUALITY.forEach((q) => {
     const chip = el(`<button type="button" class="al-chip${q.key === ui.selectedQuality ? " active" : ""}"><span class="em">${q.icon}</span>${escapeHtml(q.label)}</button>`);
     chip.addEventListener("click", () => {
@@ -3662,8 +3635,27 @@ function renderMealLogSheet(id) {
   });
   logCard.appendChild(qualityRow);
 
-  const fieldRow = el(`<div class="al-field-row" style="margin-top:12px;"><div class="al-field"><label>Notes (optional)</label><input type="text" class="ml-f-notes" /></div></div>`);
-  logCard.appendChild(fieldRow);
+  if (sheet.library.length) {
+    const pickRow = el(`<div class="ml-goto-row"></div>`);
+    sheet.library.forEach((item) => {
+      const pick = el(`<button type="button" class="ml-goto${ui.selectedLibraryId === item.id ? " sel" : ""}">📋 ${escapeHtml(item.text)}</button>`);
+      pick.addEventListener("click", () => {
+        ui.selectedLibraryId = ui.selectedLibraryId === item.id ? null : item.id;
+        renderMealLogSheet(id);
+      });
+      pickRow.appendChild(pick);
+    });
+    const improvisedPick = el(`<button type="button" class="ml-goto${ui.selectedLibraryId === null ? " sel" : ""}">🎲 Improvised</button>`);
+    improvisedPick.addEventListener("click", () => {
+      ui.selectedLibraryId = null;
+      renderMealLogSheet(id);
+    });
+    pickRow.appendChild(improvisedPick);
+    logCard.appendChild(pickRow);
+  }
+
+  const notesInput = el(`<input type="text" class="ml-f-notes ml-note-input" placeholder="Add a note (optional)" />`);
+  logCard.appendChild(notesInput);
   const saveBtn = el(`<button type="button" class="al-save-btn">Save meal</button>`);
   saveBtn.addEventListener("click", () => {
     const notes = logCard.querySelector(".ml-f-notes").value.trim();
@@ -3680,25 +3672,29 @@ function renderMealLogSheet(id) {
   const milestonesCard = el(`<div class="card"></div>`);
   milestonesCard.appendChild(el(`<div class="al-card-title">Milestones</div>`));
   milestonesCard.appendChild(el(`<div class="al-note-line" style="margin-bottom:14px;">Permanent, once earned &mdash; unlike the streak above, these never reset.</div>`));
-  const badgeRow = el(`<div class="al-badge-row"></div>`);
+  const badgeRow = el(`<div class="ml-badge-grid"></div>`);
   MEAL_MILESTONES.forEach((m) => {
     const p = m.progress(sheet);
     const earnedDate = sheet.milestonesEarned[m.key];
     const badge = earnedDate
       ? el(`
-          <div class="al-badge">
-            <div class="al-badge-medal earned">${m.icon}</div>
-            <div class="lbl">${escapeHtml(m.label)}</div>
-            <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
+          <div class="ml-badge">
+            <div class="ml-badge-medal earned">${m.icon}</div>
+            <div class="ml-badge-text">
+              <div class="lbl">${escapeHtml(m.label)}</div>
+              <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
+            </div>
           </div>
         `)
       : el(`
-          <div class="al-badge">
-            <div class="al-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${Math.round(p.frac * 100)}%, var(--border) ${Math.round(p.frac * 100)}% 100%);">
-              <div class="al-badge-medal-inner">${m.icon}</div>
+          <div class="ml-badge">
+            <div class="ml-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${Math.round(p.frac * 100)}%, var(--border) ${Math.round(p.frac * 100)}% 100%);">
+              <div class="ml-badge-medal-inner">${m.icon}</div>
             </div>
-            <div class="lbl">${escapeHtml(m.label)}</div>
-            <div class="sub">${escapeHtml(p.caption)}</div>
+            <div class="ml-badge-text">
+              <div class="lbl">${escapeHtml(m.label)}</div>
+              <div class="sub">${escapeHtml(p.caption)}</div>
+            </div>
           </div>
         `);
     badgeRow.appendChild(badge);
@@ -8972,6 +8968,14 @@ async function boot() {
       if (OLD_TO_NEW_SHEET_LABELS[cs.label]) cs.label = OLD_TO_NEW_SHEET_LABELS[cs.label];
     });
     state.sheetLabelShortenV1Applied = true;
+  }
+  // One-time (v2): "Book List" -> "Books", same reasoning as the shorten
+  // pass above, just decided later. Separate flag since v1 already ran.
+  if (!state.sheetLabelShortenV2Applied) {
+    Object.values(state.customSheets).forEach((cs) => {
+      if (cs.label === "Book List") cs.label = "Books";
+    });
+    state.sheetLabelShortenV2Applied = true;
   }
   // Pillar Mapping — which spaces auto-complete each pillar. Defaults to
   // Bible for Spiritual anchor once, the first time someone has a Bible
