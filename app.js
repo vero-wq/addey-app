@@ -1480,6 +1480,7 @@ const THEMES = [
   { key: "sage", name: "Sage", swatch: ["#F1F4EE", "#FFFFFF", "#7C9469"] },
   { key: "rose", name: "Dusty Rose", swatch: ["#FAF1EF", "#FFFFFF", "#C08887"] },
   { key: "ocean", name: "Ocean", swatch: ["#EEF3F5", "#FFFFFF", "#2E6E7E"] },
+  { key: "graphite", name: "Graphite", swatch: ["#EBEBEC", "#FFFFFF", "#4C545C"] },
   { key: "dark", name: "Dark Mode", swatch: ["#1B1B1D", "#242426", "#C9A36A"] },
 ];
 
