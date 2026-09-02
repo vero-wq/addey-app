@@ -912,6 +912,36 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .al-badge .sub { font-size: 9.5px; color: var(--muted); }
 .al-badge .sub.earned-date { color: var(--accent-dark); font-weight: 600; }
 
+/* ---------- Meal Log ---------- */
+.ml-lib-note { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin: 0 0 12px; }
+.ml-lib-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.ml-lib-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
+.ml-lib-item.made { border-color: var(--good); }
+.ml-lib-check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--surface); }
+.ml-lib-item.made .ml-lib-check { background: var(--good); border-color: var(--good); }
+.ml-lib-thumb { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--border); }
+.ml-lib-main { flex: 1; min-width: 0; }
+.ml-lib-text { font-size: 13px; display: block; }
+.ml-lib-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; background: #EFE3D0; color: var(--accent-dark); border-radius: 6px; padding: 2px 7px; margin-left: 6px; vertical-align: 1px; }
+.ml-lib-link { display: block; font-size: 10.5px; color: var(--accent-dark); text-decoration: none; margin-top: 1px; }
+.ml-lib-remove { flex-shrink: 0; width: 26px; height: 26px; }
+.ml-lib-add-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.ml-lib-add-name { flex: 1; padding: 9px 10px; border: 1px dashed var(--border); border-radius: 9px; font-size: 12.5px; font-family: inherit; background: var(--bg); }
+.ml-lib-add-btn { padding: 9px 14px; border-radius: 9px; border: none; background: var(--accent-dark); color: #fff; font-weight: 600; font-size: 12.5px; font-family: inherit; }
+.ml-lib-extras-row { display: flex; gap: 8px; }
+.ml-lib-extra-btn { flex: 1; padding: 7px; border-radius: 8px; border: 1px dashed var(--border); background: transparent; color: var(--muted); font-size: 11.5px; font-family: inherit; }
+.ml-lib-tag-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+.ml-lib-add-link { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; font-size: 12.5px; font-family: inherit; background: var(--bg); margin-top: 10px; }
+.ml-lib-photo-note { font-size: 11px; color: var(--good); margin-top: 8px; }
+
+.ml-today-recap { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+.ml-meal-row { grid-template-columns: repeat(3, 1fr); }
+.ml-pick-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.ml-pick { padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); font-size: 12.5px; text-align: left; }
+.ml-pick.sel { background: #E4E9E0; border-color: var(--good); color: var(--good); font-weight: 600; }
+.ml-quality-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+
 /* ---------- Workout Log ---------- */
 .workout-week-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .workout-week-pills { display: flex; gap: 6px; flex-wrap: wrap; }
