@@ -3309,27 +3309,48 @@ function openActivityEntryEditor(sheetId, entryId) {
 }
 
 // ------------------------------------------------------------------
-// Meal Log — Food's practice, deliberately kept simple: what meal, how
-// it went, an optional note. No milestones or mix section here (unlike
-// Activity Log) — this is meant to be a quick daily touch, not another
-// whole feature to explore. Same rules as everything else: always logs
+// Meal Log — Food's practice. Two light pieces: a meal library (go-to
+// meals you keep coming back to, not a weekly schedule) and the daily
+// log itself. Same rules as everywhere else: always logs
 // as today, correct a past entry but never backdate a new one.
+//
+// Completion is deliberately NOT "did you log every meal" — every other
+// pillar in the app completes off one real entry, not full-day coverage,
+// and requiring breakfast+lunch+dinner here would make this the one
+// pillar that's a real food diary. Instead it mirrors Sleep protected:
+// logging always saves, but the day only completes once at least one
+// entry that day is Nourishing or Balanced (see MEAL_HEALTHY_QUALITY_KEYS
+// / mealLogDayQualifies). An Indulgent or Rushed day still logs honestly,
+// it just doesn't complete the streak on its own — no all-or-nothing
+// grading of the whole day.
 // ------------------------------------------------------------------
 const MEAL_TYPES = [
   { key: "breakfast", label: "Breakfast", icon: "🍳" },
   { key: "lunch", label: "Lunch", icon: "🥗" },
   { key: "dinner", label: "Dinner", icon: "🍽️" },
   { key: "snack", label: "Snack", icon: "🍎" },
+  { key: "drinks", label: "Drinks", icon: "🥤" },
 ];
 const MEAL_QUALITY = [
-  { key: "good", label: "Nourishing", icon: "🥗" },
-  { key: "okay", label: "Balanced", icon: "🍽️" },
-  { key: "poor", label: "Rough", icon: "🍟" },
+  { key: "nourishing", label: "Nourishing", icon: "🥗" },
+  { key: "balanced", label: "Balanced", icon: "🍽️" },
+  { key: "indulgent", label: "Indulgent", icon: "🍰" },
+  { key: "rushed", label: "Rushed", icon: "⏱️" },
 ];
+const MEAL_HEALTHY_QUALITY_KEYS = ["nourishing", "balanced"];
+const MEAL_LIBRARY_TAGS = [
+  { key: "protein", label: "High protein", icon: "🥩" },
+  { key: "treat", label: "Sweet treat", icon: "🍰" },
+  { key: "comfort", label: "Comfort food", icon: "🍲" },
+  { key: "light", label: "Light", icon: "🥬" },
+];
+// How far back a library item still counts as "made recently" on its
+// own card — a loose recency cue, not a strict weekly reset.
+const MEAL_LIBRARY_RECENT_DAYS = 7;
 
 let mealLogUiStateBySheet = {};
 function mealLogUiState(id) {
-  return (mealLogUiStateBySheet[id] ||= { selectedMealType: MEAL_TYPES[0].key, selectedQuality: MEAL_QUALITY[0].key });
+  return (mealLogUiStateBySheet[id] ||= { selectedMealType: MEAL_TYPES[0].key, selectedQuality: MEAL_QUALITY[0].key, selectedLibraryId: null, addingLibraryItem: false, libraryExtrasOpen: false, libraryDraftTag: null, libraryDraftPhoto: null });
 }
 function mealTypeByKey(key) {
   return MEAL_TYPES.find((t) => t.key === key) || MEAL_TYPES[0];
@@ -3337,32 +3358,268 @@ function mealTypeByKey(key) {
 function mealQualityByKey(key) {
   return MEAL_QUALITY.find((q) => q.key === key) || MEAL_QUALITY[0];
 }
+function mealLibraryTagByKey(key) {
+  return MEAL_LIBRARY_TAGS.find((t) => t.key === key) || null;
+}
+
+// A day "counts" once one real entry that day is Nourishing or Balanced —
+// see the block comment above for why this isn't "every meal logged."
+function mealLogDayQualifies(sheet, date) {
+  return sheet.items.some((i) => i.date === date && MEAL_HEALTHY_QUALITY_KEYS.includes(i.quality));
+}
+function computeMealLogStreak(sheet, today) {
+  let current = 0;
+  let cursor = today;
+  let isToday = true;
+  while (true) {
+    const qualifies = mealLogDayQualifies(sheet, cursor);
+    if (qualifies) current++;
+    else if (!isToday) break;
+    isToday = false;
+    cursor = addDays(cursor, -1);
+  }
+  return current;
+}
+// Pure information, never gates anything — today's honest mix, shown
+// alongside the streak so the fuller picture isn't lost just because the
+// streak itself only needs one good entry to complete.
+function mealLogTodaySummary(sheet, today) {
+  const counts = {};
+  sheet.items.forEach((i) => {
+    if (i.date !== today) return;
+    counts[i.quality] = (counts[i.quality] || 0) + 1;
+  });
+  return MEAL_QUALITY.map((q) => ({ ...q, count: counts[q.key] || 0 })).filter((q) => q.count > 0);
+}
+function mealLibraryUsedRecently(sheet, libId, today) {
+  for (let i = 0; i < MEAL_LIBRARY_RECENT_DAYS; i++) {
+    const d = addDays(today, -i);
+    if (sheet.items.some((it) => it.libraryId === libId && it.date === d)) return true;
+  }
+  return false;
+}
+
+// Longest run ever of qualifying (Nourishing/Balanced) days — not the
+// current streak, which resets. Scanned fresh from real entries rather
+// than tracked separately, so it can never drift out of sync with the
+// actual log.
+function computeLongestMealStreak(sheet) {
+  const days = new Set(sheet.items.filter((i) => MEAL_HEALTHY_QUALITY_KEYS.includes(i.quality)).map((i) => i.date));
+  let longest = 0;
+  days.forEach((d) => {
+    if (days.has(addDays(d, -1))) return; // not the start of a run
+    let len = 1;
+    let cursor = d;
+    while (days.has(addDays(cursor, 1))) {
+      len++;
+      cursor = addDays(cursor, 1);
+    }
+    if (len > longest) longest = len;
+  });
+  return longest;
+}
+
+// Permanent badges, same visual language as Activity Log's — once earned,
+// never reset, unlike the streak above.
+const MEAL_MILESTONES = [
+  {
+    key: "tenHealthy",
+    label: "10 nourishing/balanced meals",
+    icon: "🥗",
+    progress: (sheet) => {
+      const n = sheet.items.filter((i) => MEAL_HEALTHY_QUALITY_KEYS.includes(i.quality)).length;
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` };
+    },
+  },
+  {
+    key: "fiftyHealthy",
+    label: "50 nourishing/balanced meals",
+    icon: "🔥",
+    progress: (sheet) => {
+      const n = sheet.items.filter((i) => MEAL_HEALTHY_QUALITY_KEYS.includes(i.quality)).length;
+      return { earned: n >= 50, frac: Math.min(1, n / 50), caption: `${n} of 50` };
+    },
+  },
+  {
+    key: "hundredLogged",
+    label: "100 meals logged",
+    icon: "🏅",
+    progress: (sheet) => {
+      const n = sheet.items.length;
+      return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
+    },
+  },
+  {
+    key: "weekStreak",
+    label: "7-day food streak",
+    icon: "🏆",
+    progress: (sheet) => {
+      const longest = computeLongestMealStreak(sheet);
+      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best streak: ${longest} of 7 days` };
+    },
+  },
+];
 
 function renderMealLogSheet(id) {
   const panel = document.getElementById(`panel-${id}`);
   const sheet = state.customSheets[id];
   if (!panel || !sheet) return;
   sheet.items ||= [];
+  sheet.library ||= [];
+  sheet.milestonesEarned ||= {};
   const ui = mealLogUiState(id);
   const today = todayISO();
   panel.innerHTML = "";
+
+  // Record the first day each milestone actually clears the bar — never
+  // overwritten once set, same pattern as Activity Log.
+  let earnedChanged = false;
+  MEAL_MILESTONES.forEach((m) => {
+    const p = m.progress(sheet);
+    if (p.earned && !sheet.milestonesEarned[m.key]) {
+      sheet.milestonesEarned[m.key] = today;
+      earnedChanged = true;
+    }
+  });
+  if (earnedChanged) scheduleSave();
+
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
-  // ---- Summary: just a streak, kept light on purpose ----
-  const streak = computeActivityStreak(sheet, today);
+  // ---- Streak + honest daily recap, at the top like the other practices
+  // — recap is informational only, never gates the streak (see the block
+  // comment above the completion helpers). ----
+  const streak = computeMealLogStreak(sheet, today);
+  const todaySummary = mealLogTodaySummary(sheet, today);
   const summaryCard = el(`
     <div class="card">
       <div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">day food streak</span></div>
+      ${
+        todaySummary.length
+          ? `<div class="ml-today-recap">Today: ${todaySummary.map((s) => `${s.count} ${s.label.toLowerCase()}`).join(", ")}</div>`
+          : `<div class="ml-today-recap muted">Nothing logged yet today.</div>`
+      }
     </div>
   `);
   panel.appendChild(summaryCard);
+
+  // ---- Meal library ----
+  const libraryCard = el(`<div class="card"></div>`);
+  libraryCard.appendChild(el(`<div class="al-card-title">Meal library</div>`));
+  libraryCard.appendChild(
+    el(`<div class="ml-lib-note">Your running collection of go-to meals, not just this week's — add a link or photo if it's a real recipe. Checking one off just marks it made recently; it stays in the library either way.</div>`)
+  );
+  if (sheet.library.length) {
+    const list = el(`<div class="ml-lib-list"></div>`);
+    sheet.library.forEach((item) => {
+      const madeRecently = mealLibraryUsedRecently(sheet, item.id, today);
+      const tag = mealLibraryTagByKey(item.tag);
+      const row = el(`
+        <div class="ml-lib-item${madeRecently ? " made" : ""}">
+          <div class="ml-lib-check">${madeRecently ? checkSvg : ""}</div>
+          ${item.photo ? `<img class="ml-lib-thumb" src="${item.photo}" />` : ""}
+          <div class="ml-lib-main">
+            <span class="ml-lib-text">${escapeHtml(item.text)}${tag ? `<span class="ml-lib-tag">${tag.icon} ${escapeHtml(tag.label)}</span>` : ""}</span>
+            ${item.link ? `<a class="ml-lib-link" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 ${escapeHtml(item.link.replace(/^https?:\/\//, "").slice(0, 28))}</a>` : ""}
+          </div>
+          <button type="button" class="icon-btn ml-lib-remove" aria-label="Remove from library">${closeSvg}</button>
+        </div>
+      `);
+      row.querySelector(".ml-lib-remove").addEventListener("click", () => {
+        confirmModal("Remove from library?", `${item.text} won't show up as a pick anymore. Past entries you already logged with it are untouched.`, "Remove", () => {
+          sheet.library = sheet.library.filter((l) => l.id !== item.id);
+          if (ui.selectedLibraryId === item.id) ui.selectedLibraryId = null;
+          scheduleSave();
+          renderMealLogSheet(id);
+        });
+      });
+      list.appendChild(row);
+    });
+    libraryCard.appendChild(list);
+  }
+
+  const addRow = el(`
+    <div class="ml-lib-add-row">
+      <input type="text" class="ml-lib-add-name" placeholder="Add something to the library…" />
+      <button type="button" class="ml-lib-add-btn">Add</button>
+    </div>
+  `);
+  const extrasRow = el(`
+    <div class="ml-lib-extras-row">
+      <button type="button" class="ml-lib-extra-btn ml-lib-add-link-btn">🔗 Add a link</button>
+      <button type="button" class="ml-lib-extra-btn ml-lib-add-photo-btn">📷 Add a photo</button>
+      <button type="button" class="ml-lib-extra-btn ml-lib-add-tag-btn">🏷️ Tag it</button>
+    </div>
+  `);
+  // These three (link, tag, photo) are all optional extras attached to a
+  // library item BEFORE it's saved — none of them may trigger a full
+  // panel re-render, or whatever's already typed in the name/link fields
+  // gets wiped out from under the person mid-add. Each just updates its
+  // own bit of DOM directly.
+  const linkInput = el(`<input type="text" class="ml-lib-add-link" placeholder="Paste a link (optional)" style="display:none;" />`);
+  const tagRow = el(`<div class="ml-lib-tag-row" style="display:none;"></div>`);
+  MEAL_LIBRARY_TAGS.forEach((t) => {
+    const chip = el(`<button type="button" class="al-chip${ui.libraryDraftTag === t.key ? " active" : ""}"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
+    chip.addEventListener("click", () => {
+      ui.libraryDraftTag = ui.libraryDraftTag === t.key ? null : t.key;
+      tagRow.querySelectorAll(".al-chip").forEach((c) => c.classList.toggle("active", c === chip && ui.libraryDraftTag === t.key));
+    });
+    tagRow.appendChild(chip);
+  });
+  const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
+  const photoPreviewNote = el(`<div class="ml-lib-photo-note" style="display:none;">Photo attached &mdash; will save with this item.</div>`);
+  if (ui.libraryDraftPhoto) photoPreviewNote.style.display = "block";
+
+  extrasRow.querySelector(".ml-lib-add-link-btn").addEventListener("click", () => {
+    linkInput.style.display = linkInput.style.display === "none" ? "block" : "none";
+  });
+  extrasRow.querySelector(".ml-lib-add-tag-btn").addEventListener("click", () => {
+    tagRow.style.display = tagRow.style.display === "none" ? "grid" : "none";
+  });
+  extrasRow.querySelector(".ml-lib-add-photo-btn").addEventListener("click", () => photoInput.click());
+  photoInput.addEventListener("change", () => {
+    const file = photoInput.files[0];
+    if (!file) return;
+    resizeImageToDataUrl(file, 400, 0.75).then((dataUrl) => {
+      ui.libraryDraftPhoto = dataUrl;
+      photoPreviewNote.style.display = "block";
+    });
+  });
+
+  const commitAdd = () => {
+    const name = addRow.querySelector(".ml-lib-add-name").value.trim();
+    if (!name) return;
+    sheet.library.push({
+      id: nextId(),
+      text: name,
+      link: linkInput.value.trim() || null,
+      photo: ui.libraryDraftPhoto || null,
+      tag: ui.libraryDraftTag || null,
+      addedDate: today,
+    });
+    ui.libraryDraftTag = null;
+    ui.libraryDraftPhoto = null;
+    scheduleSave();
+    renderMealLogSheet(id);
+  };
+  addRow.querySelector(".ml-lib-add-btn").addEventListener("click", commitAdd);
+  addRow.querySelector(".ml-lib-add-name").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") commitAdd();
+  });
+
+  libraryCard.appendChild(addRow);
+  libraryCard.appendChild(extrasRow);
+  libraryCard.appendChild(linkInput);
+  libraryCard.appendChild(tagRow);
+  libraryCard.appendChild(photoInput);
+  libraryCard.appendChild(photoPreviewNote);
+  panel.appendChild(libraryCard);
 
   // ---- Log a meal ----
   const logCard = el(`<div class="card"></div>`);
   logCard.appendChild(el(`<div class="al-card-title">Log a meal</div>`));
 
   logCard.appendChild(el(`<label class="muted" style="display:block;margin-bottom:6px;">Meal</label>`));
-  const mealRow = el(`<div class="al-chip-row"></div>`);
+  const mealRow = el(`<div class="al-chip-row ml-meal-row"></div>`);
   MEAL_TYPES.forEach((t) => {
     const chip = el(`<button type="button" class="al-chip${t.key === ui.selectedMealType ? " active" : ""}"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
     chip.addEventListener("click", () => {
@@ -3373,8 +3630,28 @@ function renderMealLogSheet(id) {
   });
   logCard.appendChild(mealRow);
 
-  logCard.appendChild(el(`<label class="muted" style="display:block;margin:12px 0 6px;">How'd it go</label>`));
-  const qualityRow = el(`<div class="al-chip-row"></div>`);
+  if (sheet.library.length) {
+    logCard.appendChild(el(`<label class="muted" style="display:block;margin:12px 0 6px;">Pick from your library, or improvised</label>`));
+    const pickRow = el(`<div class="ml-pick-row"></div>`);
+    sheet.library.forEach((item) => {
+      const pick = el(`<button type="button" class="ml-pick${ui.selectedLibraryId === item.id ? " sel" : ""}">📋 ${escapeHtml(item.text)}</button>`);
+      pick.addEventListener("click", () => {
+        ui.selectedLibraryId = ui.selectedLibraryId === item.id ? null : item.id;
+        renderMealLogSheet(id);
+      });
+      pickRow.appendChild(pick);
+    });
+    const improvisedPick = el(`<button type="button" class="ml-pick${ui.selectedLibraryId === null ? " sel" : ""}">🎲 Something else (improvised)</button>`);
+    improvisedPick.addEventListener("click", () => {
+      ui.selectedLibraryId = null;
+      renderMealLogSheet(id);
+    });
+    pickRow.appendChild(improvisedPick);
+    logCard.appendChild(pickRow);
+  }
+
+  logCard.appendChild(el(`<label class="muted" style="display:block;margin:12px 0 6px;">How'd it feel</label>`));
+  const qualityRow = el(`<div class="ml-quality-grid"></div>`);
   MEAL_QUALITY.forEach((q) => {
     const chip = el(`<button type="button" class="al-chip${q.key === ui.selectedQuality ? " active" : ""}"><span class="em">${q.icon}</span>${escapeHtml(q.label)}</button>`);
     chip.addEventListener("click", () => {
@@ -3390,7 +3667,7 @@ function renderMealLogSheet(id) {
   const saveBtn = el(`<button type="button" class="al-save-btn">Save meal</button>`);
   saveBtn.addEventListener("click", () => {
     const notes = logCard.querySelector(".ml-f-notes").value.trim();
-    sheet.items.push({ id: nextId(), date: today, mealType: ui.selectedMealType, quality: ui.selectedQuality, notes });
+    sheet.items.push({ id: nextId(), date: today, mealType: ui.selectedMealType, libraryId: ui.selectedLibraryId, quality: ui.selectedQuality, notes });
     scheduleSave();
     renderMealLogSheet(id);
     renderHome();
@@ -3398,6 +3675,36 @@ function renderMealLogSheet(id) {
   logCard.appendChild(saveBtn);
   logCard.appendChild(el(`<div class="al-note-line">Always logs as today &mdash; no backdating. Miss the day, miss the entry.</div>`));
   panel.appendChild(logCard);
+
+  // ---- Milestones — permanent, unlike the streak above ----
+  const milestonesCard = el(`<div class="card"></div>`);
+  milestonesCard.appendChild(el(`<div class="al-card-title">Milestones</div>`));
+  milestonesCard.appendChild(el(`<div class="al-note-line" style="margin-bottom:14px;">Permanent, once earned &mdash; unlike the streak above, these never reset.</div>`));
+  const badgeRow = el(`<div class="al-badge-row"></div>`);
+  MEAL_MILESTONES.forEach((m) => {
+    const p = m.progress(sheet);
+    const earnedDate = sheet.milestonesEarned[m.key];
+    const badge = earnedDate
+      ? el(`
+          <div class="al-badge">
+            <div class="al-badge-medal earned">${m.icon}</div>
+            <div class="lbl">${escapeHtml(m.label)}</div>
+            <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
+          </div>
+        `)
+      : el(`
+          <div class="al-badge">
+            <div class="al-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${Math.round(p.frac * 100)}%, var(--border) ${Math.round(p.frac * 100)}% 100%);">
+              <div class="al-badge-medal-inner">${m.icon}</div>
+            </div>
+            <div class="lbl">${escapeHtml(m.label)}</div>
+            <div class="sub">${escapeHtml(p.caption)}</div>
+          </div>
+        `);
+    badgeRow.appendChild(badge);
+  });
+  milestonesCard.appendChild(badgeRow);
+  panel.appendChild(milestonesCard);
 
   // ---- History ----
   const historyCard = el(`<div class="card"></div>`);
@@ -3410,12 +3717,14 @@ function renderMealLogSheet(id) {
     recent.forEach((entry) => {
       const mt = mealTypeByKey(entry.mealType);
       const q = mealQualityByKey(entry.quality);
+      const libItem = entry.libraryId ? sheet.library.find((l) => l.id === entry.libraryId) : null;
+      const mainLabel = libItem ? libItem.text : entry.notes || (entry.libraryId === null ? "Improvised" : "");
       const dateLabel = entry.date === today ? "Today" : entry.date === addDays(today, -1) ? "Yesterday" : activityDateShort(entry.date);
       const row = el(`
         <button type="button" class="al-hist-row">
           <span class="al-hist-icon">${mt.icon}</span>
           <span class="al-hist-main">
-            <span class="al-hist-type">${escapeHtml(mt.label)}${entry.notes ? ` &middot; ${escapeHtml(entry.notes)}` : ""}</span>
+            <span class="al-hist-type">${escapeHtml(mainLabel || mt.label)}${libItem && entry.notes ? ` &middot; ${escapeHtml(entry.notes)}` : ""}</span>
             <span class="al-hist-meta">${q.icon} ${escapeHtml(q.label)}</span>
           </span>
           <span class="al-hist-date">${dateLabel}</span>
@@ -3447,7 +3756,7 @@ function openMealLogEntryEditor(sheetId, entryId) {
           <div class="mp-kind-row mel-type-row">
             ${MEAL_TYPES.map((t) => `<button type="button" class="mp-kind mel-type-opt${t.key === entry.mealType ? " sel" : ""}" data-key="${escapeHtml(t.key)}">${t.icon} ${escapeHtml(t.label)}</button>`).join("")}
           </div>
-          <label class="muted">How'd it go</label>
+          <label class="muted">How'd it feel</label>
           <div class="mp-kind-row mel-quality-row">
             ${MEAL_QUALITY.map((q) => `<button type="button" class="mp-kind mel-quality-opt${q.key === entry.quality ? " sel" : ""}" data-key="${escapeHtml(q.key)}">${q.icon} ${escapeHtml(q.label)}</button>`).join("")}
           </div>
@@ -6221,8 +6530,10 @@ function sheetActiveToday(sheetId, today) {
     return cs.items.some((i) => i.date === today);
   }
   if (cs && cs.templateKey === "mealLog") {
-    // Same shape as Social/Activity: a real logged meal today.
-    return cs.items.some((i) => i.date === today);
+    // Not just "logged something" — mirrors Sleep protected: only counts
+    // once today has a real Nourishing/Balanced entry. See the block
+    // comment above the Meal Log completion helpers for why.
+    return mealLogDayQualifies(cs, today);
   }
   if (!cs || !Array.isArray(cs.items)) return false;
   return cs.items.some((i) => i.done && i.completedDate === today);
