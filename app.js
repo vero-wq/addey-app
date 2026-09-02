@@ -1281,11 +1281,17 @@ function toggleSheetVisible(id) {
 function spaceCapForAccount() {
   const acct = state.account || {};
   if (acct.isFounder) return 30;
-  if (acct.plan === "paid") return 16;
-  return 8;
+  if (acct.plan === "paid") return 15;
+  return 6;
 }
+// Wellness, Budget, and Investments sit outside the pillar/practice system
+// entirely — they're not one of the six pillars' practices, so they don't
+// count against the free/paid practice cap, the same way Wellness already
+// didn't. Bible is excluded too: it's a legacy extra on top of Spiritual's
+// real starter choices (Prayer/Qur'an/Breathe), not one of the six.
 function countedSpaces() {
-  return state.sheets.filter((s) => s.visible && s.id !== "wellness").length;
+  const EXCLUDED = new Set(["wellness", "budget", "investments", "bible"]);
+  return state.sheets.filter((s) => s.visible && !EXCLUDED.has(s.id)).length;
 }
 
 // A small, reusable "you're at your limit" modal — never a silent block.
@@ -1294,7 +1300,7 @@ function openSpaceCapModal() {
   const acct = state.account || {};
   const limit = spaceCapForAccount();
   const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Paid";
-  const nextTierLimit = 16;
+  const nextTierLimit = 15;
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box" style="max-width:360px;text-align:center;">
@@ -1329,6 +1335,14 @@ function addSheetFromTemplate(tpl) {
     openSpaceCapModal();
     return;
   }
+  createSheetFromTemplateUnchecked(tpl);
+}
+
+// The actual sheet-creation logic, without the space-cap gate. Used by
+// addSheetFromTemplate (Gallery "+ Add", cap-checked) and by onboarding
+// (which is establishing the free tier's starter six, not spending down
+// an already-set quota — it shouldn't be able to trip its own cap).
+function createSheetFromTemplateUnchecked(tpl) {
   const id = `sheet_${nextId()}`;
   const isWardrobe = tpl.key === "wardrobe";
   const isQuran = tpl.key === "quran";
@@ -1556,72 +1570,90 @@ function renderSettings() {
   minePanel.appendChild(el(`<div class="settings-group-title">Your practices</div>`));
   minePanel.appendChild(
     el(
-      `<div class="settings-group-desc">Drag a practice to reorder it, tap the eye to hide it without losing data, or the trash can to remove it for good. Your first ${MOBILE_PINNED_COUNT} visible practices pin to the bottom bar on mobile, so those don't get a trash can — move a practice down past that point to remove it. Practices you added from the Gallery can be added back anytime; built-in ones can't.</div>`
+      `<div class="settings-group-desc">Drag a tile to reorder it or move it between zones. Your first ${MOBILE_PINNED_COUNT} visible practices form the Home toolbar and pin to the bottom bar on mobile — the rest are Additional practices. Tap ⋯ on a tile to hide it without losing data, or remove it for good. Practices you added from the Gallery can be added back anytime; built-in ones can't.</div>`
     )
   );
 
-  const card = el(`<div class="card"></div>`);
+  const toolbarLabel = el(`<div class="practice-zone-label">Home toolbar</div>`);
+  const toolbarGrid = el(`<div class="practice-tile-grid"></div>`);
+  const extraLabel = el(`<div class="practice-zone-label">Additional practices</div>`);
+  const extraGrid = el(`<div class="practice-tile-grid"></div>`);
+  const hiddenLabel = el(`<div class="practice-zone-label">Hidden</div>`);
+  const hiddenGrid = el(`<div class="practice-tile-grid"></div>`);
+  minePanel.appendChild(toolbarLabel);
+  minePanel.appendChild(toolbarGrid);
+  minePanel.appendChild(extraLabel);
+  minePanel.appendChild(extraGrid);
+  minePanel.appendChild(hiddenLabel);
+  minePanel.appendChild(hiddenGrid);
+
   let visibleIdx = 0;
-  // Wellness deliberately doesn't appear in this list at all — it isn't
-  // an optional space you'd add or hide the way Book List or Sleep is,
-  // it's the trend view behind Home itself, and every pillar/deposit/
-  // streak already reads from it. Listing it next to Book List implied
-  // a choice that was never really there.
+  let anyHidden = false;
+  // Wellness deliberately doesn't appear here at all — it isn't an
+  // optional space you'd add or hide the way Book List or Sleep is, it's
+  // the trend view behind Home itself, and every pillar/deposit/streak
+  // already reads from it. Listing it next to Book List implied a choice
+  // that was never really there.
   state.sheets.filter((s) => s.id !== "wellness").forEach((s) => {
     const isCustom = s.kind === "custom";
     const label = sheetLabel(s);
     const pinnedSlot = s.visible && visibleIdx < MOBILE_PINNED_COUNT;
     if (s.visible) visibleIdx++;
-    const row = el(`
-      <div class="sheet-row" draggable="true" data-sheet-id="${s.id}">
-        <span class="sheet-drag-handle">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.6"></circle><circle cx="8" cy="12" r="1.6"></circle><circle cx="8" cy="18" r="1.6"></circle><circle cx="16" cy="6" r="1.6"></circle><circle cx="16" cy="12" r="1.6"></circle><circle cx="16" cy="18" r="1.6"></circle></svg>
-        </span>
-        <span class="sheet-row-icon">${iconSvg(sheetIcon(s)).replace('width="20" height="20"', 'width="17" height="17"')}</span>
-        <span class="sheet-row-name" style="${s.visible ? "" : "opacity:0.5;"}">${escapeHtml(label)}${
-      s.visible ? "" : `<span class="muted-sub">Hidden from sidebar</span>`
-    }</span>
-        <div class="sheet-row-actions">
-          <button type="button" class="icon-btn sheet-toggle ${s.visible ? "" : "active-toggle"}" title="${s.visible ? "Hide from sidebar" : "Show in sidebar"}">
-            ${
-              s.visible
-                ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>`
-                : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.6 21.6 0 0 1 5.06-6.06M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`
-            }
-          </button>
-          ${
-            pinnedSlot
-              ? `<span class="icon-btn sheet-remove-lock" title="Pinned to the bottom bar — move it down past position ${MOBILE_PINNED_COUNT} to remove it" style="cursor:default;color:var(--border);">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-          </span>`
-              : `<button type="button" class="icon-btn danger sheet-remove" title="Remove">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-          </button>`
-          }
-        </div>
+    if (!s.visible) anyHidden = true;
+
+    const tile = el(`
+      <div class="practice-tile" draggable="true" data-sheet-id="${s.id}">
+        <button type="button" class="practice-tile-menu-btn" title="Options">⋯</button>
+        <span class="practice-tile-icon">${iconSvg(sheetIcon(s)).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <span class="practice-tile-label">${escapeHtml(label)}</span>
       </div>
     `);
-    row.querySelector(".sheet-toggle").addEventListener("click", () => toggleSheetVisible(s.id));
-    row.querySelector(".sheet-remove")?.addEventListener("click", () => {
-      if (isCustom) {
-        confirmModal(
-          `Remove ${label}?`,
-          "It'll disappear from your sidebar. You can add it again anytime from Settings, but its items will be gone for good.",
-          "Remove",
-          () => removeCustomSheet(s.id)
-        );
-      } else {
-        confirmModal(
-          `Remove ${label}?`,
-          "This is a built-in practice — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, use the eye icon instead.",
-          "Delete for good",
-          () => removeBuiltinSheet(s.id)
-        );
-      }
+
+    const menuBtn = tile.querySelector(".practice-tile-menu-btn");
+    menuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.querySelectorAll(".practice-tile-menu").forEach((m) => m.remove());
+      const menu = el(`
+        <div class="practice-tile-menu">
+          <button type="button" data-act="toggle">${s.visible ? "Hide" : "Show"}</button>
+          ${pinnedSlot ? "" : `<button type="button" class="danger" data-act="remove">Remove</button>`}
+        </div>
+      `);
+      menu.querySelector('[data-act="toggle"]').addEventListener("click", () => {
+        menu.remove();
+        toggleSheetVisible(s.id);
+      });
+      menu.querySelector('[data-act="remove"]')?.addEventListener("click", () => {
+        menu.remove();
+        if (isCustom) {
+          confirmModal(
+            `Remove ${label}?`,
+            "It'll disappear from your sidebar. You can add it again anytime from Settings, but its items will be gone for good.",
+            "Remove",
+            () => removeCustomSheet(s.id)
+          );
+        } else {
+          confirmModal(
+            `Remove ${label}?`,
+            "This is a built-in practice — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, use ⋯ → Hide instead.",
+            "Delete for good",
+            () => removeBuiltinSheet(s.id)
+          );
+        }
+      });
+      tile.appendChild(menu);
+      const closeMenu = (ev) => {
+        if (!menu.contains(ev.target)) {
+          menu.remove();
+          document.removeEventListener("click", closeMenu);
+        }
+      };
+      setTimeout(() => document.addEventListener("click", closeMenu), 0);
     });
-    row.addEventListener("dragstart", (e) => {
+
+    tile.addEventListener("dragstart", (e) => {
       draggedSheetId = s.id;
-      row.classList.add("dragging");
+      tile.classList.add("dragging");
       e.dataTransfer.effectAllowed = "move";
       try {
         e.dataTransfer.setData("text/plain", s.id);
@@ -1629,39 +1661,46 @@ function renderSettings() {
         // Some browsers require this call to not throw even if unused.
       }
     });
-    row.addEventListener("dragend", () => {
+    tile.addEventListener("dragend", () => {
       draggedSheetId = null;
-      card.querySelectorAll(".sheet-row").forEach((r) => r.classList.remove("dragging", "drag-over-top", "drag-over-bottom"));
+      document.querySelectorAll(".practice-tile").forEach((t) => t.classList.remove("dragging", "drag-over-before", "drag-over-after"));
     });
-    row.addEventListener("dragover", (e) => {
+    tile.addEventListener("dragover", (e) => {
       if (!draggedSheetId || draggedSheetId === s.id) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
-      const rect = row.getBoundingClientRect();
-      const before = e.clientY - rect.top < rect.height / 2;
-      row.classList.toggle("drag-over-top", before);
-      row.classList.toggle("drag-over-bottom", !before);
+      const rect = tile.getBoundingClientRect();
+      const before = e.clientX - rect.left < rect.width / 2;
+      tile.classList.toggle("drag-over-before", before);
+      tile.classList.toggle("drag-over-after", !before);
     });
-    row.addEventListener("dragleave", () => {
-      row.classList.remove("drag-over-top", "drag-over-bottom");
+    tile.addEventListener("dragleave", () => {
+      tile.classList.remove("drag-over-before", "drag-over-after");
     });
-    row.addEventListener("drop", (e) => {
+    tile.addEventListener("drop", (e) => {
       e.preventDefault();
       if (!draggedSheetId || draggedSheetId === s.id) return;
-      const rect = row.getBoundingClientRect();
-      const before = e.clientY - rect.top < rect.height / 2;
+      const rect = tile.getBoundingClientRect();
+      const before = e.clientX - rect.left < rect.width / 2;
       reorderSheet(draggedSheetId, s.id, before);
     });
-    // Tapping the row itself (not the drag handle, the eye, or the trash
-    // can) goes straight to that practice — this list is a jumping-off
-    // point to a practice you already have, not just a reorder tool.
-    row.addEventListener("click", (e) => {
-      if (e.target.closest(".sheet-drag-handle, .sheet-toggle, .sheet-remove, .sheet-remove-lock")) return;
+    // Tapping the tile itself (not the ⋯ menu) goes straight to that
+    // practice — this grid is a jumping-off point to a practice you
+    // already have, not just a reorder tool.
+    tile.addEventListener("click", (e) => {
+      if (e.target.closest(".practice-tile-menu-btn, .practice-tile-menu")) return;
       activateTab(s.id);
     });
-    card.appendChild(row);
+
+    if (pinnedSlot) toolbarGrid.appendChild(tile);
+    else if (s.visible) extraGrid.appendChild(tile);
+    else hiddenGrid.appendChild(tile);
   });
-  minePanel.appendChild(card);
+
+  hiddenLabel.style.display = anyHidden ? "" : "none";
+  hiddenGrid.style.display = anyHidden ? "" : "none";
+  if (!extraGrid.children.length) extraGrid.appendChild(el(`<div class="practice-tile-empty">Drag a practice here</div>`));
+
   minePanel.appendChild(
     el(`<div class="settings-note">Wellness isn't a practice you add or hide — it's built into Home now, not a separate page.</div>`)
   );
@@ -4365,7 +4404,7 @@ const BREATH_VOICES = {
     name: "Warm Pad",
     build(ctx) {
       const out = ctx.createGain();
-      out.gain.value = 0;
+      out.gain.value = 1;
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
       filter.frequency.value = 500;
@@ -4403,7 +4442,7 @@ const BREATH_VOICES = {
     name: "Singing Bowl",
     build(ctx) {
       const out = ctx.createGain();
-      out.gain.value = 0;
+      out.gain.value = 1;
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
       filter.frequency.value = 2200;
@@ -4441,7 +4480,7 @@ const BREATH_VOICES = {
     name: "Ocean Waves",
     build(ctx) {
       const out = ctx.createGain();
-      out.gain.value = 0;
+      out.gain.value = 1;
       const bufferSize = ctx.sampleRate * 2;
       const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
       const data = buffer.getChannelData(0);
@@ -7777,46 +7816,42 @@ function openPillarMappingModal() {
     sectionsWrap.innerHTML = "";
     WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
       const candidates = pillarCandidateSheets(key);
-      const section = el(`<div class="account-section"></div>`);
-      section.appendChild(el(`<div class="account-section-label">${escapeHtml(label)}</div>`));
+      const meta = ONBOARDING_PILLAR_META[key];
+      const card = el(`<div class="pillar-map-card"></div>`);
+      card.appendChild(el(`
+        <div class="pillar-map-head">
+          <div class="pillar-map-icon">${meta ? onboardingPillarIconSvg(key) : "•"}</div>
+          <div class="pillar-map-name">${escapeHtml(label)}</div>
+          ${candidates.length <= 1 ? `<div class="pillar-map-auto-tag">Auto</div>` : ""}
+        </div>
+      `));
 
       if (!candidates.length) {
-        section.appendChild(el(`<div class="account-note">No practices connected for this pillar yet — log it manually from Home.</div>`));
+        card.appendChild(el(`<div class="pillar-map-note">No practices connected for this pillar yet — log it manually from Home.</div>`));
       } else if (candidates.length === 1) {
         const sp = candidates[0];
-        const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
-        const row = el(`
-          <label class="you-list-row" style="cursor:pointer;">
-            <input type="checkbox" ${checked ? "checked" : ""} style="width:16px;height:16px;flex-shrink:0;margin:0;" />
-            <span>${escapeHtml(sp.label)}</span>
-          </label>
-        `);
-        row.querySelector("input").addEventListener("change", (e) => {
-          state.pillarSourceMap[key] = e.target.checked ? [sp.id] : [];
-          scheduleSave();
-        });
-        section.appendChild(row);
-        section.appendChild(el(`<div class="account-note">Only one practice fits here, so it's selected automatically.</div>`));
+        // Only one practice fits here, so it's on automatically — shown as
+        // a locked chip rather than something to toggle.
+        card.appendChild(el(`<div class="pillar-map-chip-row"><span class="pillar-map-chip auto">${escapeHtml(sp.label)} ✓</span></div>`));
+        card.appendChild(el(`<div class="pillar-map-note">Only one practice fits here, so it's on automatically.</div>`));
       } else {
+        const chipRow = el(`<div class="pillar-map-chip-row"></div>`);
         candidates.forEach((sp) => {
           const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
-          const row = el(`
-            <label class="you-list-row" style="cursor:pointer;">
-              <input type="checkbox" ${checked ? "checked" : ""} style="width:16px;height:16px;flex-shrink:0;margin:0;" />
-              <span>${escapeHtml(sp.label)}</span>
-            </label>
-          `);
-          row.querySelector("input").addEventListener("change", (e) => {
+          const chip = el(`<span class="pillar-map-chip${checked ? " on" : ""}">${escapeHtml(sp.label)}${checked ? ' <span class="x">✓</span>' : ""}</span>`);
+          chip.addEventListener("click", () => {
             const set = new Set(state.pillarSourceMap[key] || []);
-            if (e.target.checked) set.add(sp.id);
-            else set.delete(sp.id);
+            if (set.has(sp.id)) set.delete(sp.id);
+            else set.add(sp.id);
             state.pillarSourceMap[key] = Array.from(set);
             scheduleSave();
+            renderSections();
           });
-          section.appendChild(row);
+          chipRow.appendChild(chip);
         });
+        card.appendChild(chipRow);
       }
-      sectionsWrap.appendChild(section);
+      sectionsWrap.appendChild(card);
     });
   }
   renderSections();
@@ -10024,6 +10059,247 @@ function renderWellnessHistory(panel, today) {
 // ------------------------------------------------------------------
 // Boot
 // ------------------------------------------------------------------
+// First-run setup: six pillars, one practice each, arranged into a
+// four-slot Home toolbar and a two-item Additional Practices group. Sleep,
+// Social, Learning, and Food each have exactly one built-in practice today,
+// so those fill in with no tap required — only Spiritual and Movement have
+// more than one option, so those are the only real choices made here.
+const ONBOARDING_SPIRITUAL_OPTIONS = [
+  { key: "prayer", label: "Prayer log" },
+  { key: "quran", label: "Qur'an reading" },
+  { key: "breathe", label: "Breathe / meditation" },
+];
+const ONBOARDING_MOVEMENT_OPTIONS = [
+  { key: "workout", label: "Workout log" },
+  { key: "activity", label: "Daily activity" },
+];
+// Same stroke-icon style as the rest of the app (iconSvg/sheetIcon), not
+// emoji — emoji render inconsistently across platforms and read younger/
+// more novelty than the rest of Addley's visual language.
+const ONBOARDING_PILLAR_META = {
+  movement: {
+    name: "Movement",
+    icon: `<rect x="1.5" y="9" width="3" height="6" rx="1"></rect><rect x="19.5" y="9" width="3" height="6" rx="1"></rect><rect x="5.5" y="7" width="2.5" height="10" rx="1"></rect><rect x="16" y="7" width="2.5" height="10" rx="1"></rect><line x1="8" y1="12" x2="16" y2="12"></line>`,
+  },
+  spiritualAnchor: {
+    name: "Spiritual",
+    icon: `<path d="M12 2v6"></path><path d="M8.5 8c0 2 1 3.5 3.5 3.5S15.5 10 15.5 8"></path><rect x="9.5" y="11" width="5" height="10" rx="1"></rect>`,
+  },
+  sleepProtected: {
+    name: "Sleep",
+    icon: `<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>`,
+  },
+  socialConnection: {
+    name: "Social",
+    icon: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>`,
+  },
+  learning: {
+    name: "Learning",
+    icon: `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h7"></path>`,
+  },
+  food: {
+    name: "Food",
+    icon: `<path d="M11 2a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3v8"></path><path d="M18 2v9a3 3 0 0 1-3 3"></path><path d="M18 2v20"></path>`,
+  },
+};
+function onboardingPillarIconSvg(key) {
+  return iconSvg(ONBOARDING_PILLAR_META[key].icon);
+}
+
+function showOnboardingFlow() {
+  const STEPS = ["welcome", "spiritual", "movement", "toolbar", "review"];
+  let stepIdx = 0;
+  let spiritualChoice = null;
+  let movementChoice = null;
+  let toolbarOrder = ["movement", "spiritualAnchor", "sleepProtected", "food"];
+  let extraOrder = ["socialConnection", "learning"];
+
+  const overlay = el(`<div class="onboarding-overlay"><div class="onboarding-box" id="onboardingBox"></div></div>`);
+  document.body.appendChild(overlay);
+  const box = overlay.querySelector("#onboardingBox");
+
+  function dotsHtml() {
+    return `<div class="onboarding-dots">${STEPS.map((_, i) => `<span class="onboarding-dot${i === stepIdx ? " active" : ""}"></span>`).join("")}</div>`;
+  }
+
+  function renderStep() {
+    box.innerHTML = dotsHtml();
+    const step = STEPS[stepIdx];
+
+    if (step === "welcome") {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Welcome to Addley</div>
+        <div class="onboarding-headline">Let's set up your six pillars</div>
+        <div class="onboarding-subline">Movement, Spiritual, Sleep, Social, Learning, Food. Pick one practice for each to start — you can always add more later.</div>
+        <div class="onboarding-pillar-list">
+          ${Object.keys(ONBOARDING_PILLAR_META).map((key) => {
+            const meta = ONBOARDING_PILLAR_META[key];
+            return `<div class="onboarding-pillar-card"><div class="onboarding-pillar-icon">${onboardingPillarIconSvg(key)}</div><div class="onboarding-pillar-name">${escapeHtml(meta.name)}</div></div>`;
+          }).join("")}
+        </div>
+        <button type="button" class="onboarding-primary-btn">Get started</button>
+      `);
+      box.querySelector(".onboarding-primary-btn").addEventListener("click", () => { stepIdx++; renderStep(); });
+    }
+
+    if (step === "spiritual" || step === "movement") {
+      const isSpiritual = step === "spiritual";
+      const options = isSpiritual ? ONBOARDING_SPIRITUAL_OPTIONS : ONBOARDING_MOVEMENT_OPTIONS;
+      const pillarKeyForStep = isSpiritual ? "spiritualAnchor" : "movement";
+      const meta = ONBOARDING_PILLAR_META[pillarKeyForStep];
+      const current = isSpiritual ? spiritualChoice : movementChoice;
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Pillar ${isSpiritual ? "1" : "2"} of 2</div>
+        <div class="onboarding-headline"><span class="onboarding-headline-icon">${onboardingPillarIconSvg(pillarKeyForStep)}</span> ${escapeHtml(meta.name)}</div>
+        <div class="onboarding-subline">Which practice do you want to start with?</div>
+        <div class="onboarding-choice-row">
+          ${options.map((o) => `<div class="onboarding-choice-opt${current === o.key ? " sel" : ""}" data-key="${o.key}">${escapeHtml(o.label)}</div>`).join("")}
+        </div>
+      `);
+      box.querySelectorAll(".onboarding-choice-opt").forEach((opt) => {
+        opt.addEventListener("click", () => {
+          if (isSpiritual) spiritualChoice = opt.dataset.key;
+          else movementChoice = opt.dataset.key;
+          stepIdx++;
+          renderStep();
+        });
+      });
+    }
+
+    if (step === "toolbar") {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Almost done</div>
+        <div class="onboarding-headline">Arrange your toolbar</div>
+        <div class="onboarding-subline">Drag to choose 4 for one-tap logging on Home. The other 2 live in Additional Practices.</div>
+        <div class="onboarding-extra-label">Home toolbar</div>
+        <div class="onboarding-toolbar-target" id="onbToolbarZone"></div>
+        <div class="onboarding-extra-label">Additional practices</div>
+        <div class="onboarding-extra-row" id="onbExtraZone"></div>
+        <button type="button" class="onboarding-primary-btn" id="onbToolbarNext">Looks good</button>
+      `);
+      const toolbarZone = box.querySelector("#onbToolbarZone");
+      const extraZone = box.querySelector("#onbExtraZone");
+      let dragKey = null;
+
+      function tileHtml(key, isToolbar) {
+        const meta = ONBOARDING_PILLAR_META[key];
+        const cls = isToolbar ? "onboarding-toolbar-slot" : "onboarding-extra-slot";
+        return `<div class="${cls}" draggable="true" data-key="${key}"><span class="ic">${onboardingPillarIconSvg(key)}</span>${escapeHtml(meta.name)}</div>`;
+      }
+      function renderZones() {
+        toolbarZone.innerHTML = toolbarOrder.map((k) => tileHtml(k, true)).join("");
+        extraZone.innerHTML = extraOrder.map((k) => tileHtml(k, false)).join("");
+        [...toolbarZone.children, ...extraZone.children].forEach((tile) => {
+          tile.addEventListener("dragstart", () => { dragKey = tile.dataset.key; tile.classList.add("dragging"); });
+          tile.addEventListener("dragend", () => tile.classList.remove("dragging"));
+          tile.addEventListener("dragover", (e) => e.preventDefault());
+          tile.addEventListener("drop", (e) => {
+            e.preventDefault();
+            if (!dragKey || dragKey === tile.dataset.key) return;
+            const destIsToolbar = toolbarZone.contains(tile);
+            toolbarOrder = toolbarOrder.filter((k) => k !== dragKey);
+            extraOrder = extraOrder.filter((k) => k !== dragKey);
+            const destList = destIsToolbar ? toolbarOrder : extraOrder;
+            const destIdx = destList.indexOf(tile.dataset.key);
+            if (destIsToolbar && destList.length >= 4) {
+              const bumped = destList.splice(destIdx, 1, dragKey)[0];
+              extraOrder.unshift(bumped);
+            } else {
+              destList.splice(destIdx, 0, dragKey);
+            }
+            dragKey = null;
+            renderZones();
+          });
+        });
+      }
+      renderZones();
+      box.querySelector("#onbToolbarNext").addEventListener("click", () => { stepIdx++; renderStep(); });
+    }
+
+    if (step === "review") {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">You're set up</div>
+        <div class="onboarding-headline">Here's your starting kit</div>
+        <div class="onboarding-review-card">
+          <div class="onboarding-review-title">Home toolbar · 4</div>
+          <div class="onboarding-extra-row" style="flex-wrap:wrap;">
+            ${toolbarOrder.map((k) => `<div class="onboarding-extra-slot" style="flex:0 0 47%;"><span class="ic">${onboardingPillarIconSvg(k)}</span>${escapeHtml(ONBOARDING_PILLAR_META[k].name)}</div>`).join("")}
+          </div>
+        </div>
+        <div class="onboarding-review-card">
+          <div class="onboarding-review-title">Additional practices · 2</div>
+          <div class="onboarding-extra-row">
+            ${extraOrder.map((k) => `<div class="onboarding-extra-slot"><span class="ic">${onboardingPillarIconSvg(k)}</span>${escapeHtml(ONBOARDING_PILLAR_META[k].name)}</div>`).join("")}
+          </div>
+        </div>
+        <div class="onboarding-lock-note">🔓 <div><strong>6 active practices, always free.</strong> Want more later? Practice Gallery has extra practices — upgrading unlocks up to 15 active at once.</div></div>
+        <button type="button" class="onboarding-primary-btn" id="onbFinish">Go to Home</button>
+      `);
+      box.querySelector("#onbFinish").addEventListener("click", finishOnboarding);
+    }
+  }
+
+  function finishOnboarding() {
+    // Sleep's practice is the built-in "sleep" sheet — just make sure it's
+    // visible and mapped, no template to add.
+    const sleepSheet = state.sheets.find((s) => s.id === "sleep");
+    if (sleepSheet) sleepSheet.visible = true;
+    state.pillarSourceMap ||= {};
+    state.pillarSourceMap.sleepProtected ||= [];
+    if (!state.pillarSourceMap.sleepProtected.includes("sleep")) state.pillarSourceMap.sleepProtected.push("sleep");
+
+    // Social, Learning, and Food each have exactly one template — add it
+    // if it isn't already there for some reason.
+    [
+      ["social"],
+      ["books"],
+      ["mealLog"],
+    ].forEach(([tplKey]) => {
+      const already = Object.values(state.customSheets).some((cs) => cs.templateKey === tplKey);
+      if (!already) {
+        const tpl = SHEET_GALLERY.find((t) => t.key === tplKey);
+        if (tpl) createSheetFromTemplateUnchecked(tpl);
+      }
+    });
+
+    // Spiritual and Movement use whichever option was tapped.
+    [spiritualChoice, movementChoice].forEach((tplKey) => {
+      if (!tplKey) return;
+      const already = Object.values(state.customSheets).some((cs) => cs.templateKey === tplKey);
+      if (!already) {
+        const tpl = SHEET_GALLERY.find((t) => t.key === tplKey);
+        if (tpl) createSheetFromTemplateUnchecked(tpl);
+      }
+    });
+
+    // Resolve each pillar key to the id of the sheet that now represents
+    // it, so the toolbar/additional order can be written back as a real
+    // sheet order.
+    function sheetIdForPillar(pillarKey) {
+      if (pillarKey === "sleepProtected") return "sleep";
+      const candidates = pillarCandidateSheets(pillarKey);
+      return candidates.length ? candidates[candidates.length - 1].id : null;
+    }
+    const orderedIds = [...toolbarOrder, ...extraOrder].map(sheetIdForPillar).filter(Boolean);
+    const rest = state.sheets.filter((s) => !orderedIds.includes(s.id));
+    const reordered = [];
+    orderedIds.forEach((id) => {
+      const found = state.sheets.find((s) => s.id === id);
+      if (found) reordered.push(found);
+    });
+    state.sheets = [...reordered, ...rest];
+
+    state.onboardingComplete = true;
+    scheduleSave();
+    overlay.remove();
+    rebuildNav();
+    renderAll();
+    activateTab("home");
+  }
+
+  renderStep();
+}
+
 async function boot() {
   // Sign-in gate first — nothing below runs until someone's identity is
   // known, since the data itself lives behind that identity now.
@@ -10048,8 +10324,13 @@ async function boot() {
     showBootLoadError();
     return;
   }
+  let isBrandNewAccount = false;
   if (!state) {
     state = { todos: [], budget: [], investmentAccounts: [], bible: [], goals: [], wellness: [], nextId: 1 };
+    isBrandNewAccount = true;
+    // New accounts start onboarding on their very first load; anyone with
+    // an existing row skips it below once state has loaded successfully.
+    state.onboardingComplete = false;
   }
   // Backfill in case any array/field is missing from an older save.
   state.todos ||= [];
@@ -10183,6 +10464,17 @@ async function boot() {
       state.sheets.push({ id, kind: "builtin", visible: true });
     }
   });
+  // Anyone who already has a saved row skips onboarding — this only ever
+  // defaults to false in the brand-new-account branch above.
+  state.onboardingComplete ??= true;
+  if (isBrandNewAccount) {
+    // Bible sits off to the side as an extra, not part of the six-pillar
+    // starter kit — onboarding hands a new account Prayer/Qur'an/Breathe
+    // as its Spiritual choice instead. Still there in the Gallery-style
+    // list whenever it's wanted; just not pinned or counted on day one.
+    const bibleSheet = state.sheets.find((s) => s.id === "bible");
+    if (bibleSheet) bibleSheet.visible = false;
+  }
   // One-time: Home now shows the wellness ring, the reward, and today's
   // pillars directly, so Wellness no longer needs its own bottom-bar slot —
   // hide it exactly the way the eye toggle in Settings already can, which
@@ -10409,6 +10701,7 @@ async function boot() {
   ensureCustomPanels();
   initTabs();
   renderAll();
+  if (!state.onboardingComplete) showOnboardingFlow();
   syncTopbarHeight();
   window.addEventListener("resize", syncTopbarHeight);
   registerServiceWorker();
