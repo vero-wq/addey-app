@@ -1017,6 +1017,10 @@ function openAccountSheet() {
           ${iconSvg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>')}
           <span>Plan &amp; Billing</span>
         </button>
+        <button type="button" class="you-list-row" id="account-grace-btn">
+          ${graceFeatherSvg()}
+          <span>Grace Days</span>
+        </button>
 
         <div class="you-list-divider"></div>
 
@@ -1062,6 +1066,10 @@ function openAccountSheet() {
   overlay.querySelector("#account-billing-btn").addEventListener("click", () => {
     close();
     openBillingModal();
+  });
+  overlay.querySelector("#account-grace-btn").addEventListener("click", () => {
+    close();
+    openGraceDaysModal();
   });
   const signOutBtn = overlay.querySelector("#account-signout-btn");
   signOutBtn.addEventListener("click", async () => {
@@ -1184,6 +1192,50 @@ function openBillingModal() {
               </div>
               <div class="account-note" style="margin-top:2px;">Billing isn't connected yet — these will work once real subscriptions launch.</div>`
         }
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
+}
+
+// Reached from Account → "Grace Days", right next to Plan & Billing since
+// free/paid earn at different rates — the one other place that
+// distinction shows up. Read-only: the bank fills and drains from
+// reconcileGraceDays() during boot, nothing here is editable.
+function openGraceDaysModal() {
+  const g = state.grace || { banked: 0 };
+  const isPaid = state.account?.plan === "paid" || state.account?.isFounder;
+  const tokensHtml = Array.from({ length: GRACE_BANK_CAP })
+    .map((_, i) => `<div class="grace-token ${i < g.banked ? "filled" : "empty"}">${i < g.banked ? graceFeatherSvg() : ""}</div>`)
+    .join("");
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3 style="display:flex;align-items:center;gap:10px;">
+            <span class="grace-token-icon-badge">${graceFeatherSvg()}</span>
+            Grace Days
+          </h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="account-section" style="border-top:none;padding-top:4px;">
+          <div class="account-note">You're covered for up to ${GRACE_BANK_CAP} missed days — vacations, sick days, life. They bank month to month, so unused days aren't lost, and each pillar's streak (plus your overall streak) gets its own coverage.</div>
+        </div>
+        <div class="account-section">
+          <div class="grace-token-row">${tokensHtml}</div>
+          <div class="grace-token-caption">${g.banked} of ${GRACE_BANK_CAP} banked</div>
+        </div>
+        <div class="account-section" style="display:flex;flex-direction:column;gap:0;">
+          <div class="grace-earn-row"><span>Monthly earn rate</span><b>${isPaid ? "+2" : "+1"} / month</b></div>
+          <div class="grace-earn-row"><span>Bonus for long streaks</span><b>+1 at every streak milestone, 30 days on</b></div>
+          <div class="grace-earn-row"><span>Bank limit</span><b>${GRACE_BANK_CAP} days</b></div>
+        </div>
+        ${!isPaid ? `<div class="account-note" style="margin-top:2px;">Upgrading doubles your monthly earn rate — the bank limit stays the same for everyone.</div>` : ""}
       </div>
     </div>
   `);
@@ -8813,11 +8865,12 @@ function pillarTrendBreakdown(key, today) {
 // overall streak on Home, just scoped to one pillar.
 function pillarCurrentStreak(key, today) {
   let streak = 0;
+  // Today itself is never grace-covered — the day isn't over yet, so
+  // there's nothing to protect it from until tomorrow.
   const todayEntry = state.wellness.find((w) => w.logDate === today);
   let cursor = todayEntry && todayEntry[key] === "Yes" ? today : addDays(today, -1);
   while (true) {
-    const entry = state.wellness.find((w) => w.logDate === cursor);
-    if (entry && entry[key] === "Yes") {
+    if (isStreakDayPositiveWithGrace(key, cursor)) {
       streak++;
       cursor = addDays(cursor, -1);
     } else break;
@@ -9264,12 +9317,14 @@ function computeStreakStats(today) {
     prevDate = e.logDate;
   });
 
+  // Today is checked raw (never grace-covered — the day isn't over), every
+  // earlier day gets the grace-aware check so a covered gap doesn't end
+  // the streak.
   let current = 0;
   let cursor = today;
   let isToday = true;
   while (true) {
-    const entry = state.wellness.find((w) => w.logDate === cursor);
-    const positive = isWellnessDayPositive(entry);
+    const positive = isToday ? isStreakDayPositive("overall", cursor) : isStreakDayPositiveWithGrace("overall", cursor);
     if (positive) {
       current++;
     } else if (!isToday) {
@@ -9279,6 +9334,116 @@ function computeStreakStats(today) {
     cursor = addDays(cursor, -1);
   }
   return { current, longest: Math.max(longest, current) };
+}
+
+// ------------------------------------------------------------------
+// Grace Days — a small, bankable allowance of "this missed day doesn't
+// break your streak" tokens. Free accounts earn 1/month, paid earn 2,
+// both cap at a 7-day bank (a real vacation, not an excuse to stop
+// caring about the streak). Coverage is per streak — each of the six
+// pillars plus the overall streak has its own independent gap it can
+// bridge — and once a date is marked covered it's permanent history,
+// never re-decided on a later boot.
+//
+// Deliberately automatic and silent: there's no "use a token?" prompt
+// in the moment. The whole point is removing the anxiety of a missed
+// day, not turning it into another decision.
+// ------------------------------------------------------------------
+const GRACE_BANK_CAP = 7;
+const GRACE_LOOKBACK_DAYS = 14; // how far back reconcileGraceDays scans for a coverable gap
+// Bonus tokens ride the same streak ladder the push notifications already
+// celebrate, starting at 30 days — the point where a streak has real
+// weight — rather than every small early milestone.
+const GRACE_BONUS_MILESTONES = [30, 60, 100, 150, 200, 365];
+
+function graceMonthlyEarnRate() {
+  const acct = state.account || {};
+  return acct.plan === "paid" || acct.isFounder ? 2 : 1;
+}
+
+// Raw check, no grace applied — the ground truth used to decide whether a
+// gap needs covering in the first place. "overall" reuses the same
+// 80%-of-logged-pillars bar as the streak flame; anything else is one
+// pillar's own Yes/No field.
+function isStreakDayPositive(key, date) {
+  const entry = state.wellness.find((w) => w.logDate === date);
+  if (key === "overall") return isWellnessDayPositive(entry);
+  return !!(entry && entry[key] === "Yes");
+}
+
+// What the streak math actually reads: real data, or a date this account
+// already spent a grace token covering.
+function isStreakDayPositiveWithGrace(key, date) {
+  if (isStreakDayPositive(key, date)) return true;
+  return !!(state.grace && state.grace.coveredDates[`${key}|${date}`]);
+}
+
+// Runs once per boot. Grants this month's tokens if they haven't been
+// granted yet, then looks back over recent days for any single-day gap
+// that's actually bridging a real streak (the day before it was itself
+// alive) and spends a banked token to cover it, oldest gap first so a
+// short bank empties in the order the days actually happened.
+function reconcileGraceDays(today) {
+  state.grace ||= { banked: 0, lastGrantMonthKey: "", coveredDates: {}, bonusAwardedAt: {} };
+  const g = state.grace;
+  g.coveredDates ||= {};
+  g.bonusAwardedAt ||= {};
+
+  const currentMonthKey = today.slice(0, 7);
+  if (!g.lastGrantMonthKey) {
+    // First time this has ever run for this account — starts counting
+    // from this month, no backfilling months that already passed.
+    g.lastGrantMonthKey = currentMonthKey;
+  } else if (g.lastGrantMonthKey !== currentMonthKey) {
+    g.banked = Math.min(GRACE_BANK_CAP, g.banked + graceMonthlyEarnRate());
+    g.lastGrantMonthKey = currentMonthKey;
+  }
+
+  const streakKeys = [...WELLNESS_YESNO_FIELDS.map(([k]) => k), "overall"];
+  for (let i = GRACE_LOOKBACK_DAYS; i >= 1; i--) {
+    const date = addDays(today, -i);
+    streakKeys.forEach((key) => {
+      const covKey = `${key}|${date}`;
+      if (g.coveredDates[covKey]) return; // already decided, permanent
+      if (g.banked <= 0) return;
+      if (isStreakDayPositive(key, date)) return; // nothing to cover
+      const prevDate = addDays(date, -1);
+      const prevAlive = isStreakDayPositive(key, prevDate) || g.coveredDates[`${key}|${prevDate}`];
+      if (!prevAlive) return; // not bridging an actual streak — just an off day
+      g.coveredDates[covKey] = true;
+      g.banked -= 1;
+    });
+  }
+
+  // Bonus tokens for a long overall streak — checked last, using the
+  // grace-aware current streak so a bridged gap still counts toward it.
+  const overallStreak = computeStreakStats(today).current;
+  GRACE_BONUS_MILESTONES.forEach((day) => {
+    if (overallStreak >= day && (g.bonusAwardedAt.overall || 0) < day) {
+      g.bonusAwardedAt.overall = day;
+      if (g.banked < GRACE_BANK_CAP) g.banked += 1;
+    }
+  });
+}
+
+// The most recent day grace actually stepped in for, if any — this is
+// what drives the quiet "a grace day covered you" banner on Home. Only
+// looks at yesterday specifically so the banner naturally disappears
+// after a day, rather than needing its own "seen it" flag.
+function mostRecentGraceCoverage(today) {
+  const yesterday = addDays(today, -1);
+  const streakKeys = [...WELLNESS_YESNO_FIELDS.map(([k]) => k), "overall"];
+  for (const key of streakKeys) {
+    if (state.grace?.coveredDates[`${key}|${yesterday}`]) {
+      const label = key === "overall" ? "Your streak" : WELLNESS_YESNO_FIELDS.find(([k]) => k === key)?.[1];
+      return { key, label };
+    }
+  }
+  return null;
+}
+
+function graceFeatherSvg() {
+  return iconSvg('<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line>');
 }
 
 // ------------------------------------------------------------------
@@ -9444,6 +9609,19 @@ function renderHomeHero(today) {
       <div class="home-streak-flame-longest">Consecutive days &middot; longest ever ${streak.longest} day${streak.longest === 1 ? "" : "s"}</div>
     </div>
   `));
+
+  const graceCovered = mostRecentGraceCoverage(today);
+  if (graceCovered) {
+    hero.appendChild(el(`
+      <div class="trend-insight-banner grace-banner">
+        <div class="trend-insight-icon grace-icon">${graceFeatherSvg()}</div>
+        <div class="trend-insight-text">
+          <strong>A grace day covered you</strong> — ${escapeHtml(graceCovered.label)} kept going.
+          <div class="trend-insight-sub">${state.grace.banked} grace day${state.grace.banked === 1 ? "" : "s"} banked</div>
+        </div>
+      </div>
+    `));
+  }
 
   // Streak and Deposits are deliberately two different numbers, and the
   // small label under Deposits exists specifically to keep them from
@@ -10218,23 +10396,59 @@ function showOnboardingFlow() {
 
     if (step === "review") {
       box.insertAdjacentHTML("beforeend", `
+        <div class="completion-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        </div>
         <div class="onboarding-eyebrow">You're set up</div>
         <div class="onboarding-headline">Here's your starting kit</div>
         <div class="onboarding-review-card">
-          <div class="onboarding-review-title">Home toolbar · 4</div>
-          <div class="onboarding-extra-row" style="flex-wrap:wrap;">
-            ${toolbarOrder.map((k) => `<div class="onboarding-extra-slot" style="flex:0 0 47%;"><span class="ic">${onboardingPillarIconSvg(k)}</span>${escapeHtml(ONBOARDING_PILLAR_META[k].name)}</div>`).join("")}
-          </div>
+          <div class="onboarding-review-title">Home toolbar · 4 <span class="drag-hint">drag to reorder</span></div>
+          <div class="onboarding-extra-row" id="reviewToolbarZone"></div>
         </div>
         <div class="onboarding-review-card">
-          <div class="onboarding-review-title">Additional practices · 2</div>
-          <div class="onboarding-extra-row">
-            ${extraOrder.map((k) => `<div class="onboarding-extra-slot"><span class="ic">${onboardingPillarIconSvg(k)}</span>${escapeHtml(ONBOARDING_PILLAR_META[k].name)}</div>`).join("")}
-          </div>
+          <div class="onboarding-review-title">Additional practices · 2 <span class="drag-hint">drag to reorder</span></div>
+          <div class="onboarding-extra-row" id="reviewExtraZone"></div>
         </div>
         <div class="onboarding-lock-note">🔓 <div><strong>6 active practices, always free.</strong> Want more later? Practice Gallery has extra practices — upgrading unlocks up to 15 active at once.</div></div>
+        <div class="closing-beat">Your six practices are set. <b>Day one starts now.</b></div>
         <button type="button" class="onboarding-primary-btn" id="onbFinish">Go to Home</button>
       `);
+      const reviewToolbarZone = box.querySelector("#reviewToolbarZone");
+      const reviewExtraZone = box.querySelector("#reviewExtraZone");
+      let reviewDragKey = null;
+      function reviewTileHtml(key) {
+        const meta = ONBOARDING_PILLAR_META[key];
+        return `<div class="onboarding-extra-slot" draggable="true" data-key="${key}"><span class="ic">${onboardingPillarIconSvg(key)}</span>${escapeHtml(meta.name)}</div>`;
+      }
+      function renderReviewZones() {
+        reviewToolbarZone.innerHTML = toolbarOrder.map(reviewTileHtml).join("");
+        reviewExtraZone.innerHTML = extraOrder.map(reviewTileHtml).join("");
+        [...reviewToolbarZone.children, ...reviewExtraZone.children].forEach((tile) => {
+          tile.addEventListener("dragstart", () => { reviewDragKey = tile.dataset.key; tile.classList.add("dragging"); });
+          tile.addEventListener("dragend", () => tile.classList.remove("dragging"));
+          tile.addEventListener("dragover", (e) => { e.preventDefault(); tile.classList.add("drag-over"); });
+          tile.addEventListener("dragleave", () => tile.classList.remove("drag-over"));
+          tile.addEventListener("drop", (e) => {
+            e.preventDefault();
+            tile.classList.remove("drag-over");
+            if (!reviewDragKey || reviewDragKey === tile.dataset.key) return;
+            const destIsToolbar = reviewToolbarZone.contains(tile);
+            toolbarOrder = toolbarOrder.filter((k) => k !== reviewDragKey);
+            extraOrder = extraOrder.filter((k) => k !== reviewDragKey);
+            const destList = destIsToolbar ? toolbarOrder : extraOrder;
+            const destIdx = destList.indexOf(tile.dataset.key);
+            if (destIsToolbar && destList.length >= 4) {
+              const bumped = destList.splice(destIdx, 1, reviewDragKey)[0];
+              extraOrder.unshift(bumped);
+            } else {
+              destList.splice(destIdx, 0, reviewDragKey);
+            }
+            reviewDragKey = null;
+            renderReviewZones();
+          });
+        });
+      }
+      renderReviewZones();
       box.querySelector("#onbFinish").addEventListener("click", finishOnboarding);
     }
   }
@@ -10691,6 +10905,11 @@ async function boot() {
     // saved before (or none) — the reminder/milestone timing falls back
     // to UTC server-side rather than breaking anything.
   }
+
+  // Grace Days — grant this month's tokens and cover any real gap from
+  // the last couple weeks before anything renders, so streaks and the
+  // Home banner already reflect it on first paint.
+  reconcileGraceDays(todayISO());
 
   // Write straight back after any migrations above so the row reflects
   // the current shape immediately, rather than waiting for the first
