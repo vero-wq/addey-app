@@ -563,9 +563,22 @@ td input:hover { border-color: var(--border); }
 .bible-ring-pct { font-size: 14px; font-weight: 700; color: var(--text); }
 .bible-ring-caption { font-size: 13px; color: var(--muted); line-height: 1.5; }
 .bible-ring-caption strong { color: var(--text); }
-.bible-pace-mini-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.bible-pace-mini-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .bible-pace-mini-row label { font-size: 11px; }
 .bible-pace-mini-row .bible-start-date, .bible-pace-mini-row .quran-start-date { font-size: 13px; padding: 4px 7px; }
+.bible-pace-mini-row .filler-btn { margin-left: auto; }
+.filler-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  font-family: inherit;
+  cursor: pointer;
+}
+.filler-btn:hover { background: var(--bg); color: var(--text); }
 
 /* ---------- Settings ---------- */
 .settings-sub { font-size: 13px; color: var(--muted); margin: 0 0 22px 0; }
@@ -903,14 +916,20 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .al-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .al-legend-pct { margin-left: auto; font-weight: 600; color: var(--accent-dark); }
 
-.al-badge-row { display: flex; gap: 14px; flex-wrap: wrap; }
-.al-badge { width: 92px; text-align: center; }
-.al-badge-medal { width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; position: relative; }
-.al-badge-medal.earned { background: radial-gradient(circle at 35% 30%, #F5D28A, #C6883F 70%); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.5), 0 2px 6px rgba(124,92,54,0.35); }
-.al-badge-medal-inner { position: absolute; inset: 5px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 20px; }
-.al-badge .lbl { font-size: 10.5px; font-weight: 700; line-height: 1.25; margin-bottom: 2px; }
-.al-badge .sub { font-size: 9.5px; color: var(--muted); }
-.al-badge .sub.earned-date { color: var(--accent-dark); font-weight: 600; }
+/* Milestones — shared across every ongoing practice (Activity Log, Meal
+   Log, Workout Log, Connections, Book List) so the badge grid looks and
+   sits identically no matter what it's actually counting. Wide 2-column
+   layout with the medal beside the text, not stacked above it, so a
+   longer label never wraps into a cramped stack of lines. */
+.pr-badge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pr-badge { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); }
+.pr-badge-medal { width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; position: relative; }
+.pr-badge-medal.earned { background: radial-gradient(circle at 35% 30%, #F5D28A, #C6883F 70%); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.5), 0 2px 6px rgba(124,92,54,0.35); }
+.pr-badge-medal-inner { position: absolute; inset: 4px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.pr-badge-text { flex: 1; min-width: 0; }
+.pr-badge-text .lbl { font-size: 11.5px; font-weight: 700; line-height: 1.25; }
+.pr-badge-text .sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.pr-badge-text .sub.earned-date { color: var(--accent-dark); font-weight: 600; }
 
 /* ---------- Meal Log ---------- */
 .ml-lib-note { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin: 0 0 12px; }
@@ -955,19 +974,6 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .ml-goto.sel { background: #E4E9E0; border-color: var(--good); color: var(--good); font-weight: 600; }
 
 .ml-note-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; font-family: inherit; background: var(--bg); margin-bottom: 12px; }
-
-/* Milestones — wider two-column layout, medal beside the text instead of
-   stacked above it, so longer labels have room and never wrap into a
-   cramped stack of lines. */
-.ml-badge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.ml-badge { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); }
-.ml-badge-medal { width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; position: relative; }
-.ml-badge-medal.earned { background: radial-gradient(circle at 35% 30%, #F5D28A, #C6883F 70%); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.5), 0 2px 6px rgba(124,92,54,0.35); }
-.ml-badge-medal-inner { position: absolute; inset: 4px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 15px; }
-.ml-badge-text { flex: 1; min-width: 0; }
-.ml-badge-text .lbl { font-size: 11.5px; font-weight: 700; line-height: 1.25; }
-.ml-badge-text .sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
-.ml-badge-text .sub.earned-date { color: var(--accent-dark); font-weight: 600; }
 
 /* ---------- Workout Log ---------- */
 .workout-week-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -1208,9 +1214,10 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .sleep-dot-cal .sleep-dot.good { background: #E4E9E0; }
 .sleep-dot-cal .sleep-dot.bad { background: #F1DAD3; }
 .sleep-dot-cal .sleep-dot.mid { background: #F1E7CF; }
-.sleep-target-row { display: flex; align-items: center; gap: 7px; margin: 4px 0 14px; }
+.sleep-target-row { display: flex; align-items: center; gap: 7px; margin: 4px 0 6px; }
 .sleep-target-value { font-family: "Source Serif 4", Georgia, serif; font-size: 17px; color: var(--accent-dark); }
 .sleep-target-row .sleep-stepper { margin-left: 4px; }
+.sleep-target-warning { font-size: 11px; color: var(--danger); margin: 0 0 12px; line-height: 1.4; }
 .sleep-target-feedback { font-size: 11.5px; font-weight: 600; margin: -2px 0 12px; padding: 7px 10px; border-radius: 8px; }
 .sleep-target-feedback.good { background: #E4E9E0; color: var(--good); }
 .sleep-target-feedback.bad { background: #F1DAD3; color: #8C3F2B; }
