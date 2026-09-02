@@ -9378,6 +9378,21 @@ function isStreakDayPositiveWithGrace(key, date) {
   return !!(state.grace && state.grace.coveredDates[`${key}|${date}`]);
 }
 
+// How many consecutive days (grace-aware) a streak has run, counting
+// backward from `endDate` inclusive. Used only to rank which streak is
+// "longest" when the bank can't cover every pillar missed on the same day —
+// this walks the same coveredDates the outer scan is building, so a
+// same-pass coverage on an earlier date is already reflected here.
+function graceStreakRunEndingAt(key, endDate) {
+  let run = 0;
+  let cursor = endDate;
+  while (isStreakDayPositiveWithGrace(key, cursor)) {
+    run++;
+    cursor = addDays(cursor, -1);
+  }
+  return run;
+}
+
 // Runs once per boot. Grants this month's tokens if they haven't been
 // granted yet, then looks back over recent days for any single-day gap
 // that's actually bridging a real streak (the day before it was itself
@@ -9402,17 +9417,30 @@ function reconcileGraceDays(today) {
   const streakKeys = [...WELLNESS_YESNO_FIELDS.map(([k]) => k), "overall"];
   for (let i = GRACE_LOOKBACK_DAYS; i >= 1; i--) {
     const date = addDays(today, -i);
-    streakKeys.forEach((key) => {
-      const covKey = `${key}|${date}`;
-      if (g.coveredDates[covKey]) return; // already decided, permanent
-      if (g.banked <= 0) return;
-      if (isStreakDayPositive(key, date)) return; // nothing to cover
-      const prevDate = addDays(date, -1);
+    const prevDate = addDays(date, -1);
+
+    // Every key that actually needs covering on this date — a real gap,
+    // bridging a streak that was genuinely alive the day before.
+    const needsCoverage = streakKeys.filter((key) => {
+      if (g.coveredDates[`${key}|${date}`]) return false; // already decided, permanent
+      if (isStreakDayPositive(key, date)) return false; // nothing to cover
       const prevAlive = isStreakDayPositive(key, prevDate) || g.coveredDates[`${key}|${prevDate}`];
-      if (!prevAlive) return; // not bridging an actual streak — just an off day
-      g.coveredDates[covKey] = true;
-      g.banked -= 1;
+      return prevAlive;
     });
+    if (!needsCoverage.length) continue;
+
+    // When the bank can't cover everything missed on the same day, the
+    // longest-standing streak wins — losing 100 days of Movement hurts
+    // more than losing 3 days of Food, whatever order the pillars happen
+    // to be listed in. Ties (equal length) keep the pillar-list order.
+    needsCoverage
+      .map((key) => ({ key, runLength: graceStreakRunEndingAt(key, prevDate) }))
+      .sort((a, b) => b.runLength - a.runLength)
+      .forEach(({ key }) => {
+        if (g.banked <= 0) return;
+        g.coveredDates[`${key}|${date}`] = true;
+        g.banked -= 1;
+      });
   }
 
   // Bonus tokens for a long overall streak — checked last, using the
