@@ -846,6 +846,59 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .social-chip-name { font-size: 9.5px; font-weight: 700; text-align: center; line-height: 1.2; color: var(--text); }
 .social-chip-add { background: transparent; border: 1.5px dashed var(--accent); color: var(--accent-dark); font-size: 18px; font-weight: 800; }
 .social-quicklog-hint { font-size: 10.5px; color: var(--muted); margin-bottom: 14px; }
+
+/* ---------- Prayer Log ---------- */
+.prayer-quicklog-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 8px; }
+.prayer-quicklog-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 14px; }
+.prayer-chip { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 60px; background: none; border: none; font-family: inherit; cursor: pointer; padding: 0; }
+.prayer-chip-avatar { width: 46px; height: 46px; border-radius: 50%; background: #EFE3CF; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--accent-dark); border: 2px solid transparent; }
+.prayer-chip:active .prayer-chip-avatar { border-color: var(--good); background: #E4E9E0; }
+.prayer-chip-lbl { font-size: 10px; font-weight: 600; color: var(--muted); text-align: center; }
+.prayer-note-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; font-size: 12.5px; font-family: inherit; background: var(--bg); margin-bottom: 8px; }
+.prayer-today-recap { font-size: 11.5px; color: var(--text); }
+.prayer-today-recap.muted { color: var(--muted); }
+
+/* ---------- Breathe ---------- */
+.method-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.method-chip { flex: 1 1 auto; min-width: 118px; padding: 10px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; text-align: left; font-family: inherit; }
+.method-chip .m-name { font-size: 12.5px; font-weight: 700; display: block; color: var(--text); }
+.method-chip .m-sub { font-size: 10px; color: var(--muted); display: block; margin-top: 1px; }
+.method-chip.sel { border-color: var(--accent-dark); background: rgba(169,128,79,0.1); }
+.method-chip.sel .m-name { color: var(--accent-dark); }
+.method-chip.ghost { opacity: 0.55; cursor: default; border-style: dashed; }
+.dur-row { display: flex; gap: 8px; margin: 12px 0 4px; }
+.dur-chip { flex: 1; padding: 9px 4px; text-align: center; border-radius: 10px; border: 1.5px solid var(--border); background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; font-family: inherit; }
+.dur-chip.sel { border-color: var(--accent-dark); background: rgba(169,128,79,0.1); color: var(--accent-dark); }
+.sound-row { display: flex; gap: 8px; margin: 4px 0 4px; }
+.sound-chip { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 10px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--surface); font-family: inherit; cursor: pointer; }
+.sound-chip .s-name { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.sound-chip.sel { border-color: var(--accent-dark); background: rgba(169,128,79,0.1); }
+.sound-chip.sel .s-name { color: var(--accent-dark); }
+.sound-chip .s-preview { width: 20px; height: 20px; border-radius: 50%; background: var(--bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--muted); flex-shrink: 0; }
+.breathe-stage { display: flex; flex-direction: column; align-items: center; padding: 18px 0 6px; }
+.breathe-ring-wrap { position: relative; width: 176px; height: 176px; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+.breathe-track { position: absolute; inset: 0; border-radius: 50%; border: 2px dashed var(--border); }
+.breathe-circle {
+  width: 92px; height: 92px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #E7C892, var(--accent) 75%);
+  box-shadow: 0 6px 18px rgba(124,92,54,0.28);
+  transition: transform 4s ease-in-out;
+  transform: scale(0.62);
+  display: flex; align-items: center; justify-content: center;
+}
+.breathe-circle.grown { transform: scale(1); }
+.breathe-circle.slow-style { background: radial-gradient(circle at 40% 30%, #DCE9D8, var(--good) 85%); box-shadow: 0 6px 18px rgba(85,105,74,0.25); }
+.breathe-phase-label { font-family: "Source Serif 4", Georgia, serif; font-size: 15px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+.breathe-btn-row { display: flex; gap: 8px; }
+.breathe-start-btn { flex: 1; padding: 12px; border-radius: 10px; background: var(--accent-dark); color: #fff; border: none; text-align: center; font-size: 13.5px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.breathe-start-btn:disabled { opacity: 0.7; cursor: default; }
+.breathe-sound-btn { width: 46px; flex-shrink: 0; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); font-size: 16px; cursor: pointer; }
+.breathe-sound-btn.muted { opacity: 0.5; }
+.breathe-complete { text-align: center; padding: 6px 0 4px; }
+.breathe-complete .check { font-size: 28px; margin-bottom: 6px; }
+.breathe-complete .msg { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.breathe-note-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; font-size: 13px; font-family: inherit; margin: 10px 0 2px; background: var(--bg); }
+.save-session-btn { width: 100%; padding: 11px; border-radius: 10px; background: var(--accent-dark); color: #fff; border: none; font-size: 13px; font-weight: 600; font-family: inherit; margin-top: 10px; cursor: pointer; }
 .social-nudge-card { background: #FBF0EA; border: 1px solid #EAD3C4; border-radius: 12px; padding: 11px 12px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
 .social-nudge-icon { font-size: 16px; flex-shrink: 0; }
 .social-nudge-text { font-size: 11.5px; line-height: 1.4; flex: 1; }
