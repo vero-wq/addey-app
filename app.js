@@ -39,6 +39,13 @@ const SHEET_GALLERY = [
     starterItems: [],
   },
   {
+    key: "mealLog",
+    label: "Meal Log",
+    icon: `<path d="M11 2a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3v8"></path><path d="M18 2v9a3 3 0 0 1-3 3"></path><path d="M18 2v20"></path>`,
+    desc: "A quick daily log of how you ate — Food's practice, same idea as Activity Log for Movement.",
+    starterItems: [],
+  },
+  {
     key: "meals",
     label: "Meal Planner",
     icon: `<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path>`,
@@ -691,6 +698,12 @@ window.addEventListener("pagehide", flushPendingSave);
 function activateTab(tab) {
   document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === `panel-${tab}`));
+  // All panels share one scrolling container, so switching tabs doesn't
+  // naturally reset scroll position — without this, a page opens wherever
+  // the previous page happened to be scrolled to, which can land you
+  // mid-page or at the bottom of a shorter one.
+  const contentEl = document.querySelector(".content");
+  if (contentEl) contentEl.scrollTop = 0;
   const homeRow = document.getElementById("home-tab-row");
   if (homeRow) homeRow.classList.toggle("active", tab === "home");
   const homeCircle = document.getElementById("home-tab-circle");
@@ -728,7 +741,7 @@ function sheetIcon(sheet) {
 
 function sheetLabel(sheet) {
   if (sheet.kind === "builtin") return BUILTIN_SHEET_META[sheet.id]?.label || sheet.id;
-  return state.customSheets[sheet.id]?.label || "Space";
+  return state.customSheets[sheet.id]?.label || "Practice";
 }
 
 // Home sits fixed, dead center, on the mobile bar. Only the first
@@ -911,7 +924,7 @@ function openAccountSheet() {
 
         <button type="button" class="you-list-row" id="you-myspaces-row">
           ${iconSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>')}
-          <span>My Spaces</span>
+          <span>My Practices</span>
         </button>
         <button type="button" class="you-list-row" id="you-gallery-row">
           ${iconSvg('<path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/>')}
@@ -1086,7 +1099,7 @@ function openBillingModal() {
                 <div class="account-section-label">Current plan</div>
                 <div class="account-note" style="border-color:var(--accent);background:var(--bg);">
                   <strong style="color:var(--text);">Founder — Full Access</strong><br/>
-                  Granted personally — every space, no subscription, nothing to manage here.
+                  Granted personally — every practice, no subscription, nothing to manage here.
                 </div>
               </div>`
             : `<div class="account-section" style="border-top:none;padding-top:4px;">
@@ -1221,15 +1234,15 @@ function openSpaceCapModal() {
     <div class="modal-overlay">
       <div class="modal-box" style="max-width:360px;text-align:center;">
         <div style="font-size:26px;margin-bottom:8px;">🔒</div>
-        <h3 style="margin:0 0 8px;">You've used all ${limit} spaces</h3>
+        <h3 style="margin:0 0 8px;">You've used all ${limit} practices</h3>
         <p class="muted" style="margin:0 0 18px;line-height:1.5;">
           ${
             nextTierLabel
-              ? `Upgrade to ${nextTierLabel} for ${nextTierLimit} spaces total — double the room, same habit tracking. Or remove a space in My Spaces to make room.`
-              : `Remove a space in My Spaces to make room for a new one.`
+              ? `Upgrade to ${nextTierLabel} for ${nextTierLimit} practices total — double the room, same habit tracking. Or remove a practice in My Practices to make room.`
+              : `Remove a practice in My Practices to make room for a new one.`
           }
         </p>
-        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `See ${nextTierLabel} plan` : "Manage my spaces"}</button>
+        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `See ${nextTierLabel} plan` : "Manage my practices"}</button>
         <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Close</button>
       </div>
     </div>
@@ -1258,6 +1271,7 @@ function addSheetFromTemplate(tpl) {
   const isWorkout = tpl.key === "workout";
   const isSocial = tpl.key === "social";
   const isActivity = tpl.key === "activity";
+  const isMealLog = tpl.key === "mealLog";
   state.customSheets[id] = {
     label: tpl.label,
     templateKey: tpl.key,
@@ -1267,7 +1281,7 @@ function addSheetFromTemplate(tpl) {
       ? seedQuranItems()
       : isBooks
       ? seedBookItems()
-      : isWorkout || isSocial || isActivity
+      : isWorkout || isSocial || isActivity || isMealLog
       ? []
       : tpl.starterItems.map((text) => ({ id: nextId(), text, done: false })),
     ...(isWardrobe ? { wardrobeSchemaV: 2, openCategories: {}, activeSeason: null } : {}),
@@ -1276,6 +1290,7 @@ function addSheetFromTemplate(tpl) {
     ...(isWorkout ? seedWorkoutSheetData() : {}),
     ...(isSocial ? { socialSchemaV: 2, people: [] } : {}),
     ...(isActivity ? { activitySchemaV: 1, customTypes: [], weeklyGoalMinutes: ACTIVITY_WEEKLY_GOAL_DEFAULT } : {}),
+    ...(isMealLog ? { mealLogSchemaV: 1 } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
   // Adding a space that fits a pillar IS the opt-in — don't also make
@@ -1312,6 +1327,8 @@ function renderCustomSheet(id) {
     renderSocialSheet(id);
   } else if (sheet && sheet.templateKey === "activity") {
     renderActivitySheet(id);
+  } else if (sheet && sheet.templateKey === "mealLog") {
+    renderMealLogSheet(id);
   } else {
     renderChecklistSheet(id);
   }
@@ -1447,7 +1464,7 @@ function renderSettings() {
   // reachable from one menu item, without mixing them into one long scroll.
   const segment = el(`
     <div class="settings-segment">
-      <button type="button" class="${settingsSubTab === "mine" ? "active" : ""}" data-target="mine">My Spaces</button>
+      <button type="button" class="${settingsSubTab === "mine" ? "active" : ""}" data-target="mine">My Practices</button>
       <button type="button" class="${settingsSubTab === "gallery" ? "active" : ""}" data-target="gallery">Gallery</button>
     </div>
   `);
@@ -1462,10 +1479,10 @@ function renderSettings() {
   const minePanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "mine" ? "" : "display:none;"}"></div>`);
   const galleryPanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "gallery" ? "" : "display:none;"}"></div>`);
 
-  minePanel.appendChild(el(`<div class="settings-group-title">Your spaces</div>`));
+  minePanel.appendChild(el(`<div class="settings-group-title">Your practices</div>`));
   minePanel.appendChild(
     el(
-      `<div class="settings-group-desc">Drag a space to reorder it, tap the eye to hide it without losing data, or the trash can to remove it for good. Your first ${MOBILE_PINNED_COUNT} visible spaces pin to the bottom bar on mobile, so those don't get a trash can — move a space down past that point to remove it. Spaces you added from the Gallery can be added back anytime; built-in ones can't.</div>`
+      `<div class="settings-group-desc">Drag a practice to reorder it, tap the eye to hide it without losing data, or the trash can to remove it for good. Your first ${MOBILE_PINNED_COUNT} visible practices pin to the bottom bar on mobile, so those don't get a trash can — move a practice down past that point to remove it. Practices you added from the Gallery can be added back anytime; built-in ones can't.</div>`
     )
   );
 
@@ -1522,7 +1539,7 @@ function renderSettings() {
       } else {
         confirmModal(
           `Remove ${label}?`,
-          "This is a built-in space — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, use the eye icon instead.",
+          "This is a built-in practice — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, use the eye icon instead.",
           "Delete for good",
           () => removeBuiltinSheet(s.id)
         );
@@ -1565,13 +1582,13 @@ function renderSettings() {
   });
   minePanel.appendChild(card);
   minePanel.appendChild(
-    el(`<div class="settings-note">Wellness isn't a space you add or hide — it's built into Home now, not a separate page.</div>`)
+    el(`<div class="settings-note">Wellness isn't a practice you add or hide — it's built into Home now, not a separate page.</div>`)
   );
 
   panel.appendChild(minePanel);
 
-  galleryPanel.appendChild(el(`<div class="settings-group-title">Space gallery</div>`));
-  galleryPanel.appendChild(el(`<div class="settings-group-desc">A few more spaces, ready to drop in whenever you want them.</div>`));
+  galleryPanel.appendChild(el(`<div class="settings-group-title">Practice gallery</div>`));
+  galleryPanel.appendChild(el(`<div class="settings-group-desc">A few more practices, ready to drop in whenever you want them.</div>`));
 
   const usedCount = countedSpaces();
   const limit = spaceCapForAccount();
@@ -1580,7 +1597,7 @@ function renderSettings() {
   galleryPanel.appendChild(el(`
     <div class="space-usage-row">
       <div class="space-usage-top">
-        <span class="space-usage-label">${escapeHtml(planLabel)} plan &middot; spaces used</span>
+        <span class="space-usage-label">${escapeHtml(planLabel)} plan &middot; practices used</span>
         <span class="space-usage-count">${usedCount} of ${limit}</span>
       </div>
       <div class="space-usage-bar"><div class="space-usage-fill${atCap ? " full" : ""}" style="width:${Math.min(100, Math.round((usedCount / limit) * 100))}%;"></div></div>
@@ -3286,6 +3303,194 @@ function openActivityEntryEditor(sheetId, entryId) {
     scheduleSave();
     close();
     renderActivitySheet(sheetId);
+    renderHome();
+  });
+  document.body.appendChild(overlay);
+}
+
+// ------------------------------------------------------------------
+// Meal Log — Food's practice, deliberately kept simple: what meal, how
+// it went, an optional note. No milestones or mix section here (unlike
+// Activity Log) — this is meant to be a quick daily touch, not another
+// whole feature to explore. Same rules as everything else: always logs
+// as today, correct a past entry but never backdate a new one.
+// ------------------------------------------------------------------
+const MEAL_TYPES = [
+  { key: "breakfast", label: "Breakfast", icon: "🍳" },
+  { key: "lunch", label: "Lunch", icon: "🥗" },
+  { key: "dinner", label: "Dinner", icon: "🍽️" },
+  { key: "snack", label: "Snack", icon: "🍎" },
+];
+const MEAL_QUALITY = [
+  { key: "good", label: "Nourishing", icon: "🥗" },
+  { key: "okay", label: "Balanced", icon: "🍽️" },
+  { key: "poor", label: "Rough", icon: "🍟" },
+];
+
+let mealLogUiStateBySheet = {};
+function mealLogUiState(id) {
+  return (mealLogUiStateBySheet[id] ||= { selectedMealType: MEAL_TYPES[0].key, selectedQuality: MEAL_QUALITY[0].key });
+}
+function mealTypeByKey(key) {
+  return MEAL_TYPES.find((t) => t.key === key) || MEAL_TYPES[0];
+}
+function mealQualityByKey(key) {
+  return MEAL_QUALITY.find((q) => q.key === key) || MEAL_QUALITY[0];
+}
+
+function renderMealLogSheet(id) {
+  const panel = document.getElementById(`panel-${id}`);
+  const sheet = state.customSheets[id];
+  if (!panel || !sheet) return;
+  sheet.items ||= [];
+  const ui = mealLogUiState(id);
+  const today = todayISO();
+  panel.innerHTML = "";
+  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  // ---- Summary: just a streak, kept light on purpose ----
+  const streak = computeActivityStreak(sheet, today);
+  const summaryCard = el(`
+    <div class="card">
+      <div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">day food streak</span></div>
+    </div>
+  `);
+  panel.appendChild(summaryCard);
+
+  // ---- Log a meal ----
+  const logCard = el(`<div class="card"></div>`);
+  logCard.appendChild(el(`<div class="al-card-title">Log a meal</div>`));
+
+  logCard.appendChild(el(`<label class="muted" style="display:block;margin-bottom:6px;">Meal</label>`));
+  const mealRow = el(`<div class="al-chip-row"></div>`);
+  MEAL_TYPES.forEach((t) => {
+    const chip = el(`<button type="button" class="al-chip${t.key === ui.selectedMealType ? " active" : ""}"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
+    chip.addEventListener("click", () => {
+      ui.selectedMealType = t.key;
+      renderMealLogSheet(id);
+    });
+    mealRow.appendChild(chip);
+  });
+  logCard.appendChild(mealRow);
+
+  logCard.appendChild(el(`<label class="muted" style="display:block;margin:12px 0 6px;">How'd it go</label>`));
+  const qualityRow = el(`<div class="al-chip-row"></div>`);
+  MEAL_QUALITY.forEach((q) => {
+    const chip = el(`<button type="button" class="al-chip${q.key === ui.selectedQuality ? " active" : ""}"><span class="em">${q.icon}</span>${escapeHtml(q.label)}</button>`);
+    chip.addEventListener("click", () => {
+      ui.selectedQuality = q.key;
+      renderMealLogSheet(id);
+    });
+    qualityRow.appendChild(chip);
+  });
+  logCard.appendChild(qualityRow);
+
+  const fieldRow = el(`<div class="al-field-row" style="margin-top:12px;"><div class="al-field"><label>Notes (optional)</label><input type="text" class="ml-f-notes" /></div></div>`);
+  logCard.appendChild(fieldRow);
+  const saveBtn = el(`<button type="button" class="al-save-btn">Save meal</button>`);
+  saveBtn.addEventListener("click", () => {
+    const notes = logCard.querySelector(".ml-f-notes").value.trim();
+    sheet.items.push({ id: nextId(), date: today, mealType: ui.selectedMealType, quality: ui.selectedQuality, notes });
+    scheduleSave();
+    renderMealLogSheet(id);
+    renderHome();
+  });
+  logCard.appendChild(saveBtn);
+  logCard.appendChild(el(`<div class="al-note-line">Always logs as today &mdash; no backdating. Miss the day, miss the entry.</div>`));
+  panel.appendChild(logCard);
+
+  // ---- History ----
+  const historyCard = el(`<div class="card"></div>`);
+  historyCard.appendChild(el(`<div class="al-card-title">History</div>`));
+  const recent = [...sheet.items].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 20);
+  if (!recent.length) {
+    historyCard.appendChild(el(`<div class="muted">Nothing logged yet.</div>`));
+  } else {
+    historyCard.appendChild(el(`<div class="al-note-line" style="margin-bottom:6px;">Tap an entry to fix a typo &mdash; this corrects what you logged, it doesn't add a new day.</div>`));
+    recent.forEach((entry) => {
+      const mt = mealTypeByKey(entry.mealType);
+      const q = mealQualityByKey(entry.quality);
+      const dateLabel = entry.date === today ? "Today" : entry.date === addDays(today, -1) ? "Yesterday" : activityDateShort(entry.date);
+      const row = el(`
+        <button type="button" class="al-hist-row">
+          <span class="al-hist-icon">${mt.icon}</span>
+          <span class="al-hist-main">
+            <span class="al-hist-type">${escapeHtml(mt.label)}${entry.notes ? ` &middot; ${escapeHtml(entry.notes)}` : ""}</span>
+            <span class="al-hist-meta">${q.icon} ${escapeHtml(q.label)}</span>
+          </span>
+          <span class="al-hist-date">${dateLabel}</span>
+        </button>
+      `);
+      row.addEventListener("click", () => openMealLogEntryEditor(id, entry.id));
+      historyCard.appendChild(row);
+    });
+  }
+  panel.appendChild(historyCard);
+}
+
+// Corrects an already-logged meal (type, quality, notes) — no date field,
+// same reasoning as everywhere else: fixes a mistake in something real,
+// never lets a new day get added after the fact.
+function openMealLogEntryEditor(sheetId, entryId) {
+  const sheet = state.customSheets[sheetId];
+  const entry = sheet?.items.find((i) => i.id === entryId);
+  if (!sheet || !entry) return;
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Edit meal</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">Meal</label>
+          <div class="mp-kind-row mel-type-row">
+            ${MEAL_TYPES.map((t) => `<button type="button" class="mp-kind mel-type-opt${t.key === entry.mealType ? " sel" : ""}" data-key="${escapeHtml(t.key)}">${t.icon} ${escapeHtml(t.label)}</button>`).join("")}
+          </div>
+          <label class="muted">How'd it go</label>
+          <div class="mp-kind-row mel-quality-row">
+            ${MEAL_QUALITY.map((q) => `<button type="button" class="mp-kind mel-quality-opt${q.key === entry.quality ? " sel" : ""}" data-key="${escapeHtml(q.key)}">${q.icon} ${escapeHtml(q.label)}</button>`).join("")}
+          </div>
+          <label class="muted">Notes</label>
+          <textarea class="mel-f-notes" rows="2">${escapeHtml(entry.notes || "")}</textarea>
+        </div>
+        <div class="modal-actions" style="justify-content:space-between;">
+          <button type="button" class="btn-ghost danger mel-delete">Delete</button>
+          <button type="button" class="btn-primary mel-save">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+  let selectedMealType = entry.mealType;
+  let selectedQuality = entry.quality;
+  overlay.querySelectorAll(".mel-type-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedMealType = btn.dataset.key;
+      overlay.querySelectorAll(".mel-type-opt").forEach((b) => b.classList.toggle("sel", b === btn));
+    });
+  });
+  overlay.querySelectorAll(".mel-quality-opt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedQuality = btn.dataset.key;
+      overlay.querySelectorAll(".mel-quality-opt").forEach((b) => b.classList.toggle("sel", b === btn));
+    });
+  });
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector(".mel-delete").addEventListener("click", () => {
+    sheet.items = sheet.items.filter((i) => i.id !== entryId);
+    scheduleSave();
+    close();
+    renderMealLogSheet(sheetId);
+    renderHome();
+  });
+  overlay.querySelector(".mel-save").addEventListener("click", () => {
+    entry.mealType = selectedMealType;
+    entry.quality = selectedQuality;
+    entry.notes = overlay.querySelector(".mel-f-notes").value.trim();
+    scheduleSave();
+    close();
+    renderMealLogSheet(sheetId);
     renderHome();
   });
   document.body.appendChild(overlay);
@@ -5850,10 +6055,11 @@ function todayISO() {
 // Yes/No fields, color-coded green/muted-red like a sheet's conditional formatting.
 const WELLNESS_YESNO_FIELDS = [
   ["movement", "Movement"],
-  ["spiritualAnchor", "Spiritual anchor"],
-  ["sleepProtected", "Sleep protected"],
-  ["socialConnection", "Social connection"],
+  ["spiritualAnchor", "Spiritual"],
+  ["sleepProtected", "Sleep"],
+  ["socialConnection", "Social"],
   ["learning", "Learning"],
+  ["food", "Food"],
 ];
 // Small enumerated dropdowns, also color-coded.
 const WELLNESS_ENUM_FIELDS = {
@@ -5942,6 +6148,12 @@ function pillarCandidateSheets(key) {
       const cs = state.customSheets[s.id];
       if (cs && cs.templateKey === "social") results.push({ id: s.id, label: sheetLabel(s) });
     });
+  } else if (key === "food") {
+    state.sheets.forEach((s) => {
+      if (s.kind !== "custom" || !s.visible) return;
+      const cs = state.customSheets[s.id];
+      if (cs && cs.templateKey === "mealLog") results.push({ id: s.id, label: sheetLabel(s) });
+    });
   }
   return results;
 }
@@ -5955,6 +6167,7 @@ function pillarKeyForTemplateKey(templateKey) {
   if (templateKey === "workout" || templateKey === "activity") return "movement";
   if (templateKey === "books") return "learning";
   if (templateKey === "social") return "socialConnection";
+  if (templateKey === "mealLog") return "food";
   return null;
 }
 
@@ -6007,6 +6220,10 @@ function sheetActiveToday(sheetId, today) {
     // Same shape as Social: a real logged activity today, not a toggle.
     return cs.items.some((i) => i.date === today);
   }
+  if (cs && cs.templateKey === "mealLog") {
+    // Same shape as Social/Activity: a real logged meal today.
+    return cs.items.some((i) => i.date === today);
+  }
   if (!cs || !Array.isArray(cs.items)) return false;
   return cs.items.some((i) => i.done && i.completedDate === today);
 }
@@ -6052,7 +6269,7 @@ function pillarTodayCaption(key, today) {
   const activity = pillarActivityFor(key, today);
   if (activity) {
     if (activity.source === "manual") return activity.label || "Marked done manually";
-    return `via ${labelForActivitySource(activity.source) || activity.label || "a space"}`;
+    return `via ${labelForActivitySource(activity.source) || activity.label || "a practice"}`;
   }
   const mapped = pillarSourceLabel(key);
   return mapped ? `via ${mapped}` : null;
@@ -6110,7 +6327,7 @@ function openPillarMappingModal() {
           <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
         </div>
         <p class="muted" style="font-size:12.5px;line-height:1.5;margin:0 0 14px;">
-          Each pillar only shows the spaces that actually fit it. Log something there today and it marks itself done. You can still tap a pillar on Home to log it yourself, for anything that isn't tracked in a space (a trip to church, meditating without logging it).
+          Each pillar only shows the practices that actually fit it. Log something there today and it marks itself done. You can still tap a pillar on Home to log it yourself, for anything that isn't tracked in a practice (a trip to church, meditating without logging it).
         </p>
         <div id="pillar-mapping-sections"></div>
       </div>
@@ -6127,7 +6344,7 @@ function openPillarMappingModal() {
       section.appendChild(el(`<div class="account-section-label">${escapeHtml(label)}</div>`));
 
       if (!candidates.length) {
-        section.appendChild(el(`<div class="account-note">No spaces connected for this pillar yet — log it manually from Home.</div>`));
+        section.appendChild(el(`<div class="account-note">No practices connected for this pillar yet — log it manually from Home.</div>`));
       } else if (candidates.length === 1) {
         const sp = candidates[0];
         const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
@@ -6142,7 +6359,7 @@ function openPillarMappingModal() {
           scheduleSave();
         });
         section.appendChild(row);
-        section.appendChild(el(`<div class="account-note">Only one space fits here, so it's selected automatically.</div>`));
+        section.appendChild(el(`<div class="account-note">Only one practice fits here, so it's selected automatically.</div>`));
       } else {
         candidates.forEach((sp) => {
           const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
@@ -7030,7 +7247,7 @@ function pillarTrendBreakdown(key, today) {
     if (isManual) manualCount++;
     const lbl = activity?.label || (activity ? labelForActivitySource(activity.source) : null) || "Logged";
     counts.set(lbl, (counts.get(lbl) || 0) + 1);
-    return { date: d, active: true, source: isManual ? "manual" : "space", label: lbl };
+    return { date: d, active: true, source: isManual ? "manual" : "practice", label: lbl };
   });
   return {
     days: dayCells,
@@ -7552,7 +7769,7 @@ function renderHome() {
 
   panel.appendChild(renderYourSpaces());
 
-  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a space below to open it.</div>`));
+  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a practice below to open it.</div>`));
 }
 
 // The streak flame's own color climbs from a dark ember to a bright gold
@@ -7706,37 +7923,32 @@ function renderHomeTodayPillarsCard(today) {
   const card = el(`<div class="card"></div>`);
   card.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
   card.appendChild(renderPillarCycleGrid(todaysEntry, today, () => renderHome()));
+  card.appendChild(renderCycleTrackerRow(todaysEntry, today, () => renderHome()));
   return card;
 }
 
-// Food quality, per-pillar activity detail, and the three reflection
-// questions — this used to be the Wellness page's own "Today" card, one
-// page away from the pillar taps above. Same fields, same behavior, now
-// living right under them since it's the same "today" either way.
+// Food quality and the three reflection questions — this used to be the
+// Wellness page's own "Today" card, one page away from the pillar taps
+// above. Same fields, same behavior, now living right under them since
+// it's the same "today" either way.
+//
+// Deliberately does NOT repeat the per-pillar "what did you do" detail
+// here: the real detail already lives in whatever space marked the
+// pillar done (Activity Log's notes, Connections' notes, etc.), so
+// restating it as a second editable field was pure duplication — Veronika
+// flagged this directly. A pillar marked done manually (no real space
+// behind it) still gets to name what happened, right at the moment it's
+// logged, via the quick-log modal; correcting a past day's manual label
+// afterward still goes through the History day editor.
+// Food quality's old standalone dropdown is retired from here now that
+// Food is a real pillar with its own practice (Meal Log) — showing both
+// would be the exact redundancy just fixed for the other pillars. The
+// field itself (WELLNESS_ENUM_FIELDS.foodQuality) still exists for old
+// data and stays correctable from the History day editor.
 function renderHomeTodayDetailsCard(today) {
   const todaysEntry = ensureTodaysWellnessEntry(today);
   const card = el(`<div class="card wellness-journal-card"></div>`);
   card.appendChild(el(`<div class="wellness-journal-title serif">How today went</div>`));
-
-  card.appendChild(
-    wellnessSelect("foodQuality", WELLNESS_ENUM_FIELDS.foodQuality.label, WELLNESS_ENUM_FIELDS.foodQuality.options, todaysEntry.foodQuality || "", (val) => {
-      todaysEntry.foodQuality = val;
-      scheduleSave();
-    })
-  );
-
-  const activityStack = el(`<div class="wellness-journal-activity-stack"></div>`);
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    if (todaysEntry[key] !== "Yes") return;
-    const wrap = el(`<div class="wellness-journal-activity-item"></div>`);
-    wrap.appendChild(el(`<label class="muted wellness-journal-activity-label">${escapeHtml(label)} &mdash; what did you do?</label>`));
-    attachPillarActivityField(wrap, key, today);
-    activityStack.appendChild(wrap);
-  });
-  if (activityStack.children.length) {
-    card.appendChild(el(`<div class="wellness-journal-activity-hint muted">Filled in from the space that marked it &mdash; edit any of these to add real detail.</div>`));
-    card.appendChild(activityStack);
-  }
 
   WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
     const q = el(`<div class="journal-q"></div>`);
@@ -8026,13 +8238,13 @@ function openPillarQuickLogModal(key, label, today, todaysEntry, onDone) {
   document.body.appendChild(overlay);
 }
 
-// The five pillar tiles plus a sixth Cycle tile, in one grid — shared by
-// Home and the Wellness page's own "Today" card so the exact same tap
-// targets, same visual language, and same tap behavior show up wherever
-// today's record is edited. Cycle is deliberately NOT a pillar (no
-// pass/fail, no streak) — it just lives in the same grid instead of a
-// separate, differently-styled card, since hiding it below its own
-// dropdown was the whole complaint that started this.
+// The six real pillar tiles, in one grid — shared by Home and the
+// Wellness page's own "Today" card so the exact same tap targets, same
+// visual language, and same tap behavior show up wherever today's
+// record is edited. Cycle used to live in this same grid; it's since
+// moved to its own row below (see renderCycleTrackerRow) since it isn't
+// a pillar at all — nothing to pass or fail, no streak, just a state
+// worth noting for richer trend reports later.
 function renderPillarCycleGrid(todaysEntry, today, onDone) {
   const grid = el(`<div class="home-hero-pillars"></div>`);
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
@@ -8059,19 +8271,31 @@ function renderPillarCycleGrid(todaysEntry, today, onDone) {
     });
     grid.appendChild(tile);
   });
+  return grid;
+}
 
+// Cycle, on its own — a state worth tracking for depth in trend reports,
+// not a habit with a pass/fail. First of what should eventually be a
+// small family of optional "extra" trackers (gallery items that aren't
+// practices, don't map to a pillar, and don't ask anything of you beyond
+// adding a little more context to your insights).
+function renderCycleTrackerRow(todaysEntry, today, onDone) {
+  const wrap = el(`<div class="cycle-tracker-wrap"></div>`);
+  wrap.appendChild(el(`<div class="cycle-tracker-label">Also tracking</div>`));
   const phase = todaysEntry.cyclePhase || null;
-  const cycleTile = el(`
-    <button type="button" class="home-pillar cycle-tile ${phase ? "cycle-logged" : "cycle-unlogged"}">
-      <span class="home-pillar-icon ${phase ? "cycle-on" : "cycle-off"}">${phase ? checkSvg : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
-      <span class="home-pillar-label">Cycle</span>
-      ${phase ? `<span class="home-pillar-source">${escapeHtml(phase)}</span>` : ""}
+  const row = el(`
+    <button type="button" class="cycle-tracker-row">
+      <span class="cycle-tracker-icon ${phase ? "cycle-on" : "cycle-off"}">${phase ? checkSvg : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+      <span class="cycle-tracker-text">
+        <span class="cycle-tracker-title">Cycle</span>
+        <span class="cycle-tracker-sub">A state to note, not a habit to complete</span>
+      </span>
+      ${phase ? `<span class="cycle-tracker-value">${escapeHtml(phase)}</span>` : `<span class="cycle-tracker-value muted">Tap to log</span>`}
     </button>
   `);
-  cycleTile.addEventListener("click", () => openCyclePhaseSheet(todaysEntry, today, onDone));
-  grid.appendChild(cycleTile);
-
-  return grid;
+  row.addEventListener("click", () => openCyclePhaseSheet(todaysEntry, today, onDone));
+  wrap.appendChild(row);
+  return wrap;
 }
 
 // Tapping Cycle — the same diagram that used to hide behind the little
@@ -8122,7 +8346,7 @@ function renderYourSpaces() {
 
   wrap.appendChild(el(`
     <div class="home-yourspaces-head-static">
-      <span class="home-yourspaces-title">Your additional spaces</span>
+      <span class="home-yourspaces-title">Your additional practices</span>
       <span class="home-yourspaces-count">${additional.length}</span>
     </div>
   `));
@@ -8155,7 +8379,7 @@ function renderYourSpaces() {
     const addTile = el(`
       <button type="button" class="home-yourspaces-tile manage">
         <span class="home-yourspaces-tile-icon">+</span>
-        <span class="home-yourspaces-tile-label">Add a space</span>
+        <span class="home-yourspaces-tile-label">Add a practice</span>
       </button>
     `);
     addTile.addEventListener("click", () => {
@@ -8443,8 +8667,9 @@ async function boot() {
   // sheet, since that matched what was already in use; everything else
   // starts unmapped (manual-only) until she picks something in the "You"
   // page's Pillar Mapping screen.
-  state.pillarSourceMap ||= { movement: [], spiritualAnchor: [], sleepProtected: [], socialConnection: [], learning: [] };
+  state.pillarSourceMap ||= { movement: [], spiritualAnchor: [], sleepProtected: [], socialConnection: [], learning: [], food: [] };
   state.pillarSourceMap.learning ||= [];
+  state.pillarSourceMap.food ||= [];
   // Real per-day record of what a pillar's "Yes" actually was — see
   // setPillarActivity/pillarActivityFor above. Older saves have none of
   // this yet; that's fine, it only affects trend detail going forward.
