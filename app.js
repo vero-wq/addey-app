@@ -9830,15 +9830,18 @@ function renderHome() {
   const hero = renderHomeHero(today);
   if (hero) panel.appendChild(hero);
   panel.appendChild(renderHomeAppsGrid(today));
-  panel.appendChild(renderHomeTodayDetailsCard(today));
 
-  // Trends and History sit next to each other at the bottom — both read
-  // straight off the historical Wellness records exactly as they always
-  // have (2026-09: past days aren't rewritten under the new per-app
-  // model, only going forward does it take over). The identity quote
-  // ("Who do you say you are?") lives on the You sheet.
+  // Trends comes right after the apps grid now — per Veronika's call,
+  // it's one of the more important sections and shouldn't sit below the
+  // journal card, especially with that card on its way out to become its
+  // own Journal app. Both Trends and History still read straight off the
+  // historical Wellness records exactly as they always have (2026-09:
+  // past days aren't rewritten under the new per-app model, only going
+  // forward does it take over). The identity quote ("Who do you say you
+  // are?") lives on the You sheet.
   renderCooccurrenceCard(panel, today);
   renderHomeTrendsSection(panel, today);
+  panel.appendChild(renderHomeTodayDetailsCard(today));
   renderWellnessHistory(panel, today);
 
   panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap an app above to log it.</div>`));
@@ -10192,10 +10195,13 @@ function renderHomeAppsGrid(today) {
 // would be the exact redundancy just fixed for the other pillars. The
 // field itself (WELLNESS_ENUM_FIELDS.foodQuality) still exists for old
 // data and stays correctable from the History day editor.
+// Collapsible now, and collapsed by default — this is on its way out to
+// become its own Journal app (2026-09), so it's deliberately de-emphasized
+// on Home in the meantime rather than sitting open and prominent for a
+// feature that's about to move.
 function renderHomeTodayDetailsCard(today) {
   const todaysEntry = ensureTodaysWellnessEntry(today);
-  const card = el(`<div class="card wellness-journal-card"></div>`);
-  card.appendChild(el(`<div class="wellness-journal-title serif">How today went</div>`));
+  const card = el(`<details class="card wellness-journal-card"><summary class="book-summary" style="margin-bottom:2px;"><span class="wellness-journal-title serif" style="margin:0;">How today went</span></summary></details>`);
 
   WELLNESS_NOTE_FIELDS.forEach(([key, label]) => {
     const q = el(`<div class="journal-q"></div>`);
