@@ -214,6 +214,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .you-list-row svg { width: 17px; height: 17px; stroke: var(--muted); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .you-list-row.danger { color: #8C3F2B; }
 .you-list-row.danger svg { stroke: #8C3F2B; }
+.you-list-row-emoji { width: 17px; flex-shrink: 0; text-align: center; font-size: 15px; line-height: 1; }
 .you-list-divider { height: 1px; background: var(--border); margin: 6px 0; }
 .you-list-group-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 16px 0 2px; }
 .you-list-group-title:first-of-type { margin-top: 10px; }
@@ -777,7 +778,22 @@ td input:hover { border-color: var(--border); }
 }
 .marketplace-category-badge.practices { background: var(--accent-light, rgba(0,0,0,0.06)); color: var(--accent); }
 .marketplace-category-badge.trackers { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+.marketplace-category-badge.tools { background: transparent; color: var(--muted); border: 1px solid var(--border); }
 .sheet-card.trackers-style { border-style: dashed; background: transparent; }
+
+/* My Apps — flat draggable list (2026-09 apps rearchitecture) */
+.app-type-tag { font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; margin-left: 7px; vertical-align: middle; }
+.app-type-tag-practice { color: var(--accent-dark); }
+.app-type-tag-tracker { color: #8C3F2B; }
+.app-order-divider { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.app-order-divider::before, .app-order-divider::after { content: ""; flex: 1; height: 0; border-top: 1px dashed var(--border); }
+
+/* Home unified apps grid */
+.home-app-tile-check { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--good); display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); }
+.home-app-tile .home-yourspaces-tile-icon { position: relative; }
+.home-app-tile.is-tracker .home-yourspaces-tile-icon { color: #8C3F2B; }
+.home-empty-practices { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 18px 10px; }
+.home-empty-practices-title { font-size: 14px; font-weight: 600; color: var(--text); }
 
 .theme-swatch-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 @media (max-width: 480px) { .theme-swatch-grid { grid-template-columns: 1fr; } }
@@ -812,6 +828,14 @@ td input:hover { border-color: var(--border); }
 .pillarql-chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .pillarql-chip { font-size: 12px; font-weight: 700; padding: 9px 14px; border-radius: 100px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; cursor: pointer; }
 .pillarql-chip.add { border-style: dashed; border-color: var(--accent); color: var(--accent-dark); }
+/* Centered variant — used when picking WHICH practice to open (as
+   opposed to logging one), so it matches the icon-tile language used
+   everywhere else a practice is chosen (Your additional practices,
+   Settings) instead of the pill-row treatment above, and reads as a
+   real popup rather than a bottom sheet. */
+.pillarql-box.centered { border-radius: 18px; text-align: center; }
+.pillarql-box.centered .pillarql-sub { margin-bottom: 16px; }
+.pillarql-tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .pillarql-skip { display: block; width: 100%; text-align: center; background: none; border: none; font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--accent-dark); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; padding-top: 2px; }
 
 /* "What did you do" field under a Yes pillar — Today's card and the day
@@ -1629,6 +1653,7 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cyc-predict-cell + .cyc-predict-cell { border-left: 1px solid var(--border); }
 .cyc-predict-num { font-family: "Source Serif 4", Georgia, serif; font-size: 20px; line-height: 1; color: var(--accent-dark); }
 .cyc-predict-label { font-size: 9.5px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .03em; }
+.cyc-predict-date { font-size: 11px; font-weight: 600; color: var(--text); margin-top: 2px; }
 
 .cyc-log-btn { display: block; width: 100%; margin-top: 16px; background: var(--accent-dark); color: #fff; border: none; border-radius: 12px; padding: 13px; font-size: 13.5px; font-weight: 700; font-family: inherit; cursor: pointer; text-align: center; }
 .cyc-log-btn.period-due { background: var(--cyc-menstrual); }
