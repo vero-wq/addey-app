@@ -241,6 +241,7 @@ let saveRetryTimer = null;
 let saveRetryDelay = 2000;
 let currentUserId = null;
 let currentUserEmail = null;
+let currentUserFirstName = "";
 
 // ------------------------------------------------------------------
 // Supabase — the real backend. The app's data now lives in the
@@ -846,8 +847,13 @@ function activateTab(tab) {
   if (homeCircle) homeCircle.classList.toggle("active", tab === "home");
   // Home always re-renders itself on every switch, so its pillar tiles
   // (and everything absorbed from the old separate Wellness page) are
-  // never stale.
+  // never stale. Sobriety and Cycle need the same treatment now that
+  // they're real tabs instead of modals opened fresh each time — a
+  // modal always rebuilt itself from scratch on open, so these two
+  // need an explicit re-render here to match that.
   if (tab === "home") renderHome();
+  if (tab === "sobriety") renderSobrietyPanel();
+  if (tab === "cycle") renderCyclePanel();
   state.activeTab = tab;
   scheduleSave();
   // Auto-growing textareas measure scrollHeight, which is 0 while their
@@ -908,20 +914,27 @@ function appTypeForSheet(s) {
 // Practices and Trackers only, never Tools. Sobriety and Cycle aren't
 // entries in state.sheets at all (they're extraTrackers), so they're
 // folded in here alongside the sheet-backed ones.
+// Every currently-visible app that belongs on Home's unified grid —
+// Practices, Trackers, AND Tools (Wardrobe, Lists): a Tool never gets a
+// streak or a checkmark, but it's still an app you added and should
+// still have a tile, same as the plan always intended. This used to
+// filter tools out entirely, which is why un-hiding Lists never made
+// it reappear on Home — it structurally couldn't show up here no
+// matter what its visible flag said.
 function currentAppEntries() {
   const entries = [];
   state.sheets.forEach((s) => {
     if (!s.visible) return;
     const type = appTypeForSheet(s);
-    if (type === "practice" || type === "tracker") {
+    if (type === "practice" || type === "tracker" || type === "tool") {
       entries.push({ id: s.id, label: sheetLabel(s), icon: sheetIcon(s), type });
     }
   });
-  if (state.extraTrackers?.sobriety) {
+  if (state.extraTrackers?.sobriety && !state.extraTrackers?.hidden?.sobriety) {
     const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "sobriety");
     entries.push({ id: "sobriety", label: "Sobriety", icon: tpl?.icon, type: "practice" });
   }
-  if (state.extraTrackers?.cycle) {
+  if (state.extraTrackers?.cycle && !state.extraTrackers?.hidden?.cycle) {
     const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "cycle");
     entries.push({ id: "cycle", label: "Cycle", icon: tpl?.icon, type: "tracker" });
   }
@@ -1117,41 +1130,67 @@ function renderNav() {
   if (!leftNav || !rightNav) return;
   leftNav.innerHTML = "";
   rightNav.innerHTML = "";
-  const visible = state.sheets.filter((s) => s.visible);
+
+  // Sobriety and Cycle are real tabs now, same as Bible/Sleep/every
+  // other app — so they need to actually show up here, not just be
+  // reachable from My Apps/Home. Building this list off state.appOrder
+  // (Practices/Trackers/Tools, in the order Settings → My Apps already
+  // lets you drag) is also what makes that drag order finally mean
+  // something: before this, reordering My Apps only relabeled which
+  // row showed a "Bar" badge — the real nav bar underneath, built
+  // straight from state.sheets, never actually moved. Budget and
+  // Investments aren't part of the Apps model at all (appTypeForSheet
+  // returns null for them), so they're appended after, in their
+  // existing order, same as always.
+  ensureAppOrder();
+  const seen = new Set();
+  const visible = [];
+  state.appOrder.forEach((id) => {
+    const d = appRowDescriptor(id);
+    if (d && d.visible) {
+      visible.push(d);
+      seen.add(id);
+    }
+  });
+  state.sheets.forEach((s) => {
+    if (s.id === "wellness" || seen.has(s.id) || !s.visible) return;
+    visible.push({ id: s.id, label: sheetLabel(s), icon: sheetIcon(s) });
+  });
+
   const pinnedCount = Math.min(visible.length, MOBILE_PINNED_COUNT);
   const splitAt = Math.ceil(pinnedCount / 2);
-  const tabBtn = (s, overflow) =>
-    el(`<button class="tab-btn${overflow ? " tab-btn-overflow" : ""}" data-tab="${s.id}">${iconSvg(sheetIcon(s))}<span>${escapeHtml(sheetLabel(s))}</span></button>`);
-  visible.forEach((s, i) => {
-    const btn = tabBtn(s, i >= MOBILE_PINNED_COUNT);
+  const tabBtn = (d, overflow) =>
+    el(`<button class="tab-btn${overflow ? " tab-btn-overflow" : ""}" data-tab="${d.id}">${iconSvg(d.icon || `<circle cx="12" cy="12" r="9"></circle>`)}<span>${escapeHtml(d.label)}</span></button>`);
+  visible.forEach((d, i) => {
+    const btn = tabBtn(d, i >= MOBILE_PINNED_COUNT);
     (i < splitAt ? leftNav : rightNav).appendChild(btn);
   });
   renderMenuOverflow(visible.slice(MOBILE_PINNED_COUNT));
 }
 
-// The sheets that didn't make the cut for the mobile bottom bar — listed
+// The apps that didn't make the cut for the mobile bottom bar — listed
 // in the same top menu that already holds Settings/Appearance, right
 // above them, with a small "More sheets" label. CSS hides this whole
 // section on desktop, where the sidebar already shows everything.
-function renderMenuOverflow(overflowSheets) {
+function renderMenuOverflow(overflowApps) {
   const section = document.getElementById("menu-sheets-section");
   const list = document.getElementById("menu-sheets-list");
   if (!section || !list) return;
   list.innerHTML = "";
-  overflowSheets.forEach((s) => {
+  overflowApps.forEach((d) => {
     const item = el(`
-      <button type="button" class="menu-item menu-sheet-item" data-tab="${s.id}">
-        ${iconSvg(sheetIcon(s))}
-        <div>${escapeHtml(sheetLabel(s))}</div>
+      <button type="button" class="menu-item menu-sheet-item" data-tab="${d.id}">
+        ${iconSvg(d.icon || `<circle cx="12" cy="12" r="9"></circle>`)}
+        <div>${escapeHtml(d.label)}</div>
       </button>
     `);
     item.addEventListener("click", () => {
-      activateTab(s.id);
+      activateTab(d.id);
       document.getElementById("main-menu-dropdown")?.classList.remove("open");
     });
     list.appendChild(item);
   });
-  section.classList.toggle("has-items", overflowSheets.length > 0);
+  section.classList.toggle("has-items", overflowApps.length > 0);
 }
 
 function rebuildNav() {
@@ -1190,6 +1229,8 @@ function initTabs() {
     .filter((s) => s.visible)
     .map((s) => s.id)
     .concat(["settings", "appearance", "home"]);
+  if (state.extraTrackers?.sobriety) validTabs.push("sobriety");
+  if (state.extraTrackers?.cycle) validTabs.push("cycle");
   let target = state.activeTab || "home";
   if (!validTabs.includes(target)) target = "home";
   activateTab(target);
@@ -1203,6 +1244,8 @@ function renderAll() {
   renderInvestments();
   renderBible();
   renderSleep();
+  if (state.extraTrackers?.sobriety) renderSobrietyPanel();
+  if (state.extraTrackers?.cycle) renderCyclePanel();
   Object.keys(state.customSheets).forEach((id) => renderCustomSheet(id));
   renderAppearance();
   renderSettings();
@@ -1891,17 +1934,40 @@ let settingsSubTab = "mine"; // "mine" | "gallery" — resets each session, not 
 function appRowDescriptor(id) {
   if (id === "sobriety") {
     const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "sobriety");
-    return { id, label: "Sobriety", icon: tpl?.icon, type: "practice", visible: true, removable: true, hideable: false, isExtraTracker: true };
+    return { id, label: "Sobriety", icon: tpl?.icon, type: "practice", visible: !state.extraTrackers?.hidden?.sobriety, removable: true, hideable: true, isExtraTracker: true };
   }
   if (id === "cycle") {
     const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "cycle");
-    return { id, label: "Cycle", icon: tpl?.icon, type: "tracker", visible: true, removable: true, hideable: false, isExtraTracker: true };
+    return { id, label: "Cycle", icon: tpl?.icon, type: "tracker", visible: !state.extraTrackers?.hidden?.cycle, removable: true, hideable: true, isExtraTracker: true };
   }
   const s = state.sheets.find((x) => x.id === id);
   if (!s) return null;
   const type = appTypeForSheet(s);
   if (!type) return null;
   return { id, label: sheetLabel(s), icon: sheetIcon(s), type, visible: s.visible, removable: true, hideable: true, isCustom: s.kind === "custom" };
+}
+
+// Same job as toggleSheetVisible, generalized to Sobriety/Cycle — they
+// aren't state.sheets entries, so they need their own hidden flag
+// (state.extraTrackers.hidden) rather than a `visible` field on a
+// sheet object. Hiding leaves everything else untouched: history,
+// streak, milestones, the on/off state in extraTrackers itself — it
+// only drops the Home tile and the nav tab, exactly like hiding a
+// sheet-backed app does.
+function toggleAppVisible(id) {
+  if (id === "sobriety" || id === "cycle") {
+    state.extraTrackers ||= {};
+    state.extraTrackers.hidden ||= {};
+    state.extraTrackers.hidden[id] = !state.extraTrackers.hidden[id];
+    scheduleSave();
+    recomputeRewardDollarPerLog();
+    rebuildNav();
+    renderSettings();
+    if (state.extraTrackers.hidden[id] && state.activeTab === id) activateTab("home");
+    else renderHome();
+    return;
+  }
+  toggleSheetVisible(id);
 }
 
 function ensureAppOrder() {
@@ -2021,7 +2087,11 @@ function removeAppRow(id, descriptor) {
         recomputeRewardDollarPerLog();
         rebuildNav();
         renderSettings();
-        renderHome();
+        // Now real tabs, so removing one while it's the open tab needs an
+        // explicit bounce back to Home — a modal just closing itself used
+        // to make this a non-issue.
+        if (state.activeTab === id) activateTab("home");
+        else renderHome();
       }
     );
     return;
@@ -2113,7 +2183,7 @@ function renderSettings() {
     if (d.hideable && !pinnedSlot) {
       row.querySelector(".eye-on, .eye-off").addEventListener("click", (e) => {
         e.stopPropagation();
-        toggleSheetVisible(id);
+        toggleAppVisible(id);
       });
     }
     row.querySelector(".remove-x").addEventListener("click", (e) => {
@@ -2156,9 +2226,9 @@ function renderSettings() {
     });
     row.addEventListener("click", (e) => {
       if (e.target.closest(".row-actions")) return;
-      if (id === "sobriety") openSobrietyScreen();
-      else if (id === "cycle") openCycleScreen(() => renderHome());
-      else activateTab(id);
+      // Sobriety and Cycle are real tabs now, same as every other app —
+      // no more special-cased modal popup for just these two.
+      activateTab(id);
     });
 
     list.appendChild(row);
@@ -8375,10 +8445,10 @@ const CYCLE_PHASE_INFO = [
 ];
 
 // activeValue (e.g. "Ovulatory") highlights that phase's card — used by
-// the Cycle full screen (openCycleScreen) so the diagram doubles as a
-// "here's where the prediction places you" reminder, not just reference
-// material. Omitted entirely for the plain info-popup use (openFieldInfo),
-// which has nothing to highlight.
+// the Cycle tab's "See all phases" link (see renderCyclePanel) so the
+// diagram doubles as a "here's where the prediction places you"
+// reminder, not just reference material. Omitted entirely for the
+// plain info-popup use (openFieldInfo), which has nothing to highlight.
 // onSelectPhase used to be how the old daily quick-log sheet let you tap
 // a card to log that phase directly; Cycle no longer logs a phase by
 // hand at all (see cyclePhaseForDay/cycleTodayInfo — it's predicted from
@@ -9843,7 +9913,9 @@ function renderHome() {
 
   const today = todayISO();
 
-  panel.appendChild(el(`<div class="home-greeting">Good ${homeGreetingTime()}</div>`));
+  panel.appendChild(
+    el(`<div class="home-greeting">Good ${homeGreetingTime()}${currentUserFirstName ? `, ${escapeHtml(currentUserFirstName)}` : ""}</div>`)
+  );
 
   // One page now, not two — Wellness's unique content (today's
   // pillars/reflection, trends, history) lives here. The reward — if one's
@@ -10174,14 +10246,8 @@ function renderHomeAppsGrid(today) {
       </button>
     `);
     tile.addEventListener("click", () => {
-      if (app.id === "cycle") {
-        openCycleScreen(() => renderHome());
-        return;
-      }
-      if (app.id === "sobriety") {
-        openSobrietyScreen();
-        return;
-      }
+      // Sobriety and Cycle are real tabs now, same as everything else on
+      // this grid — no more modal popup for just these two.
       activateTab(app.id);
     });
     grid.appendChild(tile);
@@ -10745,7 +10811,7 @@ function renderCycleTrackerRowInner(todaysEntry, today, onDone) {
         <span class="cycle-tracker-value muted">Set up</span>
       </button>
     `);
-    row.addEventListener("click", () => openCycleScreen(onDone));
+    row.addEventListener("click", () => activateTab("cycle"));
     return row;
   }
   const info = cycleTodayInfo(today);
@@ -10760,7 +10826,7 @@ function renderCycleTrackerRowInner(todaysEntry, today, onDone) {
       <span class="cycle-tracker-value" style="background:${info.phase.color};color:#fff;">${escapeHtml(info.phase.label)}</span>
     </button>
   `);
-  row.addEventListener("click", () => openCycleScreen(onDone));
+  row.addEventListener("click", () => activateTab("cycle"));
   return row;
 }
 
@@ -11055,27 +11121,19 @@ function openCycleEditPeriodSheet(period, onDone) {
   document.body.appendChild(overlay);
 }
 
-// The full screen — same pattern as openSobrietyScreen: a modal
-// overlay, re-rendered in place after every action so the day count /
-// prediction / history always reflects whatever was just logged.
-function openCycleScreen(onDone) {
-  const overlay = el(`<div class="modal-overlay"><div class="modal-box info-modal-box account-modal-box" style="width:400px;"></div></div>`);
-  const box = overlay.querySelector(".modal-box");
-  const done = () => {
-    render();
-    if (onDone) onDone();
-  };
+// A real tab panel now, same as Sobriety (2026-09: these were the only
+// two "apps" that opened as a modal popup instead of a normal tab —
+// Veronika flagged the inconsistency directly). `render` is passed
+// straight into every sub-sheet as its completion callback, same job
+// the old `done` wrapper did, just without an overlay left to close.
+function renderCyclePanel() {
+  const box = document.getElementById("panel-cycle");
+  if (!box) return;
 
   function render() {
     const today = todayISO();
     box.innerHTML = "";
-    box.appendChild(el(`
-      <div class="info-modal-header">
-        <h3>Cycle</h3>
-        <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
-      </div>
-    `));
-    box.querySelector(".info-modal-close").addEventListener("click", () => { overlay.remove(); if (onDone) onDone(); });
+    box.appendChild(el(`<h2 class="section-title serif">Cycle</h2>`));
 
     if (!state.cycle.periods.length) {
       box.appendChild(el(`
@@ -11088,7 +11146,7 @@ function openCycleScreen(onDone) {
           <button type="button" class="cyc-log-btn cyc-setup-btn">When did your last period start?</button>
         </div>
       `));
-      box.querySelector(".cyc-setup-btn").addEventListener("click", () => openCycleLogPeriodSheet(today, done));
+      box.querySelector(".cyc-setup-btn").addEventListener("click", () => openCycleLogPeriodSheet(today, render));
       return;
     }
 
@@ -11134,18 +11192,18 @@ function openCycleScreen(onDone) {
 
     if (info.isOpen) {
       const stillBtn = el(`<button type="button" class="cyc-log-ghost">It ended</button>`);
-      stillBtn.addEventListener("click", () => openCycleEndPeriodSheet(info.current, today, done));
+      stillBtn.addEventListener("click", () => openCycleEndPeriodSheet(info.current, today, render));
       box.appendChild(stillBtn);
     } else if (info.daysToNext <= 0) {
       const startedBtn = el(`<button type="button" class="cyc-log-btn period-due">My period started</button>`);
-      startedBtn.addEventListener("click", () => openCycleLogPeriodSheet(today, done));
+      startedBtn.addEventListener("click", () => openCycleLogPeriodSheet(today, render));
       box.appendChild(startedBtn);
       const notYetBtn = el(`<button type="button" class="cyc-log-ghost" style="margin-top:8px;">Not yet — remind me tomorrow</button>`);
-      notYetBtn.addEventListener("click", () => { overlay.remove(); if (onDone) onDone(); });
+      notYetBtn.addEventListener("click", () => activateTab("home"));
       box.appendChild(notYetBtn);
     } else {
       const logBtn = el(`<button type="button" class="cyc-log-ghost">Log period start</button>`);
-      logBtn.addEventListener("click", () => openCycleLogPeriodSheet(today, done));
+      logBtn.addEventListener("click", () => openCycleLogPeriodSheet(today, render));
       box.appendChild(logBtn);
     }
 
@@ -11181,19 +11239,29 @@ function openCycleScreen(onDone) {
     const phaseKey = info.phase.key;
     const phaseInfo = CYCLE_PHASE_INFO.find((p) => p.key === phaseKey);
     if (phaseInfo) {
+      // el() only ever returns the FIRST top-level element of the HTML
+      // it's given (template.content.firstChild) — everything after it
+      // is silently dropped, not appended. This block has three
+      // siblings (title / card / link), so it must be one wrapper div;
+      // without it, the .cyc-see-all-phases-link querySelector below
+      // returns null and addEventListener throws, which aborts render()
+      // entirely — i.e. tapping the Cycle tile silently did nothing. That
+      // was today's bug.
       box.appendChild(el(`
-        <div class="cyc-section-title" style="margin-top:22px;">About ${escapeHtml(phaseInfo.label.replace(/^\d+\.\s*/, ""))}</div>
-        <div class="cycle-phase-cards" style="margin-bottom:4px;">
-          <div class="cycle-phase-card active">
-            <div class="cycle-phase-card-dot cycle-phase-${phaseInfo.key}"></div>
-            <div class="cycle-phase-card-body">
-              <div class="cycle-phase-card-title">${escapeHtml(phaseInfo.days)}</div>
-              <div class="cycle-phase-card-desc">${escapeHtml(phaseInfo.desc)}</div>
-              <div class="cycle-phase-card-fertility cyc-fertility-${phaseInfo.key === "ovulatory" ? "high" : phaseInfo.key === "follicular" ? "medium" : "low"}">${escapeHtml(phaseInfo.fertility)}</div>
+        <div>
+          <div class="cyc-section-title" style="margin-top:22px;">About ${escapeHtml(phaseInfo.label.replace(/^\d+\.\s*/, ""))}</div>
+          <div class="cycle-phase-cards" style="margin-bottom:4px;">
+            <div class="cycle-phase-card active">
+              <div class="cycle-phase-card-dot cycle-phase-${phaseInfo.key}"></div>
+              <div class="cycle-phase-card-body">
+                <div class="cycle-phase-card-title">${escapeHtml(phaseInfo.days)}</div>
+                <div class="cycle-phase-card-desc">${escapeHtml(phaseInfo.desc)}</div>
+                <div class="cycle-phase-card-fertility cyc-fertility-${phaseInfo.key === "ovulatory" ? "high" : phaseInfo.key === "follicular" ? "medium" : "low"}">${escapeHtml(phaseInfo.fertility)}</div>
+              </div>
             </div>
           </div>
+          <a href="#" class="cyc-see-all-phases-link" style="font-size:12px;font-weight:600;color:var(--accent-dark);">See all phases &rarr;</a>
         </div>
-        <a href="#" class="cyc-see-all-phases-link" style="font-size:12px;font-weight:600;color:var(--accent-dark);">See all phases &rarr;</a>
       `));
       box.querySelector(".cyc-see-all-phases-link").addEventListener("click", (e) => {
         e.preventDefault();
@@ -11208,7 +11276,7 @@ function openCycleScreen(onDone) {
         <a href="#" class="cyc-edit-avg-link" style="font-size:11px;font-weight:600;">Edit manually</a>
       </div>
     `));
-    box.querySelector(".cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(done); });
+    box.querySelector(".cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(render); });
     history.forEach((p, i) => {
       const next = history[i - 1]; // one newer than p, since the list is newest-first
       const lenLabel = next ? `${daysBetween(new Date(p.startDate + "T00:00:00"), new Date(next.startDate + "T00:00:00"))}-day cycle` : "&mdash;";
@@ -11218,14 +11286,12 @@ function openCycleScreen(onDone) {
           <div class="cyc-hist-len">${lenLabel}</div>
         </div>
       `);
-      row.addEventListener("click", () => openCycleEditPeriodSheet(p, done));
+      row.addEventListener("click", () => openCycleEditPeriodSheet(p, render));
       box.appendChild(row);
     });
   }
 
   render();
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) { overlay.remove(); if (onDone) onDone(); } });
-  document.body.appendChild(overlay);
 }
 
 // ------------------------------------------------------------------
@@ -11377,16 +11443,19 @@ function renderSobrietyTrackerRowInner(today, onDone) {
       <span class="cycle-tracker-value">Day ${count}</span>
     </button>
   `);
-  row.addEventListener("click", () => openSobrietyScreen());
+  row.addEventListener("click", () => activateTab("sobriety"));
   return row;
 }
 
-// The full screen — a modal overlay, same pattern as openYourRewardScreen,
-// re-rendered in place after every action so the count/milestones/history
-// are always current.
-function openSobrietyScreen() {
-  const overlay = el(`<div class="modal-overlay"><div class="modal-box info-modal-box account-modal-box" style="width:400px;"></div></div>`);
-  const box = overlay.querySelector(".modal-box");
+// The full screen — a real tab panel now (2026-09: Sobriety and Cycle
+// used to be the only two "apps" that opened as a modal popup instead
+// of a normal tab, which read as inconsistent once everything else in
+// My Apps/Home behaved the same way — Veronika flagged this directly).
+// Re-rendered in place after every action so the count/milestones/
+// history are always current, same as it did as a modal.
+function renderSobrietyPanel() {
+  const box = document.getElementById("panel-sobriety");
+  if (!box) return;
 
   function render() {
     const today = todayISO();
@@ -11396,13 +11465,7 @@ function openSobrietyScreen() {
     const checkedIn = sobrietyCheckInToday(today);
 
     box.innerHTML = "";
-    box.appendChild(el(`
-      <div class="info-modal-header">
-        <h3>Sobriety</h3>
-        <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
-      </div>
-    `));
-    box.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+    box.appendChild(el(`<h2 class="section-title serif">Sobriety</h2>`));
 
     box.appendChild(el(`
       <div class="sob-hero">
@@ -11507,11 +11570,7 @@ function openSobrietyScreen() {
     box.appendChild(resetLink);
   }
 
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
   render();
-  document.body.appendChild(overlay);
 }
 
 // Swaps the check-in card in place (used both for the initial full
@@ -12353,6 +12412,16 @@ async function boot() {
   const session = await requireAuth();
   currentUserId = session.user.id;
   currentUserEmail = session.user.email || "";
+  // Google's the only OAuth provider Addley signs in with today, and
+  // Supabase only ever surfaces the combined name it got back from
+  // Google as user_metadata.full_name — never given_name/family_name
+  // separately, even though Google's own response has them split. So
+  // "first name" here just means "the first word of full_name" — right
+  // for the overwhelming majority of names, occasionally wrong for a
+  // two-word first name, with no clean fix on Supabase's end today.
+  // Password-based accounts have no full_name at all, hence the guard.
+  const googleFullName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || "";
+  currentUserFirstName = googleFullName.trim().split(/\s+/)[0] || "";
 
   // Load this account's row. The signup trigger on the database side
   // creates it automatically the moment someone creates an account, so
