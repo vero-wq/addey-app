@@ -785,13 +785,26 @@ td input:hover { border-color: var(--border); }
 .app-type-tag { font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; margin-left: 7px; vertical-align: middle; }
 .app-type-tag-practice { color: var(--accent-dark); }
 .app-type-tag-tracker { color: #8C3F2B; }
+
+/* One tint per app TYPE (not per app) — applied to every icon well
+   across the app (Home tile, My Apps row, Marketplace card) so the
+   same app reads the same way wherever it shows up, and the type is
+   legible at a glance without reading the label. Trends' streak-chip
+   dots intentionally keep their own distinct per-app color cycle
+   instead — there the job is telling individual practices apart in a
+   small chart, not showing type, so reusing this 3-color scheme there
+   would actually make it harder to read, not more consistent. Defined
+   again at the very end of this stylesheet, deliberately: several base
+   rules (.home-yourspaces-tile-icon, .row-icon, .sheet-card-icon) set
+   their own background/color at equal specificity, and CSS resolves
+   same-specificity ties by source order — redeclaring these three
+   last is what lets the tint actually win over those base colors. */
 .app-order-divider { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .app-order-divider::before, .app-order-divider::after { content: ""; flex: 1; height: 0; border-top: 1px dashed var(--border); }
 
 /* Home unified apps grid */
 .home-app-tile-check { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--good); display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); }
-.home-app-tile .home-yourspaces-tile-icon { position: relative; }
-.home-app-tile.is-tracker .home-yourspaces-tile-icon { color: #8C3F2B; }
+.home-app-tile .home-yourspaces-tile-icon { position: relative; width: 42px; height: 42px; border-radius: 13px; }
 .home-empty-practices { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 18px 10px; }
 .home-empty-practices-title { font-size: 14px; font-weight: 600; color: var(--text); }
 
@@ -1862,6 +1875,12 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
   40% { opacity: 1; transform: scale(1); }
 }
 .boot-loading-text { font-size: 13px; color: var(--muted); }
+/* Type tints, redeclared last so they win the source-order tiebreak
+   against .home-yourspaces-tile-icon / .row-icon / .sheet-card-icon
+   (see the comment near their first declaration, above). */
+.icon-well-practice { background: #F0DEC2; color: #7C5C36; }
+.icon-well-tracker { background: #F3D9D3; color: #8C3F2B; }
+.icon-well-tool { background: #DCE3E8; color: #55636F; }
 </style>
 </head>
 <body>
