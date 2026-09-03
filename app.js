@@ -11230,44 +11230,17 @@ function renderCyclePanel() {
     `);
     box.appendChild(avgStrip);
 
-    // Just this phase, not the full 4-phase education dump — the hero up
-    // top already names the phase and gives its one-line description, so
-    // repeating all four here (with History shoved below it) only pushed
-    // History further down every time the list grew. A "see all phases"
-    // link opens the same full breakdown via the existing generic info
-    // modal, for anyone who wants it.
-    const phaseKey = info.phase.key;
-    const phaseInfo = CYCLE_PHASE_INFO.find((p) => p.key === phaseKey);
-    if (phaseInfo) {
-      // el() only ever returns the FIRST top-level element of the HTML
-      // it's given (template.content.firstChild) — everything after it
-      // is silently dropped, not appended. This block has three
-      // siblings (title / card / link), so it must be one wrapper div;
-      // without it, the .cyc-see-all-phases-link querySelector below
-      // returns null and addEventListener throws, which aborts render()
-      // entirely — i.e. tapping the Cycle tile silently did nothing. That
-      // was today's bug.
-      box.appendChild(el(`
-        <div>
-          <div class="cyc-section-title" style="margin-top:22px;">About ${escapeHtml(phaseInfo.label.replace(/^\d+\.\s*/, ""))}</div>
-          <div class="cycle-phase-cards" style="margin-bottom:4px;">
-            <div class="cycle-phase-card active">
-              <div class="cycle-phase-card-dot cycle-phase-${phaseInfo.key}"></div>
-              <div class="cycle-phase-card-body">
-                <div class="cycle-phase-card-title">${escapeHtml(phaseInfo.days)}</div>
-                <div class="cycle-phase-card-desc">${escapeHtml(phaseInfo.desc)}</div>
-                <div class="cycle-phase-card-fertility cyc-fertility-${phaseInfo.key === "ovulatory" ? "high" : phaseInfo.key === "follicular" ? "medium" : "low"}">${escapeHtml(phaseInfo.fertility)}</div>
-              </div>
-            </div>
-          </div>
-          <a href="#" class="cyc-see-all-phases-link" style="font-size:12px;font-weight:600;color:var(--accent-dark);">See all phases &rarr;</a>
-        </div>
-      `));
-      box.querySelector(".cyc-see-all-phases-link").addEventListener("click", (e) => {
-        e.preventDefault();
-        infoModal("Cycle phases", buildCyclePhaseInfoBody(info.phase.label.replace(/^Late /, "")));
-      });
-    }
+    // No repeat-the-current-phase card here anymore — the hero up top
+    // already names the phase, gives its one-line description, AND the
+    // fertility line, so a second "About Follicular" card lower down
+    // was just restating the same three facts a second time (Veronika
+    // flagged this directly). Just the link now, straight to the full
+    // 4-phase breakdown for anyone who wants it.
+    box.appendChild(el(`<a href="#" class="cyc-see-all-phases-link" style="display:inline-block;margin-top:18px;font-size:12px;font-weight:600;color:var(--accent-dark);">See all phases &rarr;</a>`));
+    box.querySelector(".cyc-see-all-phases-link").addEventListener("click", (e) => {
+      e.preventDefault();
+      infoModal("Cycle phases", buildCyclePhaseInfoBody(info.phase.label.replace(/^Late /, "")));
+    });
 
     const history = cycleSortedPeriods().reverse();
     box.appendChild(el(`
