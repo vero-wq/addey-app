@@ -1533,6 +1533,13 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .home-pillar:not(.done) .home-pillar-label { color: #8C3F2B; }
 .home-pillar-label { font-size: 10.5px; font-weight: 600; text-align: center; line-height: 1.2; color: var(--text); }
 .home-pillar-source { font-size: 8.5px; color: var(--muted); text-align: center; }
+/* No practice connected yet — dimmed so it reads as "not loggable yet",
+   distinct from both done and not-done-but-ready states. Still tappable:
+   it opens Pillar Mapping instead of completing anything. */
+.home-pillar.unlinked { background: var(--bg); border: 1px dashed var(--border); opacity: 0.72; }
+.home-pillar.unlinked .home-pillar-icon.off { background: var(--border); opacity: 1; }
+.home-pillar.unlinked .home-pillar-label { color: var(--muted); }
+.home-pillar.unlinked .home-pillar-source { color: var(--accent-dark); font-weight: 600; }
 /* Cycle lives on its own now, below the pillar grid — a state worth
    noting, not a habit with a pass/fail, so it never uses the pillar
    grid's red/green treatment: a neutral dashed row when unlogged, that
