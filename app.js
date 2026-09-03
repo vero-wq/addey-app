@@ -1007,29 +1007,7 @@ function openAccountSheet() {
         <div id="you-identity-quote-slot"></div>
         <div class="you-list-divider"></div>
 
-        <button type="button" class="you-list-row" id="you-myspaces-row">
-          ${iconSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>')}
-          <span>My Practices</span>
-        </button>
-        <button type="button" class="you-list-row" id="you-gallery-row">
-          ${iconSvg('<path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/>')}
-          <span>Practice Gallery</span>
-        </button>
-        <button type="button" class="you-list-row" id="you-pillars-row">
-          ${iconSvg('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>')}
-          <span>Pillar Mapping</span>
-        </button>
-        <button type="button" class="you-list-row" id="account-grace-btn">
-          ${graceFeatherSvg()}
-          <span>Grace Days</span>
-        </button>
-        <button type="button" class="you-list-row" id="account-reward-btn">
-          ${iconSvg(rewardCupcakeSvg())}
-          <span>Your Reward</span>
-        </button>
-
-        <div class="you-list-divider"></div>
-
+        <div class="you-list-group-title">Preferences</div>
         <button type="button" class="you-list-row" id="you-appearance-row">
           ${iconSvg('<circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>')}
           <span>Appearance</span>
@@ -1038,17 +1016,26 @@ function openAccountSheet() {
           ${iconSvg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>')}
           <span>Notifications</span>
         </button>
-        <button type="button" class="you-list-row" id="account-password-btn">
-          ${iconSvg('<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/>')}
-          <span>Email &amp; password</span>
+        <button type="button" class="you-list-row" id="account-grace-btn">
+          ${graceFeatherSvg()}
+          <span>Grace Days</span>
+        </button>
+
+        <div class="you-list-group-title">Money</div>
+        <button type="button" class="you-list-row" id="account-reward-btn">
+          ${iconSvg(rewardCupcakeSvg())}
+          <span>Your Reward</span>
         </button>
         <button type="button" class="you-list-row" id="account-billing-btn">
           ${iconSvg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>')}
           <span>Plan &amp; Billing</span>
         </button>
 
-        <div class="you-list-divider"></div>
-
+        <div class="you-list-group-title">Session</div>
+        <button type="button" class="you-list-row" id="account-password-btn">
+          ${iconSvg('<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/>')}
+          <span>Email &amp; password</span>
+        </button>
         <button type="button" class="you-list-row danger" id="account-signout-btn">
           ${iconSvg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line>')}
           <span>Sign out</span>
@@ -1061,20 +1048,6 @@ function openAccountSheet() {
   overlay.querySelector(".info-modal-close").addEventListener("click", close);
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
-  });
-  overlay.querySelector("#you-myspaces-row").addEventListener("click", () => {
-    close();
-    settingsSubTab = "mine";
-    activateTab("settings");
-  });
-  overlay.querySelector("#you-gallery-row").addEventListener("click", () => {
-    close();
-    settingsSubTab = "gallery";
-    activateTab("settings");
-  });
-  overlay.querySelector("#you-pillars-row").addEventListener("click", () => {
-    close();
-    openPillarMappingModal();
   });
   overlay.querySelector("#you-appearance-row").addEventListener("click", () => {
     close();
@@ -1620,7 +1593,7 @@ function renderAppearance() {
   panel.appendChild(grid);
 }
 
-let settingsSubTab = "mine"; // "mine" | "gallery" — resets each session, not persisted
+let settingsSubTab = "mine"; // "mine" | "gallery" | "pillars" — resets each session, not persisted
 
 function renderSettings() {
   const panel = document.getElementById("panel-settings");
@@ -1628,13 +1601,17 @@ function renderSettings() {
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">Settings</h2>`));
 
-  // "My Sheets" (reorder/hide what you have) and "Gallery" (add something
-  // new) are different tasks — a segmented control keeps them on one page
-  // reachable from one menu item, without mixing them into one long scroll.
+  // My Practices (reorder/hide what you have), Marketplace (add
+  // something new — practice or tracker), and Pillar Mapping (how what
+  // you have counts toward a streak) are three different tasks, but all
+  // three are "practice configuration" in a way Account isn't — they
+  // used to be split between here and the avatar menu; now everything
+  // about how practices work lives on this one segmented control.
   const segment = el(`
     <div class="settings-segment">
       <button type="button" class="${settingsSubTab === "mine" ? "active" : ""}" data-target="mine">My Practices</button>
-      <button type="button" class="${settingsSubTab === "gallery" ? "active" : ""}" data-target="gallery">Practice Gallery</button>
+      <button type="button" class="${settingsSubTab === "gallery" ? "active" : ""}" data-target="gallery">Marketplace</button>
+      <button type="button" class="${settingsSubTab === "pillars" ? "active" : ""}" data-target="pillars">Pillar Mapping</button>
     </div>
   `);
   segment.querySelectorAll("button").forEach((btn) => {
@@ -1647,6 +1624,7 @@ function renderSettings() {
 
   const minePanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "mine" ? "" : "display:none;"}"></div>`);
   const galleryPanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "gallery" ? "" : "display:none;"}"></div>`);
+  const pillarsPanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "pillars" ? "" : "display:none;"}"></div>`);
 
   minePanel.appendChild(el(`<div class="settings-group-title">Your practices</div>`));
   minePanel.appendChild(
@@ -1782,9 +1760,15 @@ function renderSettings() {
 
   panel.appendChild(minePanel);
 
-  galleryPanel.appendChild(el(`<div class="settings-group-title">Practice gallery</div>`));
-  galleryPanel.appendChild(el(`<div class="settings-group-desc">A few more practices, ready to drop in whenever you want them.</div>`));
+  galleryPanel.appendChild(el(`<div class="settings-group-title">Marketplace</div>`));
+  galleryPanel.appendChild(el(`<div class="settings-group-desc">Browse and add — practices that count toward a pillar, and trackers that don't.</div>`));
 
+  galleryPanel.appendChild(el(`
+    <div class="marketplace-category-head">
+      <span class="marketplace-category-title">Practices</span>
+      <span class="marketplace-category-badge practices">Counts toward a pillar</span>
+    </div>
+  `));
   const usedCount = countedSpaces();
   const limit = spaceCapForAccount();
   const atCap = usedCount >= limit;
@@ -1828,17 +1812,21 @@ function renderSettings() {
   });
   galleryPanel.appendChild(gallery);
 
-  // Extra trackers — its own section, deliberately separate from the
+  // Trackers — its own category, deliberately separate from the
   // practice cards above and not sharing their usage bar or upgrade
   // gate: adding one is always free, since these aren't practices tied
   // to a pillar in the first place.
-  galleryPanel.appendChild(el(`<div class="settings-group-title" style="margin-top:24px;">Extra trackers</div>`));
-  galleryPanel.appendChild(el(`<div class="settings-group-desc">Not a practice, not tied to a pillar — just something worth noting. Always free.</div>`));
-  const extraGallery = el(`<div class="sheet-gallery"></div>`);
+  galleryPanel.appendChild(el(`
+    <div class="marketplace-category-head" style="margin-top:24px;">
+      <span class="marketplace-category-title">Trackers</span>
+      <span class="marketplace-category-badge trackers">Not a practice — always free</span>
+    </div>
+  `));
+  const extraGallery = el(`<div class="sheet-gallery trackers-style"></div>`);
   EXTRA_TRACKERS_GALLERY.forEach((tpl) => {
     const added = !!state.extraTrackers?.[tpl.key];
     const cardEl = el(`
-      <div class="sheet-card">
+      <div class="sheet-card trackers-style">
         <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
         <div class="sheet-card-name">${escapeHtml(tpl.label)}</div>
         <div class="sheet-card-desc">${escapeHtml(tpl.desc)}</div>
@@ -1858,20 +1846,15 @@ function renderSettings() {
 
   panel.appendChild(galleryPanel);
 
-  // Appearance lives on its own panel/tab technically, but belongs to
-  // Settings conceptually (it's app-content, not identity) — this row keeps
-  // it reachable from here instead of needing its own top-level nav slot.
-  const appearanceSection = el(`
-    <div class="account-section">
-      <div class="account-section-label">Appearance</div>
-      <button type="button" class="account-btn" id="settings-appearance-btn">
-        <span>Theme<span class="account-btn-sub">${escapeHtml(THEMES.find((t) => t.key === (state.theme || "cream"))?.name || "Cream")}</span></span>
-        <span>&rsaquo;</span>
-      </button>
-    </div>
-  `);
-  appearanceSection.querySelector("#settings-appearance-btn").addEventListener("click", () => activateTab("appearance"));
-  panel.appendChild(appearanceSection);
+  // Pillar Mapping — its own sub-tab now (was previously reachable only
+  // through a contextual popup from Home); the popup still exists for
+  // that in-context flow and shares this same section-builder.
+  pillarsPanel.appendChild(el(`<div class="settings-group-title">Pillar mapping</div>`));
+  pillarsPanel.appendChild(el(`<div class="settings-group-desc">Which of your practices count toward each daily pillar.</div>`));
+  const pillarsSectionsWrap = el(`<div></div>`);
+  pillarsPanel.appendChild(pillarsSectionsWrap);
+  renderPillarMappingSections(pillarsSectionsWrap, () => renderHome());
+  panel.appendChild(pillarsPanel);
 }
 
 // Cached so building the section doesn't have to be async — refreshed
@@ -7951,6 +7934,60 @@ function applyPillarAutoDetection(todaysEntry, today) {
 // more spaces that count toward it. Checking a box doesn't retroactively
 // mark today done; it just means from now on, logging something there
 // today will. Tapping the pillar on Home always still works too.
+// Shared renderer — used both by the Settings > Pillar Mapping sub-tab
+// (the normal way in) and by openPillarMappingModal's contextual popup
+// (triggered from Home when a pillar has nothing connected to it yet).
+// onAfterChange lets each caller decide what "done" means: the modal
+// re-renders Home when it closes, the Settings tab just needs the
+// section itself current since Home already re-renders on tab switch.
+function renderPillarMappingSections(container, onAfterChange) {
+  ensurePillarSourceDefaults();
+  container.innerHTML = "";
+  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
+    const candidates = pillarCandidateSheets(key);
+    const meta = ONBOARDING_PILLAR_META[key];
+    const card = el(`<div class="pillar-map-card"></div>`);
+    card.appendChild(el(`
+      <div class="pillar-map-head">
+        <div class="pillar-map-icon">${meta ? onboardingPillarIconSvg(key) : "•"}</div>
+        <div class="pillar-map-name">${escapeHtml(label)}</div>
+        ${candidates.length <= 1 ? `<div class="pillar-map-auto-tag">Auto</div>` : ""}
+      </div>
+    `));
+
+    if (!candidates.length) {
+      card.appendChild(el(`<div class="pillar-map-note">No practices fit this pillar yet — add one from the Marketplace so it can be logged.</div>`));
+    } else if (candidates.length === 1) {
+      const sp = candidates[0];
+      // Only one practice fits here, so it's on automatically — shown as
+      // a locked chip rather than something to toggle.
+      card.appendChild(el(`<div class="pillar-map-chip-row"><span class="pillar-map-chip auto">${escapeHtml(sp.label)} ✓</span></div>`));
+      card.appendChild(el(`<div class="pillar-map-note">Only one practice fits here, so it's on automatically.</div>`));
+    } else {
+      const chipRow = el(`<div class="pillar-map-chip-row"></div>`);
+      candidates.forEach((sp) => {
+        const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
+        const chip = el(`<span class="pillar-map-chip${checked ? " on" : ""}">${escapeHtml(sp.label)}${checked ? ' <span class="x">✓</span>' : ""}</span>`);
+        chip.addEventListener("click", () => {
+          const set = new Set(state.pillarSourceMap[key] || []);
+          if (set.has(sp.id)) set.delete(sp.id);
+          else set.add(sp.id);
+          state.pillarSourceMap[key] = Array.from(set);
+          scheduleSave();
+          renderPillarMappingSections(container, onAfterChange);
+          if (onAfterChange) onAfterChange();
+        });
+        chipRow.appendChild(chip);
+      });
+      card.appendChild(chipRow);
+    }
+    container.appendChild(card);
+  });
+}
+
+// The contextual popup — triggered from Home when a pillar has nothing
+// connected to it yet, so it's the fastest way to fix that in the
+// moment rather than a detour through Settings.
 function openPillarMappingModal() {
   const overlay = el(`
     <div class="modal-overlay">
@@ -7967,51 +8004,7 @@ function openPillarMappingModal() {
     </div>
   `);
   const sectionsWrap = overlay.querySelector("#pillar-mapping-sections");
-
-  function renderSections() {
-    ensurePillarSourceDefaults();
-    sectionsWrap.innerHTML = "";
-    WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-      const candidates = pillarCandidateSheets(key);
-      const meta = ONBOARDING_PILLAR_META[key];
-      const card = el(`<div class="pillar-map-card"></div>`);
-      card.appendChild(el(`
-        <div class="pillar-map-head">
-          <div class="pillar-map-icon">${meta ? onboardingPillarIconSvg(key) : "•"}</div>
-          <div class="pillar-map-name">${escapeHtml(label)}</div>
-          ${candidates.length <= 1 ? `<div class="pillar-map-auto-tag">Auto</div>` : ""}
-        </div>
-      `));
-
-      if (!candidates.length) {
-        card.appendChild(el(`<div class="pillar-map-note">No practices fit this pillar yet — add one from Practice Gallery so it can be logged.</div>`));
-      } else if (candidates.length === 1) {
-        const sp = candidates[0];
-        // Only one practice fits here, so it's on automatically — shown as
-        // a locked chip rather than something to toggle.
-        card.appendChild(el(`<div class="pillar-map-chip-row"><span class="pillar-map-chip auto">${escapeHtml(sp.label)} ✓</span></div>`));
-        card.appendChild(el(`<div class="pillar-map-note">Only one practice fits here, so it's on automatically.</div>`));
-      } else {
-        const chipRow = el(`<div class="pillar-map-chip-row"></div>`);
-        candidates.forEach((sp) => {
-          const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
-          const chip = el(`<span class="pillar-map-chip${checked ? " on" : ""}">${escapeHtml(sp.label)}${checked ? ' <span class="x">✓</span>' : ""}</span>`);
-          chip.addEventListener("click", () => {
-            const set = new Set(state.pillarSourceMap[key] || []);
-            if (set.has(sp.id)) set.delete(sp.id);
-            else set.add(sp.id);
-            state.pillarSourceMap[key] = Array.from(set);
-            scheduleSave();
-            renderSections();
-          });
-          chipRow.appendChild(chip);
-        });
-        card.appendChild(chipRow);
-      }
-      sectionsWrap.appendChild(card);
-    });
-  }
-  renderSections();
+  renderPillarMappingSections(sectionsWrap, null);
 
   const close = () => {
     overlay.remove();
@@ -9801,7 +9794,7 @@ function openLinkBankAccountSheet() {
         <div class="link-empty-icon">${rewardPiggyBankSvg()}</div>
         <div class="onboarding-headline" style="margin-top:10px;">Track it in real dollars</div>
         <div class="onboarding-subline">Link a bank account so you can see your real balance alongside what you've earned. Read-only — Addley can see the balance, never move money.</div>
-        <button type="button" class="onboarding-primary-btn link-sheet-btn">Link a bank account</button>
+        <button type="button" class="sheet-primary-btn link-sheet-btn">Link a bank account</button>
       </div>
     </div>
   `);
@@ -10053,7 +10046,7 @@ function openYourRewardScreen() {
 
     if (!prize.enabled) {
       box.appendChild(el(`<div class="account-note" style="padding:14px 0;">You skipped setting up a reward during onboarding — streaks and milestones still work exactly the same without one. Set one up any time.</div>`));
-      const startBtn = el(`<button type="button" class="onboarding-primary-btn" style="margin-top:4px;">Set up a reward</button>`);
+      const startBtn = el(`<button type="button" class="sheet-primary-btn" style="margin-top:4px;">Set up a reward</button>`);
       startBtn.addEventListener("click", () => openEditRewardModal(render));
       box.appendChild(startBtn);
       document.body.appendChild(overlay);
@@ -10114,7 +10107,7 @@ function openYourRewardScreen() {
     // honest side-by-side with what's actually in the account.
     if (!stats.linked) {
       box.appendChild(el(`<div class="account-note" style="margin:10px 0;">Optionally link a bank account to see your real balance alongside this. Read-only — Addley can see the balance, never move money.</div>`));
-      const linkBtn = el(`<button type="button" class="onboarding-primary-btn" style="margin-top:0;">Link a bank account</button>`);
+      const linkBtn = el(`<button type="button" class="sheet-primary-btn" style="margin-top:0;">Link a bank account</button>`);
       linkBtn.addEventListener("click", () => {
         linkBtn.textContent = "Connecting…";
         linkBtn.disabled = true;
@@ -10639,25 +10632,40 @@ function openSobrietyScreen() {
     const chips = el(`<div class="alltime-chips"></div>`);
     SOBRIETY_TIERS.forEach((t) => {
       if (!state.sobriety.milestonesAllTime[t.key]) return;
-      chips.appendChild(el(`<div class="alltime-chip" style="background:${t.color};" title="${escapeHtml(t.label)}">${checkSvg}</div>`));
+      chips.appendChild(el(`
+        <div class="alltime-medal-mini" style="background: radial-gradient(circle at 35% 30%, #fff, ${t.color} 75%);" title="${escapeHtml(t.label)}">${checkSvg}</div>
+      `));
     });
     strip.appendChild(chips);
     box.appendChild(strip);
 
     box.appendChild(el(`<div class="milestone-section-title">Milestones</div>`));
     box.appendChild(el(`<div class="milestone-section-sub">Every one of these is earnable again, no matter how many times you've hit it before.</div>`));
-    const grid = el(`<div class="milestone-grid"></div>`);
+    const grid = el(`<div class="pr-badge-grid"></div>`);
     SOBRIETY_TIERS.forEach((t) => {
-      const earned = !!state.sobriety.milestonesCurrent[t.key];
-      grid.appendChild(el(`
-        <div class="milestone" style="${earned ? `background:${t.color};border-color:${t.color};` : `border-color:${t.color};`}">
-          <div class="milestone-badge" style="${earned ? "background:rgba(255,255,255,.28);color:#fff;" : `background:transparent;border:2px solid ${t.color};color:${t.color};`}">
-            ${earned ? checkSvg : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle></svg>'}
-          </div>
-          <div class="milestone-name${earned ? "" : " locked"}" style="${earned ? "color:#fff;" : ""}">${escapeHtml(t.label)}</div>
-          ${earned ? `<div class="milestone-date" style="color:rgba(255,255,255,.75);">${activityDateShort(state.sobriety.milestonesCurrent[t.key])}</div>` : ""}
-        </div>
-      `));
+      const earnedDate = state.sobriety.milestonesCurrent[t.key];
+      const badge = earnedDate
+        ? el(`
+            <div class="pr-badge">
+              <div class="pr-badge-medal earned" style="background: radial-gradient(circle at 35% 30%, #fff, ${t.color} 75%);">${checkSvg}</div>
+              <div class="pr-badge-text">
+                <div class="lbl">${escapeHtml(t.label)}</div>
+                <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
+              </div>
+            </div>
+          `)
+        : el(`
+            <div class="pr-badge">
+              <div class="pr-badge-medal locked" style="border-color:${t.color};color:${t.color};">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle></svg>
+              </div>
+              <div class="pr-badge-text">
+                <div class="lbl">${escapeHtml(t.label)}</div>
+                <div class="sub">Not yet</div>
+              </div>
+            </div>
+          `);
+      grid.appendChild(badge);
     });
     box.appendChild(grid);
 
@@ -10863,7 +10871,7 @@ function openSobrietyCelebration(tier) {
             <div class="celebrate-sub">However you got here, you're here. That's what counts.</div>
           </div>
         </div>
-        <button type="button" class="onboarding-primary-btn sob-celebrate-btn" style="background:${tier.color};">Keep going</button>
+        <button type="button" class="sheet-primary-btn sob-celebrate-btn" style="background:${tier.color};">Keep going</button>
       </div>
     </div>
   `);
@@ -10898,7 +10906,7 @@ function openSobrietyResetSheet(onDone) {
         </div>
         <div class="sobriety-sheet-actions">
           <button type="button" class="btn-ghost sob-reset-cancel">Not now</button>
-          <button type="button" class="onboarding-primary-btn sob-reset-confirm">Log it</button>
+          <button type="button" class="sheet-primary-btn sob-reset-confirm">Log it</button>
         </div>
       </div>
     </div>
@@ -11228,9 +11236,9 @@ function showOnboardingFlow() {
             return `<div class="onboarding-pillar-card"><div class="onboarding-pillar-icon">${onboardingPillarIconSvg(key)}</div><div class="onboarding-pillar-name">${escapeHtml(meta.name)}</div></div>`;
           }).join("")}
         </div>
-        <button type="button" class="onboarding-primary-btn">Get started</button>
+        <button type="button" class="sheet-primary-btn">Get started</button>
       `);
-      box.querySelector(".onboarding-primary-btn").addEventListener("click", () => { stepIdx++; renderStep(); });
+      box.querySelector(".sheet-primary-btn").addEventListener("click", () => { stepIdx++; renderStep(); });
     }
 
     if (step === "spiritual" || step === "movement") {
@@ -11266,7 +11274,7 @@ function showOnboardingFlow() {
         <div class="onboarding-toolbar-target" id="onbToolbarZone"></div>
         <div class="onboarding-extra-label">Additional practices</div>
         <div class="onboarding-extra-row" id="onbExtraZone"></div>
-        <button type="button" class="onboarding-primary-btn" id="onbToolbarNext">Looks good</button>
+        <button type="button" class="sheet-primary-btn" id="onbToolbarNext">Looks good</button>
       `);
       const toolbarZone = box.querySelector("#onbToolbarZone");
       const extraZone = box.querySelector("#onbExtraZone");
@@ -11322,9 +11330,9 @@ function showOnboardingFlow() {
           <div class="onboarding-review-title">Additional practices · 2 <span class="drag-hint">drag to reorder</span></div>
           <div class="onboarding-extra-row" id="reviewExtraZone"></div>
         </div>
-        <div class="onboarding-lock-note">🔓 <div><strong>6 active practices, always free.</strong> Want more later? Practice Gallery has extra practices — upgrading unlocks up to 15 active at once.</div></div>
+        <div class="onboarding-lock-note">🔓 <div><strong>6 active practices, always free.</strong> Want more later? The Marketplace has extra practices — upgrading unlocks up to 15 active at once.</div></div>
         <div class="closing-beat">Your six practices are set. <b>Day one starts now.</b></div>
-        <button type="button" class="onboarding-primary-btn" id="onbFinish">Continue</button>
+        <button type="button" class="sheet-primary-btn" id="onbFinish">Continue</button>
       `);
       const reviewToolbarZone = box.querySelector("#reviewToolbarZone");
       const reviewExtraZone = box.querySelector("#reviewExtraZone");
@@ -11380,7 +11388,7 @@ function showOnboardingFlow() {
             <span>›</span>
           </div>
         </div>
-        <button type="button" class="onboarding-primary-btn" id="rewardAskContinue">Continue</button>
+        <button type="button" class="sheet-primary-btn" id="rewardAskContinue">Continue</button>
       `);
       box.querySelector("#wantRewardOpt").addEventListener("click", () => {
         wantsReward = true;
@@ -11408,7 +11416,7 @@ function showOnboardingFlow() {
         <div class="goal-dollar-row"><span class="goal-dollar-sign">$</span><input type="number" min="1" id="rewardGoalInput" value="${rewardGoalDollars}" /></div>
         <label class="onboarding-field-label">Target date</label>
         <input type="date" class="onboarding-text-input" id="rewardTargetInput" value="${addDays(todayISO(), rewardTargetDays)}" style="margin-bottom:0;" />
-        <button type="button" class="onboarding-primary-btn" id="rewardDetailsContinue">Continue</button>
+        <button type="button" class="sheet-primary-btn" id="rewardDetailsContinue">Continue</button>
       `);
       box.querySelector("#rewardDetailsContinue").addEventListener("click", () => {
         rewardName = box.querySelector("#rewardNameInput").value.trim();
@@ -11436,7 +11444,7 @@ function showOnboardingFlow() {
           </div>
         </div>
         <input type="file" accept="image/*" id="rewardPhotoInput" style="display:none;" />
-        <button type="button" class="onboarding-primary-btn" id="rewardPhotoChoose">Choose a photo</button>
+        <button type="button" class="sheet-primary-btn" id="rewardPhotoChoose">Choose a photo</button>
         <button type="button" class="onboarding-skip-link" id="rewardPhotoSkip">Skip for now</button>
       `);
       const zone = box.querySelector("#rewardPhotoZone");
@@ -11468,7 +11476,7 @@ function showOnboardingFlow() {
         <div class="onboarding-eyebrow">Your reward</div>
         <div class="onboarding-headline">Track it in real dollars</div>
         <div class="onboarding-subline">Logging your habits is what earns this — linking a bank account just lets you see your real balance alongside it. Read-only, optional, and it never moves money.</div>
-        <button type="button" class="onboarding-primary-btn" id="rewardLinkBtn">Link a bank account</button>
+        <button type="button" class="sheet-primary-btn" id="rewardLinkBtn">Link a bank account</button>
         <button type="button" class="onboarding-skip-link" id="rewardLinkSkip">I'll link this later, from Settings</button>
       `);
       const linkBtn = box.querySelector("#rewardLinkBtn");
