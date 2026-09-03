@@ -106,6 +106,12 @@ const EXTRA_TRACKERS_GALLERY = [
     icon: `<path d="M12 3a9 9 0 1 0 9 9"></path><path d="M12 3v9l6 3"></path>`,
     desc: "A state to note, not a habit to complete — no streak, no pass or fail.",
   },
+  {
+    key: "sobriety",
+    label: "Sobriety",
+    icon: `<path d="M12 21c-4-3-7-6.5-7-10a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 3.5-3 7-7 10-1.5-.9-2.7-1.8-3.9-2.7"></path>`,
+    desc: "A day count and a daily check-in — never a streak, never money toward your reward.",
+  },
 ];
 
 // ------------------------------------------------------------------
@@ -4115,17 +4121,17 @@ function renderSocialSheet(id) {
           <summary class="wardrobe-row">
             <div class="social-circle-avatar">${escapeHtml((person.name.trim()[0] || "?").toUpperCase())}</div>
             <div class="wi-body">
-              <div class="wi-name">${escapeHtml(person.name)}</div>
+              <div class="wi-name">${escapeHtml(person.name)}${person.sobrietySupport ? `<span class="support-tag">Support</span>` : ""}</div>
               <div class="wi-sub">${escapeHtml(socialCadenceLabel(cadence))}</div>
             </div>
             ${badgeLabel ? `<span class="social-circle-badge${badgeClass ? ` ${badgeClass}` : ""}">${badgeLabel}</span>` : ""}
+            ${person.phone ? `<a href="tel:${escapeHtml(person.phone)}" class="icon-btn social-call-btn" title="Call ${escapeHtml(person.name)}" onclick="event.stopPropagation();">${iconSvg('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .3 2 .7 3a2 2 0 0 1-.4 2.1L8 10.2a16 16 0 0 0 6 6l1.4-1.4a2 2 0 0 1 2.1-.4c1 .3 2 .5 3 .7a2 2 0 0 1 1.5 2z"></path>')}</a>` : ""}
             <span class="wardrobe-chevron">${chevronSvg}</span>
           </summary>
           <div class="wardrobe-item-detail">
             <div class="wi-detail-actions">
               <button type="button" class="btn-ghost social-log-again">Log again</button>
-              <button type="button" class="btn-ghost wi-detail-edit-name">Rename</button>
-              <button type="button" class="btn-ghost danger social-remove-person">Remove person</button>
+              <button type="button" class="btn-ghost wi-detail-edit-name">Edit</button>
             </div>
             ${
               entries.length
@@ -4155,17 +4161,7 @@ function renderSocialSheet(id) {
       });
       row.querySelector(".wi-detail-edit-name").addEventListener("click", (e) => {
         e.preventDefault();
-        openSocialPersonRenameModal(id, person.id);
-      });
-      row.querySelector(".social-remove-person").addEventListener("click", (e) => {
-        e.preventDefault();
-        confirmModal("Remove person?", `This removes ${person.name} and all ${entries.length} logged entr${entries.length === 1 ? "y" : "ies"} for them.`, "Remove", () => {
-          sheet.people = sheet.people.filter((p) => p.id !== person.id);
-          sheet.items = sheet.items.filter((i) => i.personId !== person.id);
-          scheduleSave();
-          renderSocialSheet(id);
-          renderHome();
-        });
+        openSocialPersonEditModal(id, person.id);
       });
       row.querySelectorAll(".social-history-edit").forEach((btn) => {
         btn.addEventListener("click", (e) => {
@@ -5033,17 +5029,79 @@ function openBreatheEntryEditor(sheetId, entryId) {
   document.body.appendChild(overlay);
 }
 
-function openSocialPersonRenameModal(sheetId, personId) {
+// Edit a connection — name, a phone number (new: this is what powers
+// tap-to-call, both here and from anything that reaches into Connections
+// for a contact, like Sobriety's support-contact feature), and, only
+// when Sobriety is actually turned on, a plain checkbox for flagging
+// this person as a sponsor/support contact. The checkbox is gated on
+// Sobriety being *added* (state.extraTrackers.sobriety), not on having
+// checked in yet — so it's there the moment someone picks up the
+// tracker, not after they've logged something under it.
+function openSocialPersonEditModal(sheetId, personId) {
   const sheet = state.customSheets[sheetId];
   const person = sheet.people.find((p) => p.id === personId);
   if (!person) return;
-  const newName = window.prompt("Rename this person", person.name);
-  if (newName === null) return;
-  const trimmed = newName.trim();
-  if (!trimmed) return;
-  person.name = trimmed;
-  scheduleSave();
-  renderSocialSheet(sheetId);
+  const sobrietyOn = !!state.extraTrackers?.sobriety;
+
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Edit connection</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">Name</label>
+          <input type="text" class="sp-f-name" value="${escapeHtml(person.name)}" />
+
+          <label class="muted">Phone</label>
+          <input type="tel" class="sp-f-phone" value="${escapeHtml(person.phone || "")}" placeholder="Optional — adds a tap-to-call button" />
+
+          ${
+            sobrietyOn
+              ? `<label style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:13px;color:var(--text);"><input type="checkbox" class="sp-f-support" style="width:auto;flex-shrink:0;" ${person.sobrietySupport ? "checked" : ""} /> This is my sponsor / support contact</label>
+                 <div class="al-note-line" style="margin-top:4px;">Shows up with one tap to call, right inside a Sobriety check-in. Flag more than one if you want.</div>`
+              : ""
+          }
+        </div>
+        <div class="modal-actions" style="justify-content:space-between;">
+          <button type="button" class="btn-ghost danger sp-delete">Remove person</button>
+          <button type="button" class="btn-primary sp-save">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelector(".sp-save").addEventListener("click", () => {
+    const name = overlay.querySelector(".sp-f-name").value.trim();
+    if (!name) return;
+    person.name = name;
+    person.phone = overlay.querySelector(".sp-f-phone").value.trim();
+    if (sobrietyOn) person.sobrietySupport = overlay.querySelector(".sp-f-support").checked;
+    scheduleSave();
+    overlay.remove();
+    renderSocialSheet(sheetId);
+    renderHome();
+  });
+
+  overlay.querySelector(".sp-delete").addEventListener("click", () => {
+    const entries = socialPersonEntries(sheet, person.id);
+    confirmModal("Remove person?", `This removes ${person.name} and all ${entries.length} logged entr${entries.length === 1 ? "y" : "ies"} for them.`, "Remove", () => {
+      sheet.people = sheet.people.filter((p) => p.id !== person.id);
+      sheet.items = sheet.items.filter((i) => i.personId !== person.id);
+      scheduleSave();
+      overlay.remove();
+      renderSocialSheet(sheetId);
+      renderHome();
+    });
+  });
+
+  document.body.appendChild(overlay);
 }
 
 // Logging (or editing a past log for) one person — kind is a tap-once
@@ -9815,9 +9873,8 @@ function renderHomeTodayPillarsCard(today) {
   const card = el(`<div class="card"></div>`);
   card.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
   card.appendChild(renderPillarCycleGrid(todaysEntry, today, () => renderHome()));
-  if (state.extraTrackers?.cycle) {
-    card.appendChild(renderCycleTrackerRow(todaysEntry, today, () => renderHome()));
-  }
+  const extraSection = renderExtraTrackersSection(todaysEntry, today, () => renderHome());
+  if (extraSection) card.appendChild(extraSection);
   return card;
 }
 
@@ -10315,9 +10372,7 @@ function renderPillarCycleGrid(todaysEntry, today, onDone) {
 // small family of optional "extra" trackers (gallery items that aren't
 // practices, don't map to a pillar, and don't ask anything of you beyond
 // adding a little more context to your insights).
-function renderCycleTrackerRow(todaysEntry, today, onDone) {
-  const wrap = el(`<div class="cycle-tracker-wrap"></div>`);
-  wrap.appendChild(el(`<div class="cycle-tracker-label">Also tracking</div>`));
+function renderCycleTrackerRowInner(todaysEntry, today, onDone) {
   const phase = todaysEntry.cyclePhase || null;
   const row = el(`
     <button type="button" class="cycle-tracker-row">
@@ -10330,7 +10385,20 @@ function renderCycleTrackerRow(todaysEntry, today, onDone) {
     </button>
   `);
   row.addEventListener("click", () => openCyclePhaseSheet(todaysEntry, today, onDone));
-  wrap.appendChild(row);
+  return row;
+}
+
+// Shared "Also tracking" section on Home — one label, one row per extra
+// tracker that's actually turned on. Cycle and Sobriety are siblings
+// here, not a special case of each other.
+function renderExtraTrackersSection(todaysEntry, today, onDone) {
+  const cycleOn = !!state.extraTrackers?.cycle;
+  const sobrietyOn = !!state.extraTrackers?.sobriety;
+  if (!cycleOn && !sobrietyOn) return null;
+  const wrap = el(`<div class="cycle-tracker-wrap"></div>`);
+  wrap.appendChild(el(`<div class="cycle-tracker-label">Also tracking</div>`));
+  if (cycleOn) wrap.appendChild(renderCycleTrackerRowInner(todaysEntry, today, onDone));
+  if (sobrietyOn) wrap.appendChild(renderSobrietyTrackerRowInner(today, onDone));
   return wrap;
 }
 
@@ -10362,6 +10430,536 @@ function openCyclePhaseSheet(todaysEntry, today, onDone) {
 
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+// ------------------------------------------------------------------
+// Sobriety — a day count with teeth: a daily check-in (not just the
+// calendar) is what actually confirms the count, milestones are
+// re-earnable rather than permanent trophies (a reset clears the
+// current grid so there's something real to work back toward, while
+// a separate all-time record never moves backward), and a craving
+// moment surfaces a real person to call plus a national hotline as a
+// floor under that. Support contacts live in Connections, not a
+// parallel list of their own — see allSupportContacts below, and
+// ensureAnySocialSheetId, which means adding one from in here never
+// depends on Connections having been chosen as a visible practice.
+// Never "streak", never "run" anywhere in this section's copy —
+// Veronika was explicit both read the same as each other, and neither
+// is what this tracker is for. Doesn't touch the reward mechanic at
+// all: see awardRewardForPillarLog, which only ever fires from a real
+// pillar log, never from here.
+// ------------------------------------------------------------------
+const SOBRIETY_TIERS = [
+  { key: "24h", days: 1, label: "24 Hours", color: "var(--t-24h)" },
+  { key: "1wk", days: 7, label: "1 Week", color: "var(--t-1wk)" },
+  { key: "30d", days: 30, label: "30 Days", color: "var(--t-30d)" },
+  { key: "60d", days: 60, label: "60 Days", color: "var(--t-60d)" },
+  { key: "90d", days: 90, label: "90 Days", color: "var(--t-90d)" },
+  { key: "6mo", days: 182, label: "6 Months", color: "var(--t-6mo)" },
+  { key: "1yr", days: 365, label: "1 Year", color: "var(--t-1yr)" },
+  { key: "2yr", days: 730, label: "2 Years", color: "var(--t-2yr)" },
+  { key: "3yr", days: 1095, label: "3 Years", color: "var(--t-3yr)" },
+];
+const SOBRIETY_MOODS = [
+  { key: "steady", emoji: "😌", label: "Steady" },
+  { key: "strong", emoji: "💪", label: "Strong" },
+  { key: "tempted", emoji: "😣", label: "Tempted" },
+  { key: "rough", emoji: "😔", label: "Rough" },
+  { key: "grateful", emoji: "🙏", label: "Grateful" },
+];
+const SOBRIETY_INTENSITY = ["Passed quickly", "Strong, but okay", "Still hard right now"];
+const SOBRIETY_HELPLINE = { name: "SAMHSA National Helpline", phone: "1-800-662-4357" };
+const SOBRIETY_AFFIRMATIONS = [
+  "Progress isn't a straight line. Showing up today is the whole practice.",
+  "One day, fully present. That's the whole practice.",
+  "You don't have to feel ready to keep going.",
+  "This counts even on the quiet days.",
+  "However you got here, you're here. That's what counts.",
+];
+const sobrietyCallSvgPath = `<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .3 2 .7 3a2 2 0 0 1-.4 2.1L8 10.2a16 16 0 0 0 6 6l1.4-1.4a2 2 0 0 1 2.1-.4c1 .3 2 .5 3 .7a2 2 0 0 1 1.5 2z"></path>`;
+const sobrietyPersonAddSvgPath = `<circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path><path d="M19 8h4M21 6v4"></path>`;
+
+function sobrietyDayCount(today) {
+  const start = new Date(state.sobriety.startDate + "T00:00:00");
+  const now = new Date(today + "T00:00:00");
+  return Math.max(1, daysBetween(start, now) + 1);
+}
+function sobrietyAffirmation(today) {
+  return SOBRIETY_AFFIRMATIONS[sobrietyDayCount(today) % SOBRIETY_AFFIRMATIONS.length];
+}
+function sobrietyCheckInToday(today) {
+  return state.sobriety.checkIns.find((c) => c.date === today) || null;
+}
+
+// Recomputes which tiers are earned (current + all-time) against
+// today's count — safe to call on every render. Returns the highest
+// tier that just became newly earned THIS call (current-grid sense —
+// re-crossing an already-earned all-time tier doesn't count), or null.
+function sobrietyRecomputeMilestones(today) {
+  const count = sobrietyDayCount(today);
+  state.sobriety.allTimeBestDays = Math.max(state.sobriety.allTimeBestDays, count);
+  let newlyEarned = null;
+  SOBRIETY_TIERS.forEach((t) => {
+    if (count >= t.days) {
+      if (!state.sobriety.milestonesAllTime[t.key]) state.sobriety.milestonesAllTime[t.key] = today;
+      if (!state.sobriety.milestonesCurrent[t.key]) {
+        state.sobriety.milestonesCurrent[t.key] = today;
+        newlyEarned = t;
+      }
+    }
+  });
+  return newlyEarned;
+}
+
+// ---- Shared contact list — Connections and Sobriety both read/write
+// the same underlying people, never a separate silo of Sobriety's own.
+function allSocialSheetIds() {
+  return state.sheets.filter((s) => s.kind === "custom" && state.customSheets[s.id]?.templateKey === "social").map((s) => s.id);
+}
+// Creates a Connections space behind the scenes the first time it's
+// needed from in here, so adding a support contact never depends on
+// Connections already being chosen as a visible practice. Deliberately
+// skips the pillar auto-opt-in that a real Gallery add triggers (see
+// createSheetFromTemplateUnchecked) — a Sobriety contact shouldn't
+// silently start counting toward the Social Connection pillar — and
+// stays hidden from the practice list until Connections is opened on
+// its own terms.
+function ensureAnySocialSheetId() {
+  const existing = allSocialSheetIds();
+  if (existing.length) return existing[0];
+  const id = `sheet_${nextId()}`;
+  state.customSheets[id] = { label: "Connections", templateKey: "social", socialSchemaV: 2, people: [], items: [] };
+  state.sheets.push({ id, kind: "custom", visible: false });
+  return id;
+}
+function allConnectionsPeople() {
+  const out = [];
+  allSocialSheetIds().forEach((sid) => {
+    (state.customSheets[sid].people || []).forEach((p) => out.push(p));
+  });
+  return out;
+}
+function allSupportContacts() {
+  return allConnectionsPeople().filter((p) => p.sobrietySupport);
+}
+
+// The Home row — sibling to Cycle's, same visual language, own icon
+// and its own tap target (the full screen), never the pillar grid's
+// red/green pass-fail treatment.
+function renderSobrietyTrackerRowInner(today, onDone) {
+  // Milestones are date-driven, not check-in-driven — this Home render
+  // is the first place a new one can be noticed on any given day, so
+  // it's also where the celebration fires. sobrietyRecomputeMilestones
+  // marks a tier the moment it's crossed, so this only ever returns
+  // non-null once per tier, however many times Home re-renders after.
+  const newTier = sobrietyRecomputeMilestones(today);
+  scheduleSave();
+  if (newTier) setTimeout(() => openSobrietyCelebration(newTier), 0);
+  const count = sobrietyDayCount(today);
+  const checkedIn = !!sobrietyCheckInToday(today);
+  const row = el(`
+    <button type="button" class="cycle-tracker-row">
+      <span class="cycle-tracker-icon ${checkedIn ? "cycle-on" : "cycle-off"}">${checkedIn ? checkSvg : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+      <span class="cycle-tracker-text">
+        <span class="cycle-tracker-title">Sobriety</span>
+        <span class="cycle-tracker-sub">${checkedIn ? "Checked in for today" : "Tap to see your count"}</span>
+      </span>
+      <span class="cycle-tracker-value">Day ${count}</span>
+    </button>
+  `);
+  row.addEventListener("click", () => openSobrietyScreen());
+  return row;
+}
+
+// The full screen — a modal overlay, same pattern as openYourRewardScreen,
+// re-rendered in place after every action so the count/milestones/history
+// are always current.
+function openSobrietyScreen() {
+  const overlay = el(`<div class="modal-overlay"><div class="modal-box info-modal-box account-modal-box" style="width:400px;"></div></div>`);
+  const box = overlay.querySelector(".modal-box");
+
+  function render() {
+    const today = todayISO();
+    sobrietyRecomputeMilestones(today);
+    scheduleSave();
+    const count = sobrietyDayCount(today);
+    const checkedIn = sobrietyCheckInToday(today);
+
+    box.innerHTML = "";
+    box.appendChild(el(`
+      <div class="info-modal-header">
+        <h3>Sobriety</h3>
+        <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+      </div>
+    `));
+    box.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+
+    box.appendChild(el(`
+      <div class="sob-hero">
+        <div class="sob-hero-icon">${iconSvg('<path d="M12 21c-4-3-7-6.5-7-10a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 3.5-3 7-7 10-1.5-.9-2.7-1.8-3.9-2.7"></path>').replace('class="tab-icon" width="20" height="20"', 'width="26" height="26" stroke="#fff"')}</div>
+        <div class="sob-count">${count}</div>
+        <div class="sob-count-label">day${count === 1 ? "" : "s"}</div>
+        <div class="sob-since">Since ${activityDateShort(state.sobriety.startDate)}</div>
+      </div>
+      <div class="sob-affirmation">"${escapeHtml(sobrietyAffirmation(today))}"</div>
+    `));
+
+    if (checkedIn) {
+      const done = el(`
+        <button type="button" class="checkin-done">
+          <span class="checkin-done-icon">${checkSvg}</span>
+          <span>
+            <div class="checkin-done-title">Checked in for Day ${count}</div>
+            <div class="checkin-done-sub">${SOBRIETY_MOODS.find((m) => m.key === checkedIn.mood)?.label || ""} — tap to edit today's entry.</div>
+          </span>
+        </button>
+      `);
+      done.addEventListener("click", () => openSobrietyCheckInCard(box, today, checkedIn, render));
+      box.appendChild(done);
+    } else {
+      box.appendChild(buildSobrietyCheckInCard(today, null, render));
+    }
+
+    const whyLink = el(`<button type="button" class="why-edit-link" style="margin-top:8px;">${state.sobriety.whyItems.length ? "Edit your why" : "+ Add your why"}</button>`);
+    whyLink.addEventListener("click", () => openSobrietyWhyEditor(render));
+    box.appendChild(whyLink);
+
+    // ---- Your record — permanent, plus the re-earnable grid below ----
+    box.appendChild(el(`<div class="alltime-title">Your record</div>`));
+    const strip = el(`<div class="alltime-strip"></div>`);
+    strip.appendChild(el(`
+      <div class="alltime-best">
+        <div class="alltime-best-num">${state.sobriety.allTimeBestDays}</div>
+        <div class="alltime-best-label">longest yet</div>
+      </div>
+      <div class="alltime-divider"></div>
+    `));
+    const chips = el(`<div class="alltime-chips"></div>`);
+    SOBRIETY_TIERS.forEach((t) => {
+      if (!state.sobriety.milestonesAllTime[t.key]) return;
+      chips.appendChild(el(`<div class="alltime-chip" style="background:${t.color};" title="${escapeHtml(t.label)}">${checkSvg}</div>`));
+    });
+    strip.appendChild(chips);
+    box.appendChild(strip);
+
+    box.appendChild(el(`<div class="milestone-section-title">Milestones</div>`));
+    box.appendChild(el(`<div class="milestone-section-sub">Every one of these is earnable again, no matter how many times you've hit it before.</div>`));
+    const grid = el(`<div class="milestone-grid"></div>`);
+    SOBRIETY_TIERS.forEach((t) => {
+      const earned = !!state.sobriety.milestonesCurrent[t.key];
+      grid.appendChild(el(`
+        <div class="milestone" style="${earned ? `background:${t.color};border-color:${t.color};` : `border-color:${t.color};`}">
+          <div class="milestone-badge" style="${earned ? "background:rgba(255,255,255,.28);color:#fff;" : `background:transparent;border:2px solid ${t.color};color:${t.color};`}">
+            ${earned ? checkSvg : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle></svg>'}
+          </div>
+          <div class="milestone-name${earned ? "" : " locked"}" style="${earned ? "color:#fff;" : ""}">${escapeHtml(t.label)}</div>
+          ${earned ? `<div class="milestone-date" style="color:rgba(255,255,255,.75);">${activityDateShort(state.sobriety.milestonesCurrent[t.key])}</div>` : ""}
+        </div>
+      `));
+    });
+    box.appendChild(grid);
+
+    // ---- Recent check-ins ----
+    const recent = [...state.sobriety.checkIns].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 6);
+    if (recent.length) {
+      box.appendChild(el(`<div class="history-title">Recent check-ins</div>`));
+      recent.forEach((c) => {
+        const mood = SOBRIETY_MOODS.find((m) => m.key === c.mood);
+        box.appendChild(el(`
+          <div class="history-row">
+            <div class="history-emoji">${mood?.emoji || "•"}</div>
+            <div>
+              <span class="history-day">${escapeHtml(c.date)}</span>
+              ${c.note ? `<div class="history-note">${escapeHtml(c.note)}</div>` : ""}
+            </div>
+          </div>
+        `));
+      });
+    }
+
+    const resetLink = el(`<button type="button" class="sob-reset-link">Had a slip? Log it here</button>`);
+    resetLink.addEventListener("click", () => openSobrietyResetSheet(render));
+    box.appendChild(resetLink);
+  }
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  render();
+  document.body.appendChild(overlay);
+}
+
+// Swaps the check-in card in place (used both for the initial full
+// render and for re-opening an already-checked-in day to edit it).
+function openSobrietyCheckInCard(box, today, existing, onDone) {
+  const old = box.querySelector(".checkin-card, .checkin-done");
+  const fresh = buildSobrietyCheckInCard(today, existing, onDone);
+  old.replaceWith(fresh);
+}
+
+// The check-in itself: mood chips, an inline craving branch when
+// "Tempted" is picked (intensity + Your Why + a support contact or the
+// national hotline), and an optional journal line. Submitting is what
+// actually confirms the day — the count itself stays date-math-based
+// either way, this is what makes it trustworthy.
+function buildSobrietyCheckInCard(today, existing, onDone) {
+  const card = el(`
+    <div class="checkin-card">
+      <div class="checkin-title">How are you today?</div>
+      <div class="checkin-sub">This is what actually confirms Day ${sobrietyDayCount(today)} — a real check-in, not just the calendar.</div>
+      <div class="checkin-mood-row"></div>
+    </div>
+  `);
+  const moodRow = card.querySelector(".checkin-mood-row");
+  let selectedMood = existing?.mood || null;
+  let selectedIntensity = existing?.cravingIntensity || null;
+  let cravingBox = null;
+
+  function renderCravingBranch() {
+    if (cravingBox) cravingBox.remove();
+    if (selectedMood !== "tempted") { cravingBox = null; return; }
+    cravingBox = el(`<div class="craving-expand"></div>`);
+    cravingBox.appendChild(el(`<div class="craving-label">How strong was it?</div>`));
+    const row = el(`<div class="craving-intensity-row"></div>`);
+    SOBRIETY_INTENSITY.forEach((label) => {
+      const chip = el(`<div class="craving-chip${selectedIntensity === label ? " sel" : ""}">${escapeHtml(label)}</div>`);
+      chip.addEventListener("click", () => {
+        selectedIntensity = label;
+        row.querySelectorAll(".craving-chip").forEach((c) => c.classList.toggle("sel", c === chip));
+      });
+      row.appendChild(chip);
+    });
+    cravingBox.appendChild(row);
+
+    if (state.sobriety.whyItems.length) {
+      const why = el(`<div class="why-card" style="margin-top:0;margin-bottom:12px;"><div class="why-title-row"><div class="why-title">Your why</div></div></div>`);
+      state.sobriety.whyItems.forEach((w) => why.appendChild(el(`<div class="why-item"><span class="dot"></span>${escapeHtml(w)}</div>`)));
+      cravingBox.appendChild(why);
+    }
+
+    const contacts = allSupportContacts();
+    if (contacts.length) {
+      contacts.forEach((p) => {
+        cravingBox.appendChild(el(`
+          <div class="support-row">
+            <div class="support-avatar">${escapeHtml((p.name.trim()[0] || "?").toUpperCase())}</div>
+            <div><span class="support-name">${escapeHtml(p.name)}</span></div>
+            ${p.phone ? `<a href="tel:${escapeHtml(p.phone)}" class="support-call" title="Call ${escapeHtml(p.name)}">${iconSvg(sobrietyCallSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')}</a>` : ""}
+          </div>
+        `));
+      });
+    } else {
+      const addBtn = el(`<button type="button" class="add-support-btn">${iconSvg(sobrietyPersonAddSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="16" height="16"')} Add someone you can call</button>`);
+      addBtn.addEventListener("click", () => openSobrietySupportPicker(() => { renderCravingBranch(); }));
+      cravingBox.appendChild(addBtn);
+    }
+
+    cravingBox.appendChild(el(`
+      <div class="helpline-row">
+        <div class="helpline-icon">${iconSvg(sobrietyCallSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="14" height="14"')}</div>
+        <div class="helpline-text">Or talk to someone now: <b>${escapeHtml(SOBRIETY_HELPLINE.name)}</b>, ${escapeHtml(SOBRIETY_HELPLINE.phone)} — free, confidential, 24/7.</div>
+      </div>
+    `));
+    moodRow.insertAdjacentElement("afterend", cravingBox);
+  }
+
+  SOBRIETY_MOODS.forEach((m) => {
+    const chip = el(`<div class="checkin-mood${selectedMood === m.key ? " sel" : ""}"><span class="emoji">${m.emoji}</span><span class="lbl">${escapeHtml(m.label)}</span></div>`);
+    chip.addEventListener("click", () => {
+      selectedMood = m.key;
+      moodRow.querySelectorAll(".checkin-mood").forEach((c) => c.classList.toggle("sel", c === chip));
+      renderCravingBranch();
+    });
+    moodRow.appendChild(chip);
+  });
+  renderCravingBranch();
+
+  const journal = el(`<textarea class="checkin-journal" placeholder="Anything you want to remember about today? (optional)" style="margin-top:12px;"></textarea>`);
+  journal.value = existing?.note || "";
+  card.appendChild(journal);
+
+  const btn = el(`<button type="button" class="checkin-btn">${existing ? "Save" : "Check in for today"}</button>`);
+  btn.addEventListener("click", () => {
+    if (!selectedMood) return;
+    const entry = existing || { date: today };
+    entry.mood = selectedMood;
+    entry.cravingIntensity = selectedMood === "tempted" ? selectedIntensity : null;
+    entry.note = journal.value.trim();
+    if (!existing) state.sobriety.checkIns.push(entry);
+    const newTier = sobrietyRecomputeMilestones(today);
+    scheduleSave();
+    onDone();
+    if (newTier) openSobrietyCelebration(newTier);
+  });
+  card.appendChild(btn);
+  return card;
+}
+
+// Picking (or adding) a support contact — reads and writes the same
+// Connections people Connections itself shows, never a parallel list.
+function openSobrietySupportPicker(onDone) {
+  const people = allConnectionsPeople();
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Someone you can call</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form"></div>
+      </div>
+    </div>
+  `);
+  const form = overlay.querySelector(".wardrobe-item-form");
+  if (people.length) {
+    form.appendChild(el(`<label class="muted">Pick from your Connections</label>`));
+    people.forEach((p) => {
+      const row = el(`<div class="import-row"><span>${escapeHtml(p.name)}${p.phone ? ` &middot; ${escapeHtml(p.phone)}` : ""}</span><button type="button">Use this</button></div>`);
+      row.querySelector("button").addEventListener("click", () => {
+        p.sobrietySupport = true;
+        scheduleSave();
+        overlay.remove();
+        onDone();
+      });
+      form.appendChild(row);
+    });
+  }
+  form.appendChild(el(`<label class="muted" style="margin-top:${people.length ? "14px" : "0"};">Or add someone new</label>`));
+  form.appendChild(el(`<input type="text" class="ssp-name" placeholder="Name" />`));
+  form.appendChild(el(`<input type="tel" class="ssp-phone" placeholder="Phone (optional)" />`));
+  const saveBtn = el(`<button type="button" class="btn-primary" style="margin-top:12px;width:100%;">Add</button>`);
+  saveBtn.addEventListener("click", () => {
+    const name = overlay.querySelector(".ssp-name").value.trim();
+    if (!name) return;
+    const phone = overlay.querySelector(".ssp-phone").value.trim();
+    const sheetId = ensureAnySocialSheetId();
+    const sheet = state.customSheets[sheetId];
+    sheet.people ||= [];
+    sheet.people.push({ id: nextId(), name, phone, sobrietySupport: true });
+    scheduleSave();
+    overlay.remove();
+    onDone();
+  });
+  form.appendChild(saveBtn);
+
+  overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// A quiet celebration, colored to the tier just earned — no confetti,
+// no repeat-count callout ("you've hit this 3 times" was explicitly
+// ruled out), just a beat of acknowledgment before "Keep going".
+function openSobrietyCelebration(tier) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box" style="width:340px;text-align:center;">
+        <div class="celebrate-toast" style="flex-direction:column;text-align:center;">
+          <div class="celebrate-badge" style="background:${tier.color};width:56px;height:56px;">${checkSvg}</div>
+          <div>
+            <div class="celebrate-title">${escapeHtml(tier.label)}</div>
+            <div class="celebrate-sub">However you got here, you're here. That's what counts.</div>
+          </div>
+        </div>
+        <button type="button" class="onboarding-primary-btn sob-celebrate-btn" style="background:${tier.color};">Keep going</button>
+      </div>
+    </div>
+  `);
+  overlay.querySelector(".sob-celebrate-btn").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// Logging a reset — the record and all-time chips are untouched; only
+// startDate moves to today and the current-tier grid clears, so
+// there's something real to re-earn starting tomorrow. Your Why and a
+// support contact (or the hotline) surface here too, same as the
+// craving branch — the last stop before it happens, not just the
+// first.
+function openSobrietyResetSheet(onDone) {
+  const overlay = el(`
+    <div class="sheet-overlay">
+      <div class="sheet-box" style="max-width:400px;">
+        <button type="button" class="icon-btn sheet-close" aria-label="Close">${closeSvg}</button>
+        <div class="link-empty-icon">${iconSvg('<path d="M12 21c-4-3-7-6.5-7-10a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 3.5-3 7-7 10-1.5-.9-2.7-1.8-3.9-2.7"></path>').replace('class="tab-icon" width="20" height="20"', 'width="28" height="28" stroke="#fff"')}</div>
+        <div class="onboarding-headline" style="margin-top:10px;">This counts, not against you</div>
+        <div class="onboarding-subline">Logging today starts your count over at <b>Day 1</b>. Your <b>longest stretch stays at ${state.sobriety.allTimeBestDays} days</b> — and every milestone is yours to earn all over again, starting with 24 Hours tomorrow.</div>
+        ${
+          state.sobriety.whyItems.length
+            ? `<div class="why-card" style="text-align:left;"><div class="why-title-row"><div class="why-title">Before you do — your why</div></div>${state.sobriety.whyItems.map((w) => `<div class="why-item"><span class="dot"></span>${escapeHtml(w)}</div>`).join("")}</div>`
+            : ""
+        }
+        <div class="sobriety-reset-support"></div>
+        <div class="helpline-row" style="text-align:left;">
+          <div class="helpline-icon">${iconSvg(sobrietyCallSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="14" height="14"')}</div>
+          <div class="helpline-text">No one tagged? ${escapeHtml(SOBRIETY_HELPLINE.name)} is ${escapeHtml(SOBRIETY_HELPLINE.phone)}, free and 24/7.</div>
+        </div>
+        <div class="sobriety-sheet-actions">
+          <button type="button" class="btn-ghost sob-reset-cancel">Not now</button>
+          <button type="button" class="onboarding-primary-btn sob-reset-confirm">Log it</button>
+        </div>
+      </div>
+    </div>
+  `);
+  const supportSlot = overlay.querySelector(".sobriety-reset-support");
+  allSupportContacts().forEach((p) => {
+    supportSlot.appendChild(el(`
+      <div class="support-row">
+        <div class="support-avatar">${escapeHtml((p.name.trim()[0] || "?").toUpperCase())}</div>
+        <div><span class="support-name">${escapeHtml(p.name)}</span></div>
+        ${p.phone ? `<a href="tel:${escapeHtml(p.phone)}" class="support-call" title="Call ${escapeHtml(p.name)}">${iconSvg(sobrietyCallSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')}</a>` : ""}
+      </div>
+    `));
+  });
+
+  overlay.querySelector(".sheet-close").addEventListener("click", () => overlay.remove());
+  overlay.querySelector(".sob-reset-cancel").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector(".sob-reset-confirm").addEventListener("click", () => {
+    state.sobriety.lastResetDate = todayISO();
+    state.sobriety.startDate = todayISO();
+    state.sobriety.milestonesCurrent = {};
+    scheduleSave();
+    overlay.remove();
+    onDone();
+    renderHome();
+  });
+  document.body.appendChild(overlay);
+}
+
+// Editing "Your why" — a short, personal, editable list resurfaced
+// both inside a craving check-in and again right before a reset.
+function openSobrietyWhyEditor(onDone) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box">
+        <div class="info-modal-header">
+          <h3>Your why</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="wardrobe-item-form">
+          <label class="muted">One reason per line</label>
+          <textarea class="sob-why-text" rows="5">${escapeHtml(state.sobriety.whyItems.join("\n"))}</textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-primary sob-why-save">Save</button>
+        </div>
+      </div>
+    </div>
+  `);
+  overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector(".sob-why-save").addEventListener("click", () => {
+    state.sobriety.whyItems = overlay
+      .querySelector(".sob-why-text")
+      .value.split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    scheduleSave();
+    overlay.remove();
+    onDone();
   });
   document.body.appendChild(overlay);
 }
@@ -11424,6 +12022,27 @@ async function boot() {
     state.extraTrackers.cycle = false;
     state.extraTrackersCycleOffV1Applied = true;
   }
+  if (state.extraTrackers.sobriety === undefined) state.extraTrackers.sobriety = false;
+
+  // Sobriety tracker data — a day count since startDate, a re-earnable
+  // milestone grid that clears on reset (an all-time record never does),
+  // a daily check-in log, and a short list of personal reasons ("Your
+  // why") shown during a craving and again before a reset. None of this
+  // feeds the reward mechanic — see awardRewardForPillarLog, which only
+  // ever fires from a real pillar log.
+  state.sobriety ||= {
+    startDate: todayISO(),
+    allTimeBestDays: 0,
+    milestonesAllTime: {},
+    milestonesCurrent: {},
+    checkIns: [],
+    whyItems: [],
+    lastResetDate: null,
+  };
+  state.sobriety.milestonesAllTime ||= {};
+  state.sobriety.milestonesCurrent ||= {};
+  state.sobriety.checkIns ||= [];
+  state.sobriety.whyItems ||= [];
 
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
