@@ -1645,22 +1645,27 @@ function renderSettings() {
   minePanel.appendChild(el(`<div class="settings-group-title">Your practices</div>`));
   minePanel.appendChild(
     el(
-      `<div class="settings-group-desc">Drag a tile to reorder it or move it between zones. Your first ${MOBILE_PINNED_COUNT} visible practices form the Home toolbar and pin to the bottom bar on mobile — the rest are Additional practices. Tap ⋯ on a tile to hide it without losing data, or remove it for good. Practices you added from the Gallery can be added back anytime; built-in ones can't.</div>`
+      `<div class="settings-group-desc">Drag a row (⠿) to reorder it or move it between zones. Your first ${MOBILE_PINNED_COUNT} visible practices form the Home toolbar and pin to the bottom bar on mobile, marked "Bar" — the rest are Additional practices. Tap the eye to hide instantly, no prompt. Tap the X to remove — that always asks first, since it deletes the practice's data for good. Practices you added from the Gallery can be added back anytime; built-in ones can't.</div>`
     )
   );
 
   const toolbarLabel = el(`<div class="practice-zone-label">Home toolbar</div>`);
-  const toolbarGrid = el(`<div class="practice-tile-grid"></div>`);
+  const toolbarGrid = el(`<div class="practice-row-list"></div>`);
   const extraLabel = el(`<div class="practice-zone-label">Additional practices</div>`);
-  const extraGrid = el(`<div class="practice-tile-grid"></div>`);
+  const extraGrid = el(`<div class="practice-row-list"></div>`);
   const hiddenLabel = el(`<div class="practice-zone-label">Hidden</div>`);
-  const hiddenGrid = el(`<div class="practice-tile-grid"></div>`);
+  const hiddenGrid = el(`<div class="practice-row-list"></div>`);
   minePanel.appendChild(toolbarLabel);
   minePanel.appendChild(toolbarGrid);
   minePanel.appendChild(extraLabel);
   minePanel.appendChild(extraGrid);
   minePanel.appendChild(hiddenLabel);
   minePanel.appendChild(hiddenGrid);
+
+  const dragHandleSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>`;
+  const eyeOpenSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+  const eyeOffSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.3 20.3 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a20.3 20.3 0 0 1-2.68 3.9M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+  const removeXSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>`;
 
   let visibleIdx = 0;
   let anyHidden = false;
@@ -1676,59 +1681,48 @@ function renderSettings() {
     if (s.visible) visibleIdx++;
     if (!s.visible) anyHidden = true;
 
-    const tile = el(`
-      <div class="practice-tile" draggable="true" data-sheet-id="${s.id}">
-        <button type="button" class="practice-tile-menu-btn" title="Options">⋯</button>
-        <span class="practice-tile-icon">${iconSvg(sheetIcon(s)).replace('width="20" height="20"', 'width="18" height="18"')}</span>
-        <span class="practice-tile-label">${escapeHtml(label)}</span>
+    const row = el(`
+      <div class="practice-row" draggable="true" data-sheet-id="${s.id}">
+        <span class="row-drag-handle">${dragHandleSvg}</span>
+        <span class="row-icon"${s.visible ? "" : ' style="opacity:.5;"'}>${iconSvg(sheetIcon(s)).replace('width="20" height="20"', 'width="17" height="17"')}</span>
+        <span class="row-label"${s.visible ? "" : ' style="color:var(--muted);"'}>${escapeHtml(label)}</span>
+        ${pinnedSlot ? `<span class="row-pinned-badge">Bar</span>` : ""}
+        <span class="row-actions">
+          <button type="button" class="row-icon-btn ${s.visible ? "eye-on" : "eye-off"}" title="${s.visible ? "Hide" : "Show"}">${s.visible ? eyeOpenSvg : eyeOffSvg}</button>
+          <button type="button" class="row-icon-btn remove-x" title="Remove">${removeXSvg}</button>
+        </span>
       </div>
     `);
 
-    const menuBtn = tile.querySelector(".practice-tile-menu-btn");
-    menuBtn.addEventListener("click", (e) => {
+    // Eye: instant toggle, no confirm — non-destructive, reversible.
+    row.querySelector(".eye-on, .eye-off").addEventListener("click", (e) => {
       e.stopPropagation();
-      document.querySelectorAll(".practice-tile-menu").forEach((m) => m.remove());
-      const menu = el(`
-        <div class="practice-tile-menu">
-          <button type="button" data-act="toggle">${s.visible ? "Hide" : "Show"}</button>
-          ${pinnedSlot ? "" : `<button type="button" class="danger" data-act="remove">Remove</button>`}
-        </div>
-      `);
-      menu.querySelector('[data-act="toggle"]').addEventListener("click", () => {
-        menu.remove();
-        toggleSheetVisible(s.id);
-      });
-      menu.querySelector('[data-act="remove"]')?.addEventListener("click", () => {
-        menu.remove();
-        if (isCustom) {
-          confirmModal(
-            `Remove ${label}?`,
-            "It'll disappear from your sidebar. You can add it again anytime from Settings, but its items will be gone for good.",
-            "Remove",
-            () => removeCustomSheet(s.id)
-          );
-        } else {
-          confirmModal(
-            `Remove ${label}?`,
-            "This is a built-in practice — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, use ⋯ → Hide instead.",
-            "Delete for good",
-            () => removeBuiltinSheet(s.id)
-          );
-        }
-      });
-      tile.appendChild(menu);
-      const closeMenu = (ev) => {
-        if (!menu.contains(ev.target)) {
-          menu.remove();
-          document.removeEventListener("click", closeMenu);
-        }
-      };
-      setTimeout(() => document.addEventListener("click", closeMenu), 0);
+      toggleSheetVisible(s.id);
     });
 
-    tile.addEventListener("dragstart", (e) => {
+    // X: always confirms first — this deletes data, hiding doesn't.
+    row.querySelector(".remove-x").addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (isCustom) {
+        confirmModal(
+          `Remove ${label}?`,
+          "It'll disappear from your sidebar. You can add it again anytime from Settings, but its items will be gone for good.",
+          "Remove",
+          () => removeCustomSheet(s.id)
+        );
+      } else {
+        confirmModal(
+          `Remove ${label}?`,
+          "This is a built-in practice — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, tap the eye instead.",
+          "Delete for good",
+          () => removeBuiltinSheet(s.id)
+        );
+      }
+    });
+
+    row.addEventListener("dragstart", (e) => {
       draggedSheetId = s.id;
-      tile.classList.add("dragging");
+      row.classList.add("dragging");
       e.dataTransfer.effectAllowed = "move";
       try {
         e.dataTransfer.setData("text/plain", s.id);
@@ -1736,45 +1730,45 @@ function renderSettings() {
         // Some browsers require this call to not throw even if unused.
       }
     });
-    tile.addEventListener("dragend", () => {
+    row.addEventListener("dragend", () => {
       draggedSheetId = null;
-      document.querySelectorAll(".practice-tile").forEach((t) => t.classList.remove("dragging", "drag-over-before", "drag-over-after"));
+      document.querySelectorAll(".practice-row").forEach((r) => r.classList.remove("dragging", "drag-over-above", "drag-over-below"));
     });
-    tile.addEventListener("dragover", (e) => {
+    row.addEventListener("dragover", (e) => {
       if (!draggedSheetId || draggedSheetId === s.id) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
-      const rect = tile.getBoundingClientRect();
-      const before = e.clientX - rect.left < rect.width / 2;
-      tile.classList.toggle("drag-over-before", before);
-      tile.classList.toggle("drag-over-after", !before);
+      const rect = row.getBoundingClientRect();
+      const above = e.clientY - rect.top < rect.height / 2;
+      row.classList.toggle("drag-over-above", above);
+      row.classList.toggle("drag-over-below", !above);
     });
-    tile.addEventListener("dragleave", () => {
-      tile.classList.remove("drag-over-before", "drag-over-after");
+    row.addEventListener("dragleave", () => {
+      row.classList.remove("drag-over-above", "drag-over-below");
     });
-    tile.addEventListener("drop", (e) => {
+    row.addEventListener("drop", (e) => {
       e.preventDefault();
       if (!draggedSheetId || draggedSheetId === s.id) return;
-      const rect = tile.getBoundingClientRect();
-      const before = e.clientX - rect.left < rect.width / 2;
-      reorderSheet(draggedSheetId, s.id, before);
+      const rect = row.getBoundingClientRect();
+      const above = e.clientY - rect.top < rect.height / 2;
+      reorderSheet(draggedSheetId, s.id, above);
     });
-    // Tapping the tile itself (not the ⋯ menu) goes straight to that
-    // practice — this grid is a jumping-off point to a practice you
+    // Tapping the row itself (not an action button) goes straight to that
+    // practice — this list is a jumping-off point to a practice you
     // already have, not just a reorder tool.
-    tile.addEventListener("click", (e) => {
-      if (e.target.closest(".practice-tile-menu-btn, .practice-tile-menu")) return;
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".row-actions")) return;
       activateTab(s.id);
     });
 
-    if (pinnedSlot) toolbarGrid.appendChild(tile);
-    else if (s.visible) extraGrid.appendChild(tile);
-    else hiddenGrid.appendChild(tile);
+    if (pinnedSlot) toolbarGrid.appendChild(row);
+    else if (s.visible) extraGrid.appendChild(row);
+    else hiddenGrid.appendChild(row);
   });
 
   hiddenLabel.style.display = anyHidden ? "" : "none";
   hiddenGrid.style.display = anyHidden ? "" : "none";
-  if (!extraGrid.children.length) extraGrid.appendChild(el(`<div class="practice-tile-empty">Drag a practice here</div>`));
+  if (!extraGrid.children.length) extraGrid.appendChild(el(`<div class="row-empty">Drag a practice here</div>`));
 
   minePanel.appendChild(
     el(`<div class="settings-note">Wellness isn't a practice you add or hide — it's built into Home now, not a separate page.</div>`)
@@ -11414,12 +11408,22 @@ async function boot() {
   // Extra trackers (Cycle, eventually others) are their own family,
   // separate from practices: they don't map to a pillar, don't count
   // against the practice cap, and are always free to add or remove.
-  // Cycle used to be forced on for everyone with no way to turn it off —
-  // grandfathered on here so nothing regresses for an account that was
-  // already using it, but from here forward it's opt-in from the gallery
-  // like everything else.
+  // Cycle used to be forced on for everyone with no way to turn it off.
+  // Per Veronika's explicit call, it moves fully off Home by default now
+  // — including for accounts that already had it — and only shows up
+  // again if chosen from the Gallery's "Extra trackers" section. No data
+  // is lost by this: the tracker's own logged entries aren't touched,
+  // only whether its row renders on Home.
   state.extraTrackers ||= {};
-  if (state.extraTrackers.cycle === undefined) state.extraTrackers.cycle = true;
+  if (state.extraTrackers.cycle === undefined) state.extraTrackers.cycle = false;
+  // A one-time forced flip, separate from the default above: the first
+  // version of this migration grandfathered existing accounts to `true`,
+  // which is exactly the opposite of what's wanted now — this runs once
+  // more to override that regardless of the value already saved.
+  if (!state.extraTrackersCycleOffV1Applied) {
+    state.extraTrackers.cycle = false;
+    state.extraTrackersCycleOffV1Applied = true;
+  }
 
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
