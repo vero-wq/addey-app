@@ -93,6 +93,21 @@ const SHEET_GALLERY = [
   },
 ];
 
+// Extra trackers — a different family from practices entirely: they
+// don't map to a pillar, don't ask anything of you daily, and don't
+// count against the practice cap (always free, no upgrade gate). Cycle
+// is the first; state.extraTrackers[key] is whether it's currently
+// added. Removing one hides it without touching any data already
+// logged under it.
+const EXTRA_TRACKERS_GALLERY = [
+  {
+    key: "cycle",
+    label: "Cycle",
+    icon: `<path d="M12 3a9 9 0 1 0 9 9"></path><path d="M12 3v9l6 3"></path>`,
+    desc: "A state to note, not a habit to complete — no streak, no pass or fail.",
+  },
+];
+
 // ------------------------------------------------------------------
 // Capsule Wardrobe — richer than a plain checklist: each item carries
 // category/type/color/season/priority/purchase-type/price data, seeded
@@ -1812,6 +1827,35 @@ function renderSettings() {
     gallery.appendChild(cardEl);
   });
   galleryPanel.appendChild(gallery);
+
+  // Extra trackers — its own section, deliberately separate from the
+  // practice cards above and not sharing their usage bar or upgrade
+  // gate: adding one is always free, since these aren't practices tied
+  // to a pillar in the first place.
+  galleryPanel.appendChild(el(`<div class="settings-group-title" style="margin-top:24px;">Extra trackers</div>`));
+  galleryPanel.appendChild(el(`<div class="settings-group-desc">Not a practice, not tied to a pillar — just something worth noting. Always free.</div>`));
+  const extraGallery = el(`<div class="sheet-gallery"></div>`);
+  EXTRA_TRACKERS_GALLERY.forEach((tpl) => {
+    const added = !!state.extraTrackers?.[tpl.key];
+    const cardEl = el(`
+      <div class="sheet-card">
+        <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <div class="sheet-card-name">${escapeHtml(tpl.label)}</div>
+        <div class="sheet-card-desc">${escapeHtml(tpl.desc)}</div>
+        ${added ? `<button type="button" class="btn-ghost small remove-tracker">Remove</button>` : `<button type="button" class="btn-ghost small">+ Add</button>`}
+      </div>
+    `);
+    cardEl.querySelector("button").addEventListener("click", () => {
+      state.extraTrackers ||= {};
+      state.extraTrackers[tpl.key] = !added;
+      scheduleSave();
+      renderSettings();
+      renderHome();
+    });
+    extraGallery.appendChild(cardEl);
+  });
+  galleryPanel.appendChild(extraGallery);
+
   panel.appendChild(galleryPanel);
 
   // Appearance lives on its own panel/tab technically, but belongs to
@@ -7863,7 +7907,7 @@ function openPillarMappingModal() {
           <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
         </div>
         <p class="muted" style="font-size:12.5px;line-height:1.5;margin:0 0 14px;">
-          Each pillar only shows the practices that actually fit it. Log something there today and it marks itself done. You can still tap a pillar on Home to log it yourself, for anything that isn't tracked in a practice (a trip to church, meditating without logging it).
+          Each pillar only shows the practices that actually fit it. Log something there today and it marks itself done. A pillar with nothing connected yet can't be marked done from Home — connect a practice to it here first.
         </p>
         <div id="pillar-mapping-sections"></div>
       </div>
@@ -7887,7 +7931,7 @@ function openPillarMappingModal() {
       `));
 
       if (!candidates.length) {
-        card.appendChild(el(`<div class="pillar-map-note">No practices connected for this pillar yet — log it manually from Home.</div>`));
+        card.appendChild(el(`<div class="pillar-map-note">No practices fit this pillar yet — add one from Practice Gallery so it can be logged.</div>`));
       } else if (candidates.length === 1) {
         const sp = candidates[0];
         // Only one practice fits here, so it's on automatically — shown as
@@ -9681,7 +9725,9 @@ function renderHomeTodayPillarsCard(today) {
   const card = el(`<div class="card"></div>`);
   card.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
   card.appendChild(renderPillarCycleGrid(todaysEntry, today, () => renderHome()));
-  card.appendChild(renderCycleTrackerRow(todaysEntry, today, () => renderHome()));
+  if (state.extraTrackers?.cycle) {
+    card.appendChild(renderCycleTrackerRow(todaysEntry, today, () => renderHome()));
+  }
   return card;
 }
 
@@ -9906,7 +9952,7 @@ function openYourRewardScreen() {
       linkBtn.addEventListener("click", () => {
         linkBtn.textContent = "Connecting…";
         linkBtn.disabled = true;
-        startPlaidLink(render, () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; });
+        startPlaidLink(() => { render(); renderHome(); }, () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; });
       });
       box.appendChild(linkBtn);
     } else {
@@ -9930,7 +9976,7 @@ function openYourRewardScreen() {
       `);
       syncRow.querySelector(".sync-btn").addEventListener("click", (e) => {
         e.target.textContent = "…";
-        syncRewardBalance(render, () => { e.target.textContent = "Sync"; });
+        syncRewardBalance(() => { render(); renderHome(); }, () => { e.target.textContent = "Sync"; });
       });
       box.appendChild(syncRow);
     }
@@ -9984,19 +10030,33 @@ function openEditRewardModal(onSaved) {
         </div>
         <div class="info-modal-body">
           <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Name</label>
-          <input type="text" class="reward-name-input" value="${escapeHtml(prize.itemName || "")}" placeholder="What are you saving for?" style="width:100%;box-sizing:border-box;margin-bottom:14px;" />
+          <input type="text" class="reward-name-input" value="${escapeHtml(prize.itemName || "")}" placeholder="What are you saving for?" style="width:100%;box-sizing:border-box;margin-bottom:14px;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--text);" />
           <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Savings goal</label>
           <div class="goal-dollar-row" style="display:flex;align-items:center;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:14px;overflow:hidden;">
             <span style="padding:10px 0 10px 12px;color:var(--muted);font-weight:700;">$</span>
             <input type="number" min="1" class="reward-goal-input" value="${prize.depositGoal || ""}" style="border:none;padding:10px 12px 10px 4px;flex:1;min-width:0;background:transparent;font-family:inherit;font-size:14px;" />
           </div>
           <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Target date</label>
-          <input type="date" class="prize-start-date" value="${addDays(prize.cycleStartDate, prize.cycleLengthDays)}" style="width:100%;box-sizing:border-box;" />
+          <div class="reward-target-days-hint" style="font-size:11.5px;color:var(--accent-dark);font-weight:600;margin-bottom:6px;"></div>
+          <input type="date" class="prize-start-date" value="${addDays(prize.cycleStartDate, prize.cycleLengthDays)}" style="width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--text);-webkit-appearance:none;appearance:none;" />
           <button type="button" class="btn-primary reward-save-btn" style="margin-top:18px;width:100%;padding:10px;border-radius:8px;border:none;">Save</button>
         </div>
       </div>
     </div>
   `);
+  const dateInput = overlay.querySelector(".prize-start-date");
+  const daysHint = overlay.querySelector(".reward-target-days-hint");
+  function updateDaysHint() {
+    if (!dateInput.value) { daysHint.textContent = ""; return; }
+    const days = Math.round((new Date(dateInput.value) - new Date(todayISO())) / 86400000);
+    if (days > 0) daysHint.textContent = `${days} day${days === 1 ? "" : "s"} from today`;
+    else if (days === 0) daysHint.textContent = "That's today";
+    else daysHint.textContent = `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} ago`;
+  }
+  updateDaysHint();
+  dateInput.addEventListener("input", updateDaysHint);
+  dateInput.addEventListener("change", updateDaysHint);
+
   overlay.querySelector(".reward-save-btn").addEventListener("click", () => {
     const newName = overlay.querySelector(".reward-name-input").value;
     const newGoal = parseInt(overlay.querySelector(".reward-goal-input").value, 10);
@@ -10072,9 +10132,8 @@ function openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDon
     <div class="modal-overlay sheet">
       <div class="modal-box pillarql-box">
         <div class="pillarql-title">${escapeHtml(label)}</div>
-        <div class="pillarql-sub">Go log it there, or just mark it done here.</div>
+        <div class="pillarql-sub">Which practice do you want to open?</div>
         <div class="pillarql-chip-row"></div>
-        <button type="button" class="pillarql-skip">Mark done manually</button>
       </div>
     </div>
   `);
@@ -10087,52 +10146,12 @@ function openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDon
     });
     row.appendChild(btn);
   });
-  overlay.querySelector(".pillarql-skip").addEventListener("click", () => {
-    overlay.remove();
-    openPillarQuickLogModal(key, label, today, todaysEntry, onDone);
-  });
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
   });
   document.body.appendChild(overlay);
 }
 
-function openPillarQuickLogModal(key, label, today, todaysEntry, onDone) {
-  const history = pillarManualLabelHistory(key);
-  const overlay = el(`
-    <div class="modal-overlay sheet">
-      <div class="modal-box pillarql-box">
-        <div class="pillarql-title">What did you do for ${escapeHtml(label)}?</div>
-        <div class="pillarql-sub">Tap one, or just mark it done.</div>
-        <div class="pillarql-chip-row">
-          ${history.map((h) => `<button type="button" class="pillarql-chip" data-label="${escapeHtml(h)}">${escapeHtml(h)}</button>`).join("")}
-          <button type="button" class="pillarql-chip add">+ New</button>
-        </div>
-        <button type="button" class="pillarql-skip">Just mark done, skip the detail</button>
-      </div>
-    </div>
-  `);
-  const finish = (activityLabel) => {
-    todaysEntry[key] = "Yes";
-    setPillarActivity(key, today, activityLabel || null, "manual");
-    scheduleSave();
-    overlay.remove();
-    onDone();
-  };
-  overlay.querySelectorAll(".pillarql-chip:not(.add)").forEach((btn) => {
-    btn.addEventListener("click", () => finish(btn.dataset.label));
-  });
-  overlay.querySelector(".pillarql-chip.add").addEventListener("click", () => {
-    const val = window.prompt(`What did you do for ${label}?`, "");
-    if (val === null) return;
-    finish(val.trim());
-  });
-  overlay.querySelector(".pillarql-skip").addEventListener("click", () => finish(null));
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-  document.body.appendChild(overlay);
-}
 
 // The six real pillar tiles, in one grid — shared by Home and the
 // Wellness page's own "Today" card so the exact same tap targets, same
@@ -10146,11 +10165,18 @@ function renderPillarCycleGrid(todaysEntry, today, onDone) {
   WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
     const done = todaysEntry[key] === "Yes";
     const caption = done ? pillarTodayCaption(key, today) : null;
+    const sources = pillarSourceSheets(key);
+    // Every completion has to trace back to a real practice now — no more
+    // freeform "what did you do" quick-log. A pillar with nothing mapped
+    // to it yet still gets a tap target, but it goes straight to Pillar
+    // Mapping to connect one, dimmed so it reads as "not loggable yet"
+    // rather than looking broken.
+    const unlinked = !done && !sources.length;
     const tile = el(`
-      <button type="button" class="home-pillar${done ? " done" : ""}">
+      <button type="button" class="home-pillar${done ? " done" : ""}${unlinked ? " unlinked" : ""}">
         <span class="home-pillar-icon ${done ? "on" : "off"}">${done ? checkSvg : ""}</span>
         <span class="home-pillar-label">${escapeHtml(label)}</span>
-        ${caption ? `<span class="home-pillar-source">${escapeHtml(caption)}</span>` : ""}
+        ${caption ? `<span class="home-pillar-source">${escapeHtml(caption)}</span>` : unlinked ? `<span class="home-pillar-source">Connect a practice</span>` : ""}
       </button>
     `);
     tile.addEventListener("click", () => {
@@ -10158,12 +10184,16 @@ function renderPillarCycleGrid(todaysEntry, today, onDone) {
         openWellnessDayEditor(today, onDone);
         return;
       }
-      const sources = pillarSourceSheets(key);
-      if (sources.length) {
-        openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDone);
-      } else {
-        openPillarQuickLogModal(key, label, today, todaysEntry, onDone);
+      if (!sources.length) {
+        openPillarMappingModal();
+        return;
       }
+      if (sources.length === 1) {
+        // Only one practice fits here — nothing to choose, just go log it.
+        activateTab(sources[0].id);
+        return;
+      }
+      openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDone);
     });
     grid.appendChild(tile);
   });
@@ -11209,6 +11239,16 @@ async function boot() {
   if (state.veronikasPrize.quote === OLD_DEFAULT_PRIZE_QUOTE) {
     state.veronikasPrize.quote = DEFAULT_PRIZE_QUOTE;
   }
+
+  // Extra trackers (Cycle, eventually others) are their own family,
+  // separate from practices: they don't map to a pillar, don't count
+  // against the practice cap, and are always free to add or remove.
+  // Cycle used to be forced on for everyone with no way to turn it off —
+  // grandfathered on here so nothing regresses for an account that was
+  // already using it, but from here forward it's opt-in from the gallery
+  // like everything else.
+  state.extraTrackers ||= {};
+  if (state.extraTrackers.cycle === undefined) state.extraTrackers.cycle = true;
 
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
