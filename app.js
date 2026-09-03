@@ -7889,6 +7889,7 @@ function applyPillarAutoDetection(todaysEntry, today) {
       todaysEntry[key] = "Yes";
       changed = true;
       setPillarActivity(key, today, labelForActivitySource(activeId), activeId);
+      awardRewardForPillarLog();
     }
   });
   if (changed) scheduleSave();
@@ -9206,29 +9207,62 @@ function openWellnessDayEditor(dateStr, onClose) {
 }
 
 // ------------------------------------------------------------------
-// Your Reward — an optional real-dollar savings goal, entirely separate
-// from the habit/streak system. Set up (or skipped) once at the end of
-// onboarding, and revisited only in Settings → Your Reward — Home shows
-// at most a single slim pill (see renderHomeRewardPill), never the full
-// card, per Veronika's call to stop it from dominating the screen.
+// Your Reward — an optional real-dollar savings goal. Progress is earned
+// by logging habits (see computeDollarPerLog/awardRewardForPillarLog
+// below), not by a linked bank balance. Set up (or skipped) once at the
+// end of onboarding, and revisited any time in Settings → Your Reward.
+// Home shows the full photo banner (see renderHomeRewardBanner) plus its
+// progress bar — per Veronika's call, the photo is a real motivator and
+// stays prominent — but never the "link a bank account" card, which is
+// reserved for onboarding and the popup sheet.
 //
-// Deliberately no tie-in to streaks, grace days, or logging of any kind:
-// "saved" is purely (linked account's current balance) minus (its
-// balance the day this cycle started), and "reached" fires the moment
-// that gap clears the goal — early or late, the calendar target date is
-// just framing text, never a gate.
+// A linked account is purely informational here: "realGrowth" is (its
+// current balance) minus (its balance the day this cycle started), shown
+// alongside the earned progress as an honest comparison, never a gate on
+// "reached" — that fires the moment earnedAmount clears the goal.
 // ------------------------------------------------------------------
+// The rate a single pillar completion earns toward the dollar goal —
+// spread evenly across the whole cycle so a perfect run lands right
+// around the target date. Computed once, whenever the goal or cycle
+// length is set (setup or edit), never re-derived on the fly, so it
+// stays predictable through the cycle even if the active pillar count
+// changes later. Rounded to the nearest quarter so the number reads
+// clean ($9.25, not $9.259259...).
+function computeDollarPerLog(goal, cycleLengthDays, pillarCount) {
+  const slots = Math.max(1, cycleLengthDays) * Math.max(1, pillarCount);
+  const raw = (goal || 0) / slots;
+  return Math.max(0.25, Math.round(raw / 0.25) * 0.25);
+}
+
 function computeRewardProgress(prize, today) {
   const enabled = !!prize.enabled;
   const linked = !!(prize.linkedAccount && prize.linkedAccount.itemId);
-  const goal = prize.depositGoal || 0; // dollars, set during reward setup — not a Yes-day count
-  const saved = linked
+  const goal = prize.depositGoal || 0; // dollars, set during reward setup
+  // Progress is earned by logging — one pillar completion = dollarPerLog,
+  // credited in awardRewardForPillarLog. The linked bank balance is a
+  // separate, informational number (realGrowth below): real dollars
+  // actually saved since the cycle started, shown alongside as an
+  // honest comparison, never the thing that gates the goal.
+  const earned = Math.max(0, prize.earnedAmount || 0);
+  const pct = goal ? Math.max(0, Math.min(100, Math.round((earned / goal) * 100))) : 0;
+  const reached = goal > 0 && earned >= goal;
+  const realGrowth = linked
     ? Math.max(0, (prize.linkedAccount.currentBalance || 0) - (prize.linkedAccount.cycleStartBalance || 0))
-    : 0;
-  const pct = linked && goal ? Math.max(0, Math.min(100, Math.round((saved / goal) * 100))) : 0;
-  const reached = linked && goal > 0 && saved >= goal;
+    : null;
   const targetDate = addDays(prize.cycleStartDate, prize.cycleLengthDays);
-  return { enabled, linked, goal, saved, pct, reached, targetDate };
+  return { enabled, linked, goal, earned, pct, reached, realGrowth, targetDate };
+}
+
+// Credits one pillar completion toward the reward the moment it happens —
+// called from applyPillarAutoDetection, the single place a pillar
+// actually flips to Yes now that manual quick-log is gone. Idempotent
+// per pillar per day isn't needed here since this only runs at the exact
+// moment `changed` becomes true for that key, never on a re-render of an
+// already-Yes day.
+function awardRewardForPillarLog() {
+  const prize = state.veronikasPrize;
+  if (!prize?.enabled || !prize.dollarPerLog) return;
+  prize.earnedAmount = Math.max(0, (prize.earnedAmount || 0) + prize.dollarPerLog);
 }
 
 // Fractions of the dollar goal, marked as ticks right on the progress
@@ -9627,55 +9661,115 @@ function rewardCupcakeBadgeSvg() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${rewardCupcakeSvg()}</svg>`;
 }
 
-// The slim Home indicator for the reward — a single pill, never a card.
-// Three states: nothing at all if the reward was skipped in onboarding
-// (prize.enabled is false); a dashed "finish setting up" nudge if it's
-// enabled but no bank is linked yet; or the real progress pill once it
-// is, flipping to a "ready to claim" tone the moment the goal's hit.
-// Tapping it always opens Settings → Your Reward — there's nothing to
-// edit inline here.
-function renderHomeRewardPill(today) {
+// Small piggy-bank badge for anything nudging toward linking a bank
+// account — deliberately not the cupcake, which stays the reward's own
+// identity icon everywhere it already appears.
+function rewardPiggyBankSvg() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 12c0-3.5 3.4-6 7.5-6 2.7 0 5 1.1 6.3 2.8.2-.1.4-.1.7-.1 1.1 0 2 .9 2 2v.3c0 .8-.5 1.5-1.2 1.8-.3 1.6-1.4 3-2.8 3.8V19a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-.3c-.6.1-1.3.2-2 .2s-1.4-.1-2-.2V19a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-2.6C4.9 15.5 4.5 13.9 4.5 12z"></path>
+    <circle cx="16" cy="11.3" r=".6" fill="currentColor" stroke="none"></circle>
+    <path d="M8 6.3 7.2 4.6"></path>
+  </svg>`;
+}
+
+// The big Home banner for the reward — same 16:10 photo size/shape the
+// old full Your Reward screen used, relocated onto Home directly, since
+// the photo itself is the motivator and Veronika was explicit it needs to
+// stay prominent there. What does NOT come back onto Home is the "link a
+// bank account" card — that stays reserved for onboarding and the popup
+// sheet (renderHomeRewardLinkLine/openLinkBankAccountSheet just below).
+// Progress is earned-dollars vs. goal (logging habits moves this, always,
+// whether or not a bank is linked) — never gated on Plaid. Tapping the
+// banner opens Settings → Your Reward, same as the old pill did.
+function renderHomeRewardBanner(today) {
   const prize = state.veronikasPrize;
   if (!prize.enabled) return null;
   const stats = computeRewardProgress(prize, today);
   const name = prize.itemName || "your reward";
 
-  let bodyHtml;
-  let pillClass = "reward-pill";
-  let iconBg = "radial-gradient(circle at 35% 30%, #EFE0C4, #C7A876 60%, #8E6B3E 100%)";
-  let iconInner = rewardCupcakeSvg();
-
-  if (!stats.linked) {
-    pillClass += " needs-link";
-    bodyHtml = `<div class="reward-pill-name">Finish setting up "${escapeHtml(name)}"</div>`;
-  } else if (stats.reached) {
-    iconBg = "radial-gradient(circle at 35% 30%, #DCE6D3, #8FA57D 60%, #55694A 100%)";
-    iconInner = `<path d="M20 6 9 17l-5-5"></path>`;
-    bodyHtml = `<div class="reward-pill-name">${escapeHtml(name)} — ready to claim!</div>`;
+  const banner = el(`<div class="home-reward-banner${stats.reached ? " reached" : ""}"></div>`);
+  if (prize.itemPhoto) {
+    banner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
   } else {
-    bodyHtml = `
-      <div class="reward-pill-name">${escapeHtml(name)}</div>
-      <div class="reward-pill-bar"><div class="reward-pill-fill" style="width:${stats.pct}%;"></div></div>
-    `;
-  }
-
-  const pill = el(`
-    <div class="${pillClass}">
-      <div class="reward-pill-icon" style="background:${iconBg};">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${iconInner}</svg>
+    banner.appendChild(el(`
+      <div class="home-reward-banner-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${rewardCupcakeSvg()}</svg>
       </div>
-      <div class="reward-pill-body">${bodyHtml}</div>
-      ${stats.linked && !stats.reached ? `<div class="reward-pill-figure">$${stats.saved}/$${stats.goal}</div>` : ""}
-      <div class="reward-pill-chevron">›</div>
+    `));
+  }
+  banner.appendChild(el(`
+    <div class="home-reward-scrim">
+      <div class="home-reward-name">${escapeHtml(name)}${stats.reached ? " — ready to claim!" : ""}</div>
+      <div class="home-reward-sub">${stats.reached ? "Tap to claim" : `Targeting ${stats.targetDate}`}</div>
+    </div>
+  `));
+  banner.addEventListener("click", () => openYourRewardScreen());
+
+  const wrap = el(`<div></div>`);
+  wrap.appendChild(banner);
+  wrap.appendChild(el(`
+    <div class="home-reward-progress">
+      <div class="home-reward-progress-row">
+        <span class="home-reward-progress-label">Earned so far</span>
+        <span class="home-reward-progress-figure">$${stats.earned.toFixed(2).replace(/\.00$/, "")} of $${stats.goal}</span>
+      </div>
+      <div class="home-reward-bar"><div class="home-reward-fill${stats.reached ? " reached" : ""}" style="width:${stats.pct}%;"></div></div>
+    </div>
+  `));
+  return wrap;
+}
+
+// The small dashed "not linked yet" nudge that lives on Home once a
+// reward is set up and progress is earning normally — deliberately not a
+// big card (that lives only in onboarding, see the reward-setup step in
+// finishOnboarding). Tapping it pops the same "Track this in real
+// dollars" content as a bottom sheet instead of a permanent Home fixture.
+function renderHomeRewardLinkLine() {
+  const prize = state.veronikasPrize;
+  if (!prize.enabled || (prize.linkedAccount && prize.linkedAccount.itemId)) return null;
+  const line = el(`
+    <div class="home-link-line">
+      <span class="home-link-line-icon">${rewardPiggyBankSvg()}</span>
+      <span>Link a bank account to start tracking</span>
     </div>
   `);
-  pill.addEventListener("click", () => openYourRewardScreen());
-  return pill;
+  line.addEventListener("click", () => openLinkBankAccountSheet());
+  return line;
+}
+
+// The same "Track it in real dollars" prompt shown in onboarding, popped
+// up as a bottom sheet instead of living permanently on Home. This is the
+// only place that big prompt appears again after setup — per Veronika's
+// call, Home itself only ever shows the small dashed line above.
+function openLinkBankAccountSheet() {
+  const overlay = el(`
+    <div class="sheet-overlay">
+      <div class="sheet-box">
+        <button type="button" class="icon-btn sheet-close" aria-label="Close">${closeSvg}</button>
+        <div class="link-empty-icon">${rewardPiggyBankSvg()}</div>
+        <div class="onboarding-headline" style="margin-top:10px;">Track it in real dollars</div>
+        <div class="onboarding-subline">Link a bank account so you can see your real balance alongside what you've earned. Read-only — Addley can see the balance, never move money.</div>
+        <button type="button" class="onboarding-primary-btn link-sheet-btn">Link a bank account</button>
+      </div>
+    </div>
+  `);
+  overlay.querySelector(".sheet-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  const linkBtn = overlay.querySelector(".link-sheet-btn");
+  linkBtn.addEventListener("click", () => {
+    linkBtn.textContent = "Connecting…";
+    linkBtn.disabled = true;
+    startPlaidLink(
+      () => { overlay.remove(); render(); renderHome(); },
+      () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; }
+    );
+  });
+  document.body.appendChild(overlay);
 }
 
 // The new front door: streak flame + today's four pillars, all in one
 // card. The reward is deliberately NOT part of this card's content
-// anymore — see renderHomeRewardPill just below, appended separately so
+// anymore — see renderHomeRewardBanner just below, appended separately so
 // it can render nothing at all when no reward is set up.
 function renderHomeHero(today) {
   const todaysEntry = ensureTodaysWellnessEntry(today);
@@ -9709,8 +9803,10 @@ function renderHomeHero(today) {
     `));
   }
 
-  const rewardPill = renderHomeRewardPill(today);
-  if (rewardPill) hero.appendChild(rewardPill);
+  const rewardBanner = renderHomeRewardBanner(today);
+  if (rewardBanner) hero.appendChild(rewardBanner);
+  const linkLine = renderHomeRewardLinkLine();
+  if (linkLine) hero.appendChild(linkLine);
 
   return hero;
 }
@@ -9946,8 +10042,27 @@ function openYourRewardScreen() {
     banner.appendChild(editBtn);
     box.appendChild(banner);
 
+    // Primary progress — earned by logging, not by the bank balance.
+    // Always shown once a reward exists, linked or not.
+    box.appendChild(el(`
+      <div class="account-section" style="border-top:none;padding-top:4px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+          <span style="font-size:11.5px;font-weight:700;">Earned so far</span>
+          <span style="font-size:11.5px;font-weight:700;color:var(--accent-dark);">$${stats.earned.toFixed(2).replace(/\.00$/, "")} of $${stats.goal}</span>
+        </div>
+        <div class="home-deposit-track-bar">
+          <div class="home-deposit-track-fill" style="width:${stats.pct}%;"></div>
+          ${REWARD_MILESTONE_FRACTIONS.map((f) => `<div class="home-deposit-tick ${stats.earned >= Math.round(stats.goal * f) ? "passed" : ""}" style="left:${f * 100}%;"></div>`).join("")}
+        </div>
+        ${prize.dollarPerLog ? `<div class="account-note" style="margin-top:6px;">$${prize.dollarPerLog} earned per pillar logged, each day.</div>` : ""}
+      </div>
+    `));
+
+    // Real bank balance — informational only from here on. Linking never
+    // moves money and never changes the progress bar above; it's just an
+    // honest side-by-side with what's actually in the account.
     if (!stats.linked) {
-      box.appendChild(el(`<div class="account-note" style="margin-bottom:10px;">Link a bank account to track real progress toward $${stats.goal || 0}. Read-only — Addley can see the balance, never move money.</div>`));
+      box.appendChild(el(`<div class="account-note" style="margin:10px 0;">Optionally link a bank account to see your real balance alongside this. Read-only — Addley can see the balance, never move money.</div>`));
       const linkBtn = el(`<button type="button" class="onboarding-primary-btn" style="margin-top:0;">Link a bank account</button>`);
       linkBtn.addEventListener("click", () => {
         linkBtn.textContent = "Connecting…";
@@ -9957,16 +10072,7 @@ function openYourRewardScreen() {
       box.appendChild(linkBtn);
     } else {
       box.appendChild(el(`
-        <div class="account-section" style="border-top:none;padding-top:4px;">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
-            <span style="font-size:11.5px;font-weight:700;">Saved so far</span>
-            <span style="font-size:11.5px;font-weight:700;color:var(--accent-dark);">$${stats.saved} of $${stats.goal}</span>
-          </div>
-          <div class="home-deposit-track-bar">
-            <div class="home-deposit-track-fill" style="width:${stats.pct}%;"></div>
-            ${REWARD_MILESTONE_FRACTIONS.map((f) => `<div class="home-deposit-tick ${stats.saved >= Math.round(stats.goal * f) ? "passed" : ""}" style="left:${f * 100}%;"></div>`).join("")}
-          </div>
-        </div>
+        <div class="account-note" style="margin-top:12px;">Your linked balance has grown $${stats.realGrowth} since you started — separate from the progress above.</div>
       `));
       const syncRow = el(`
         <div class="account-note" style="display:flex;justify-content:space-between;align-items:center;">
@@ -9994,6 +10100,7 @@ function openYourRewardScreen() {
         prize.cycleStartDate = todayISO();
         prize.itemName = "";
         prize.itemPhoto = null;
+        prize.earnedAmount = 0;
         if (prize.linkedAccount) prize.linkedAccount.cycleStartBalance = prize.linkedAccount.currentBalance;
         scheduleSave();
         render();
@@ -10068,6 +10175,15 @@ function openEditRewardModal(onSaved) {
     if (newTarget) {
       const days = Math.max(1, Math.round((new Date(newTarget) - new Date(prize.cycleStartDate)) / 86400000));
       prize.cycleLengthDays = days;
+    }
+    // Re-locks the per-log rate whenever the goal or target date changes —
+    // it's what keeps "earn dollars by logging" honest to the new numbers.
+    if (prize.depositGoal) {
+      prize.dollarPerLog = computeDollarPerLog(
+        prize.depositGoal,
+        prize.cycleLengthDays,
+        WELLNESS_YESNO_FIELDS.length
+      );
     }
     scheduleSave();
     overlay.remove();
@@ -10756,9 +10872,10 @@ function showOnboardingFlow() {
 
     if (step === "rewardLink") {
       box.insertAdjacentHTML("beforeend", `
+        <div class="link-empty-icon" style="margin-bottom:10px;">${rewardPiggyBankSvg()}</div>
         <div class="onboarding-eyebrow">Your reward</div>
         <div class="onboarding-headline">Track it in real dollars</div>
-        <div class="onboarding-subline">Link a bank account so your progress reflects what you've actually saved. Read-only — Addley can see the balance, never move money.</div>
+        <div class="onboarding-subline">Logging your habits is what earns this — linking a bank account just lets you see your real balance alongside it. Read-only, optional, and it never moves money.</div>
         <button type="button" class="onboarding-primary-btn" id="rewardLinkBtn">Link a bank account</button>
         <button type="button" class="onboarding-skip-link" id="rewardLinkSkip">I'll link this later, from Settings</button>
       `);
@@ -10844,10 +10961,19 @@ function showOnboardingFlow() {
       state.veronikasPrize.depositGoal = rewardGoalDollars;
       state.veronikasPrize.cycleStartDate = todayISO();
       state.veronikasPrize.cycleLengthDays = rewardTargetDays;
+      state.veronikasPrize.earnedAmount = 0;
+      // Computed silently from the three inputs she already entered above
+      // (name, dollar goal, target date) — no extra onboarding step.
+      state.veronikasPrize.dollarPerLog = computeDollarPerLog(
+        rewardGoalDollars,
+        rewardTargetDays,
+        WELLNESS_YESNO_FIELDS.length
+      );
       if (rewardPhotoDataUrl) state.veronikasPrize.itemPhoto = rewardPhotoDataUrl;
       // A bank linked during this flow already snapshotted its own
-      // cycleStartBalance in startPlaidLink's onSuccess handler — nothing
-      // more to do here for that case.
+      // cycleStartBalance in startPlaidLink's onSuccess handler — that
+      // balance is shown as an informational comparison only now; it
+      // doesn't feed into progress (see computeRewardProgress).
     }
 
     state.onboardingComplete = true;
@@ -11043,11 +11169,17 @@ async function boot() {
   // untouched and still reachable from Home's "See full wellness history"
   // link; this only ever runs once, so turning it back on visible from
   // Settings afterward sticks normally.
-  if (!state.homeAbsorbsWellnessV1Applied) {
+  // Deliberately a fresh flag, not the pre-existing
+  // homeAbsorbsWellnessV1Applied — an account whose data predates the
+  // hide-Wellness line above already had that older flag set to true from
+  // an earlier version of this same migration block, which meant this
+  // step silently never ran for it even though the flag looked "done".
+  if (!state.homeAbsorbsWellnessHideV1Applied) {
     const wellnessSheet = state.sheets.find((s) => s.id === "wellness");
     if (wellnessSheet) wellnessSheet.visible = false;
-    state.homeAbsorbsWellnessV1Applied = true;
+    state.homeAbsorbsWellnessHideV1Applied = true;
   }
+  state.homeAbsorbsWellnessV1Applied = true;
   state.customSheets ||= {};
   // One-time: shortened three gallery template labels ("Connections Log",
   // "Quran Reading Plan", "Capsule Wardrobe") so they stay well clear of
@@ -11234,6 +11366,20 @@ async function boot() {
   // that keep seeing it; only brand-new accounts start with it off.
   if (state.veronikasPrize.enabled === undefined) state.veronikasPrize.enabled = true;
   state.veronikasPrize.linkedAccount ||= null;
+  // Habit-logging-earns-it mechanic (2026-09): progress is driven by
+  // earnedAmount, credited per pillar completion at dollarPerLog each.
+  // A linked Plaid balance is informational only from here on (see
+  // computeRewardProgress). Existing accounts get a dollarPerLog backfilled
+  // from whatever goal/cycle length they already have so earning starts
+  // immediately without asking them to re-enter anything.
+  if (state.veronikasPrize.earnedAmount === undefined) state.veronikasPrize.earnedAmount = 0;
+  if (!state.veronikasPrize.dollarPerLog && state.veronikasPrize.depositGoal) {
+    state.veronikasPrize.dollarPerLog = computeDollarPerLog(
+      state.veronikasPrize.depositGoal,
+      state.veronikasPrize.cycleLengthDays,
+      WELLNESS_YESNO_FIELDS.length
+    );
+  }
   // Upgrade the default wording once, but never touch it if she's
   // written her own quote (i.e. it no longer matches either default).
   if (state.veronikasPrize.quote === OLD_DEFAULT_PRIZE_QUOTE) {
