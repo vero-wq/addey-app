@@ -11380,6 +11380,31 @@ async function boot() {
       WELLNESS_YESNO_FIELDS.length
     );
   }
+  // One-time backfill for accounts that already had a reward going before
+  // this mechanic existed: without this, switching from "balance is the
+  // goal" to "logging earns it" would make an account's progress bar drop
+  // back to $0 even though real pillar history already exists for this
+  // cycle — reads as lost progress, not a fresh start. Credits every
+  // Yes already logged since cycleStartDate, once, at the locked-in rate.
+  if (!state.veronikasPrize.earnedBackfillV1Applied) {
+    state.veronikasPrize.earnedBackfillV1Applied = true;
+    if (state.veronikasPrize.dollarPerLog && state.veronikasPrize.cycleStartDate) {
+      const startDate = state.veronikasPrize.cycleStartDate;
+      let backfilledLogs = 0;
+      (state.wellness || []).forEach((entry) => {
+        if (!entry.logDate || entry.logDate < startDate) return;
+        WELLNESS_YESNO_FIELDS.forEach(([key]) => {
+          if (entry[key] === "Yes") backfilledLogs++;
+        });
+      });
+      if (backfilledLogs > 0) {
+        state.veronikasPrize.earnedAmount = Math.max(
+          state.veronikasPrize.earnedAmount || 0,
+          backfilledLogs * state.veronikasPrize.dollarPerLog
+        );
+      }
+    }
+  }
   // Upgrade the default wording once, but never touch it if she's
   // written her own quote (i.e. it no longer matches either default).
   if (state.veronikasPrize.quote === OLD_DEFAULT_PRIZE_QUOTE) {
