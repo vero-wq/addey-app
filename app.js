@@ -30,6 +30,7 @@ const SHEET_GALLERY = [
     icon: `<rect x="1.5" y="9" width="3" height="6" rx="1"></rect><rect x="19.5" y="9" width="3" height="6" rx="1"></rect><rect x="5.5" y="7" width="2.5" height="10" rx="1"></rect><rect x="16" y="7" width="2.5" height="10" rx="1"></rect><line x1="8" y1="12" x2="16" y2="12"></line>`,
     desc: "Track sets, weight, and how your training sessions are going.",
     starterItems: ["Upper body — Monday", "Lower body — Wednesday", "Full body — Friday"],
+    type: "practice",
   },
   {
     key: "activity",
@@ -37,6 +38,7 @@ const SHEET_GALLERY = [
     icon: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>`,
     desc: "Walks, hikes, runs, rides — anything that's not sets and reps. Workout Log's sibling for Movement.",
     starterItems: [],
+    type: "practice",
   },
   {
     key: "mealLog",
@@ -44,6 +46,7 @@ const SHEET_GALLERY = [
     icon: `<path d="M11 2a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3v8"></path><path d="M18 2v9a3 3 0 0 1-3 3"></path><path d="M18 2v20"></path>`,
     desc: "A quick daily log of how you ate — Food's practice, same idea as Activity Log for Movement.",
     starterItems: [],
+    type: "practice",
   },
   {
     key: "quran",
@@ -51,6 +54,7 @@ const SHEET_GALLERY = [
     icon: `<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h8M9 11h8M9 15h5"></path>`,
     desc: "31 reading segments with the same pace tracker as your Bible plan.",
     starterItems: [],
+    type: "practice",
   },
   {
     key: "books",
@@ -58,6 +62,7 @@ const SHEET_GALLERY = [
     icon: `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h7"></path>`,
     desc: "Your reading list, organized by category — to read and already read.",
     starterItems: [],
+    type: "practice",
   },
   {
     key: "social",
@@ -65,6 +70,7 @@ const SHEET_GALLERY = [
     icon: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>`,
     desc: "A quick log of who you connected with today — a call, coffee, a real conversation.",
     starterItems: [],
+    type: "practice",
   },
   {
     key: "prayer",
@@ -72,6 +78,7 @@ const SHEET_GALLERY = [
     icon: `<path d="M12 2v6"></path><path d="M8.5 8c0 2 1 3.5 3.5 3.5S15.5 10 15.5 8"></path><rect x="9.5" y="11" width="5" height="10" rx="1"></rect>`,
     desc: "A quick tap for each prayer — the five daily times, plus gratitude, intercession, and protection.",
     starterItems: [],
+    type: "practice",
   },
   {
     key: "breathe",
@@ -79,6 +86,7 @@ const SHEET_GALLERY = [
     icon: `<circle cx="12" cy="12" r="4"></circle><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"></path>`,
     desc: "A guided breathing session with a mood check-in before and after — box breathing, a slower breath, and a soft guiding sound.",
     starterItems: [],
+    type: "practice",
   },
   // Kept last, deliberately: a genuinely useful utility, but the one
   // gallery space with no habit pillar behind it — same category as the
@@ -90,6 +98,7 @@ const SHEET_GALLERY = [
     icon: `<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path>`,
     desc: "Checklist for what's in rotation this season, by category — a general wardrobe utility, not a habit pillar.",
     starterItems: ["Tops", "Bottoms", "Outerwear", "Shoes", "Accessories"],
+    type: "tool",
   },
 ];
 
@@ -105,12 +114,22 @@ const EXTRA_TRACKERS_GALLERY = [
     label: "Cycle",
     icon: `<path d="M12 3a9 9 0 1 0 9 9"></path><path d="M12 3v9l6 3"></path>`,
     desc: "Log when your period starts and Addley predicts your phase from there — no streak, no pass or fail.",
+    type: "tracker",
   },
   {
     key: "sobriety",
     label: "Sobriety",
-    icon: `<path d="M12 21c-4-3-7-6.5-7-10a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 3.5-3 7-7 10-1.5-.9-2.7-1.8-3.9-2.7"></path>`,
-    desc: "A day count and a daily check-in — never a streak, never money toward your reward.",
+    // A proper symmetric heart (mirrored left/right around x=12) — the
+    // previous path had a stray extra curve segment tacked on after the
+    // bottom point that never closed back up, which is what made it read
+    // as lopsided/off-center rather than a clean heart.
+    icon: `<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>`,
+    // 2026-09 apps rearchitecture: Sobriety's daily check-in is a real
+    // dated log (state.sobriety.checkIns), so it moved from "tracker" to
+    // "practice" — any check-in today is a deposit and it earns its own
+    // streak now, same as Workout Log or Meal Log.
+    desc: "A day count and a daily check-in — any check-in is a deposit toward your reward, with its own streak.",
+    type: "practice",
   },
 ];
 
@@ -506,6 +525,13 @@ function mergeRemoteBeforeSave(remote, local) {
   if (local.sobriety && remote.sobriety) {
     local.sobriety.checkIns = mergeJournalRecords(remote.sobriety.checkIns, local.sobriety.checkIns, (c) => c.date);
   }
+  // Cycle periods can be deleted through the UI, so — unlike the journal
+  // records above — a stale device must never get to resurrect one a
+  // newer device already removed. Whole-object last-write-wins (keyed by
+  // state.cycle.updatedAt, bumped on every log/edit/delete) protects a
+  // freshly-logged or freshly-edited period from a blind overwrite
+  // without ever reviving something intentionally deleted.
+  local.cycle = mergeLastWriteWins(remote.cycle, local.cycle);
   // Lifetime Milestones records — permanent by design, so these use
   // union merges rather than last-write-wins: a milestone earned on one
   // device must survive a blind overwrite autosaved from another.
@@ -854,6 +880,226 @@ function sheetLabel(sheet) {
   return state.customSheets[sheet.id]?.label || "Practice";
 }
 
+// ------------------------------------------------------------------
+// Apps (2026-09 rearchitecture) — every built-in or gallery sheet is one
+// of three types now: "practice" (its own streak, any log is a deposit),
+// "tracker" (Cycle — state to note, never a streak, never a deposit), or
+// "tool" (a plain checklist — Wardrobe, Lists — never dated or tracked).
+// Gallery templates carry their type on SHEET_GALLERY/EXTRA_TRACKERS_
+// GALLERY; built-in sheets (which have no template) are classified here.
+// Budget/Investments/Wellness are none of the three — they sit outside
+// the Apps model entirely, same as they always have.
+// ------------------------------------------------------------------
+const BUILTIN_PRACTICE_IDS = ["bible", "sleep"];
+const BUILTIN_TOOL_IDS = ["todo"];
+
+function appTypeForSheet(s) {
+  if (s.kind === "builtin") {
+    if (BUILTIN_PRACTICE_IDS.includes(s.id)) return "practice";
+    if (BUILTIN_TOOL_IDS.includes(s.id)) return "tool";
+    return null; // budget, investments, wellness — not part of the Apps model
+  }
+  const cs = state.customSheets[s.id];
+  const tpl = SHEET_GALLERY.find((g) => g.key === cs?.templateKey);
+  return tpl ? tpl.type || "practice" : null;
+}
+
+// Every currently-added, visible app that belongs on Home's unified grid —
+// Practices and Trackers only, never Tools. Sobriety and Cycle aren't
+// entries in state.sheets at all (they're extraTrackers), so they're
+// folded in here alongside the sheet-backed ones.
+function currentAppEntries() {
+  const entries = [];
+  state.sheets.forEach((s) => {
+    if (!s.visible) return;
+    const type = appTypeForSheet(s);
+    if (type === "practice" || type === "tracker") {
+      entries.push({ id: s.id, label: sheetLabel(s), icon: sheetIcon(s), type });
+    }
+  });
+  if (state.extraTrackers?.sobriety) {
+    const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "sobriety");
+    entries.push({ id: "sobriety", label: "Sobriety", icon: tpl?.icon, type: "practice" });
+  }
+  if (state.extraTrackers?.cycle) {
+    const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "cycle");
+    entries.push({ id: "cycle", label: "Cycle", icon: tpl?.icon, type: "tracker" });
+  }
+  return entries;
+}
+
+function currentPracticeAppIds() {
+  return currentAppEntries()
+    .filter((e) => e.type === "practice")
+    .map((e) => e.id);
+}
+
+// Did she log something today in this particular space? The real,
+// per-template "was this actually logged today" check — reused directly
+// by isAppLoggedToday below for every sheet-backed Practice, since each
+// template's dated-log shape is already known here.
+function sheetActiveToday(sheetId, today) {
+  if (sheetId === "bible") {
+    return state.bible.some((r) => r.done && r.completedDate === today);
+  }
+  if (sheetId === "sleep") {
+    // Sleep protected is an outcome, not just a logged action — logging a
+    // rough, short night shouldn't count the same as a real one. "Today"
+    // reads on last night specifically, since that's what a morning log
+    // is actually reporting on.
+    const nightEntry = state.sleepLogs.find((e) => e.date === addDays(today, -1));
+    return sleepNightProtected(nightEntry);
+  }
+  const cs = state.customSheets[sheetId];
+  if (cs && cs.templateKey === "books") {
+    // Books don't have a "done today" shape the way a checklist does —
+    // finishing a whole book is rare, but reading is meant to be daily.
+    // Learning completes off a real reading-log entry (which book, what
+    // chapter) logged from inside the Book List panel — see
+    // renderBookSheet / openReadingLogModal.
+    return (state.learningLog || []).some((e) => e.date === today);
+  }
+  if (cs && cs.templateKey === "social") {
+    // Social connection completes off a real logged entry today — who,
+    // what, when — not a flat yes/no toggle.
+    return cs.items.some((i) => i.date === today);
+  }
+  if (cs && cs.templateKey === "activity") {
+    // Same shape as Social: a real logged activity today, not a toggle.
+    return cs.items.some((i) => i.date === today);
+  }
+  if (cs && (cs.templateKey === "prayer" || cs.templateKey === "breathe")) {
+    // Same shape again — a real logged entry (a prayer tapped, a breathing
+    // session saved) today, not a toggle.
+    return cs.items.some((i) => i.date === today);
+  }
+  if (cs && cs.templateKey === "workout") {
+    // A week/day slot has no calendar date of its own — day.lastLoggedDate
+    // is what actually gets stamped the moment a set's Actual is filled
+    // in (see renderWorkoutExercise), so that's what "today" reads on
+    // here. Without this branch, logging a workout never marked Movement
+    // done at all — it fell through to the generic items/completedDate
+    // fallback below, which doesn't apply to Workout Log's shape.
+    return workoutLoggedDatesSet(cs).has(today);
+  }
+  if (cs && cs.templateKey === "mealLog") {
+    // Not just "logged something" — mirrors Sleep protected: only counts
+    // once today has a real Nourishing/Balanced entry. See the block
+    // comment above the Meal Log completion helpers for why.
+    return mealLogDayQualifies(cs, today);
+  }
+  if (!cs || !Array.isArray(cs.items)) return false;
+  return cs.items.some((i) => i.done && i.completedDate === today);
+}
+
+// ------------------------------------------------------------------
+// Pillar activity — historical record of one real record per pillar per
+// day it was marked Yes under the old six-pillar model. Pillars
+// themselves are retired (2026-09), but Trends/History still read this
+// data for days already logged before the cutover (see the plan: past
+// days display exactly as they were logged, never rewritten), and
+// openWellnessDayEditor still lets a past day's manual pillar note be
+// corrected. `source` is either "manual" or the id of the space that
+// triggered it.
+// ------------------------------------------------------------------
+function pillarActivityFor(pillar, date) {
+  return state.pillarActivity.find((a) => a.pillar === pillar && a.date === date);
+}
+
+// Idempotent — replaces whatever was recorded for this pillar+day, since
+// there's only ever one real explanation for a given day's Yes.
+function setPillarActivity(pillar, date, label, source) {
+  state.pillarActivity = state.pillarActivity.filter((a) => !(a.pillar === pillar && a.date === date));
+  state.pillarActivity.push({ id: nextId(), pillar, date, label: label || null, source });
+}
+
+function clearPillarActivity(pillar, date) {
+  state.pillarActivity = state.pillarActivity.filter((a) => !(a.pillar === pillar && a.date === date));
+}
+
+// A space's own label, for attributing an auto-detected day (e.g. "via
+// Workout Log") — separate from a manual entry's freeform label.
+function labelForActivitySource(source) {
+  if (!source || source === "manual") return null;
+  const sheet = state.sheets.find((s) => s.id === source);
+  return sheet ? sheetLabel(sheet) : null;
+}
+
+// Chips for the quick-log sheet: this pillar's own history of manual
+// labels, most recent distinct label first.
+function pillarManualLabelHistory(key) {
+  const seen = new Set();
+  const labels = [];
+  [...state.pillarActivity]
+    .filter((a) => a.pillar === key && a.source === "manual" && a.label)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .forEach((a) => {
+      const k = a.label.trim().toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        labels.push(a.label);
+      }
+    });
+  return labels.slice(0, 4);
+}
+
+// Did this app get a real log on `date`? Reuses sheetActiveToday for every
+// sheet-backed practice (it already knows each template's real dated-log
+// shape); Sobriety is the one practice with no sheet behind it, so it
+// reads its own check-in list directly.
+function isAppLoggedToday(appId, date) {
+  if (appId === "sobriety") return (state.sobriety?.checkIns || []).some((c) => c.date === date);
+  return sheetActiveToday(appId, date);
+}
+
+function isAppDayPositiveWithGrace(appId, date) {
+  if (isAppLoggedToday(appId, date)) return true;
+  return !!(state.grace && state.grace.coveredDates[`${appId}|${date}`]);
+}
+
+// A Practice's own streak, computed straight from its own dated records —
+// no combined/overall streak anymore. Today not being logged yet doesn't
+// break yesterday's streak, same rule as the old pillar streak.
+function appCurrentStreak(appId, today) {
+  let streak = 0;
+  let cursor = isAppLoggedToday(appId, today) ? today : addDays(today, -1);
+  while (isAppDayPositiveWithGrace(appId, cursor)) {
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
+}
+
+// Credits a reward deposit for every Practice logged today that hasn't
+// already been credited — replaces the old pillar-flips-to-Yes trigger.
+// state.practiceDeposits is a permanent {"<appId>|<date>": true} ledger so
+// re-rendering Home never double-credits the same day's log.
+function applyPracticeDepositsForToday(today) {
+  state.practiceDeposits ||= {};
+  let changed = false;
+  currentPracticeAppIds().forEach((id) => {
+    const ledgerKey = `${id}|${today}`;
+    if (state.practiceDeposits[ledgerKey]) return;
+    if (isAppLoggedToday(id, today)) {
+      state.practiceDeposits[ledgerKey] = true;
+      awardRewardForPracticeLog();
+      changed = true;
+    }
+  });
+  if (changed) scheduleSave();
+}
+
+// Recalculates the per-log reward rate off the current Practice count —
+// called whenever a Practice is added, removed, or hidden. See
+// computeDollarPerLog for the formula (cycleLengthDays × practice count ×
+// 0.5, spread evenly across the cycle).
+function recomputeRewardDollarPerLog() {
+  const prize = state.veronikasPrize;
+  if (!prize || !prize.depositGoal) return;
+  prize.dollarPerLog = computeDollarPerLog(prize.depositGoal, prize.cycleLengthDays, currentPracticeAppIds().length);
+  scheduleSave();
+}
+
 // Home sits fixed, dead center, on the mobile bar. Only the first
 // MOBILE_PINNED_COUNT visible sheets render as bottom-bar icons on
 // mobile (via CSS hiding anything past that count) — split evenly
@@ -1036,6 +1282,16 @@ function openAccountSheet() {
         <div id="you-identity-quote-slot"></div>
         <div class="you-list-divider"></div>
 
+        <div class="you-list-group-title">Apps</div>
+        <button type="button" class="you-list-row" id="you-my-apps-row">
+          ${iconSvg('<rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect>')}
+          <span>My Apps</span>
+        </button>
+        <button type="button" class="you-list-row" id="you-marketplace-row">
+          <span class="you-list-row-emoji" aria-hidden="true">🏪</span>
+          <span>Marketplace</span>
+        </button>
+
         <div class="you-list-group-title">Preferences</div>
         <button type="button" class="you-list-row" id="you-appearance-row">
           ${iconSvg('<circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>')}
@@ -1077,6 +1333,16 @@ function openAccountSheet() {
   overlay.querySelector(".info-modal-close").addEventListener("click", close);
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
+  });
+  overlay.querySelector("#you-my-apps-row").addEventListener("click", () => {
+    close();
+    settingsSubTab = "mine";
+    activateTab("settings");
+  });
+  overlay.querySelector("#you-marketplace-row").addEventListener("click", () => {
+    close();
+    settingsSubTab = "gallery";
+    activateTab("settings");
   });
   overlay.querySelector("#you-appearance-row").addEventListener("click", () => {
     close();
@@ -1255,7 +1521,7 @@ function openGraceDaysModal() {
           <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
         </div>
         <div class="account-section" style="border-top:none;padding-top:4px;">
-          <div class="account-note">You're covered for up to ${GRACE_BANK_CAP} missed days — vacations, sick days, life. They bank month to month, so unused days aren't lost, and each pillar's streak (plus your overall streak) gets its own coverage.</div>
+          <div class="account-note">You're covered for up to ${GRACE_BANK_CAP} missed days — vacations, sick days, life. They bank month to month, so unused days aren't lost, and each Practice's streak gets its own coverage.</div>
         </div>
         <div class="account-section">
           <div class="grace-token-row">${tokensHtml}</div>
@@ -1347,6 +1613,7 @@ function toggleSheetVisible(id) {
   if (!s) return;
   s.visible = !s.visible;
   scheduleSave();
+  recomputeRewardDollarPerLog();
   rebuildNav();
   renderSettings();
   if (!s.visible && state.activeTab === id) {
@@ -1459,17 +1726,8 @@ function createSheetFromTemplateUnchecked(tpl) {
     ...(isBreathe ? { breatheSchemaV: 1, milestonesEarned: {}, soundVoice: "pad" } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
-  // Adding a space that fits a pillar IS the opt-in — don't also make
-  // the person go find Pillar Mapping and check a box before it counts.
-  const pillarKey = pillarKeyForTemplateKey(tpl.key);
-  if (pillarKey) {
-    state.pillarSourceMap ||= {};
-    state.pillarSourceMap[pillarKey] ||= [];
-    if (!state.pillarSourceMap[pillarKey].includes(id)) {
-      state.pillarSourceMap[pillarKey] = [...state.pillarSourceMap[pillarKey], id];
-    }
-  }
   scheduleSave();
+  recomputeRewardDollarPerLog();
   ensureCustomPanels();
   renderCustomSheet(id);
   rebuildNav();
@@ -1504,18 +1762,9 @@ function renderCustomSheet(id) {
   }
 }
 
-// Mirrors the pinned-slot math in rebuildNav()/renderSettings(): the first
-// MOBILE_PINNED_COUNT *visible* sheets, in order, are what the mobile bottom
-// bar renders — removing one of those would leave a gap in it. A hidden
-// sheet never occupies a pinned slot, however early it sits in the list.
-function isPinnedSheet(id) {
-  let visibleIdx = 0;
-  for (const s of state.sheets) {
-    if (s.id === id) return s.visible && visibleIdx < MOBILE_PINNED_COUNT;
-    if (s.visible) visibleIdx++;
-  }
-  return false;
-}
+// isPinnedSheet is defined further down (see toolbarAppIds) — the
+// Practices-only toolbar rule needs appTypeForSheet/state.appOrder, both
+// of which live with the rest of the My Apps machinery.
 
 function removeCustomSheet(id) {
   if (isPinnedSheet(id)) return;
@@ -1524,6 +1773,7 @@ function removeCustomSheet(id) {
   const panelEl = document.getElementById(`panel-${id}`);
   if (panelEl) panelEl.remove();
   scheduleSave();
+  recomputeRewardDollarPerLog();
   rebuildNav();
   renderSettings();
   if (state.activeTab === id) {
@@ -1559,6 +1809,7 @@ function removeBuiltinSheet(id) {
   const panelEl = document.getElementById(`panel-${id}`);
   if (panelEl) panelEl.remove();
   scheduleSave();
+  recomputeRewardDollarPerLog();
   rebuildNav();
   renderSettings();
   if (state.activeTab === id) {
@@ -1622,7 +1873,168 @@ function renderAppearance() {
   panel.appendChild(grid);
 }
 
-let settingsSubTab = "mine"; // "mine" | "gallery" | "pillars" — resets each session, not persisted
+let settingsSubTab = "mine"; // "mine" | "gallery" — resets each session, not persisted
+
+// ------------------------------------------------------------------
+// My Apps (2026-09 rearchitecture) — ONE flat, draggable list covering
+// every added app (Practice, Tracker, or Tool), replacing the old
+// three-zone (toolbar/additional/hidden) My Practices layout. Drag order
+// is the only thing that decides the Home bottom bar: the first
+// MOBILE_PINNED_COUNT *visible Practices* in state.appOrder form it —
+// Trackers and Tools can never occupy one of those slots, however early
+// they sit in the raw order (see normalizeAppOrder).
+//
+// state.appOrder holds ids for every sheet-backed app plus the two
+// non-sheet apps (Sobriety, Cycle) that live in state.extraTrackers —
+// Sobriety is a Practice now, Cycle stays a Tracker.
+// ------------------------------------------------------------------
+function appRowDescriptor(id) {
+  if (id === "sobriety") {
+    const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "sobriety");
+    return { id, label: "Sobriety", icon: tpl?.icon, type: "practice", visible: true, removable: true, hideable: false, isExtraTracker: true };
+  }
+  if (id === "cycle") {
+    const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "cycle");
+    return { id, label: "Cycle", icon: tpl?.icon, type: "tracker", visible: true, removable: true, hideable: false, isExtraTracker: true };
+  }
+  const s = state.sheets.find((x) => x.id === id);
+  if (!s) return null;
+  const type = appTypeForSheet(s);
+  if (!type) return null;
+  return { id, label: sheetLabel(s), icon: sheetIcon(s), type, visible: s.visible, removable: true, hideable: true, isCustom: s.kind === "custom" };
+}
+
+function ensureAppOrder() {
+  const validIds = [];
+  state.sheets.forEach((s) => {
+    if (s.id === "wellness") return;
+    if (appTypeForSheet(s)) validIds.push(s.id);
+  });
+  if (state.extraTrackers?.sobriety) validIds.push("sobriety");
+  if (state.extraTrackers?.cycle) validIds.push("cycle");
+  const validSet = new Set(validIds);
+  state.appOrder ||= [];
+  state.appOrder = state.appOrder.filter((id) => validSet.has(id));
+  const already = new Set(state.appOrder);
+  validIds.forEach((id) => {
+    if (!already.has(id)) {
+      state.appOrder.push(id);
+      already.add(id);
+    }
+  });
+  normalizeAppOrder();
+}
+
+// Trackers/Tools can never occupy one of the first MOBILE_PINNED_COUNT
+// visible-Practice slots — if a reorder (or a Practice being hidden/
+// removed) would put one there, it gets bumped to right after the
+// boundary instead of just snapping visually; there's nothing to
+// visually snap since the underlying order is what's authoritative.
+function normalizeAppOrder() {
+  const order = state.appOrder;
+  const misplaced = [];
+  let practiceSeen = 0;
+  for (let i = 0; i < order.length; ) {
+    const d = appRowDescriptor(order[i]);
+    if (practiceSeen < MOBILE_PINNED_COUNT && d && d.visible && d.type !== "practice") {
+      misplaced.push(order.splice(i, 1)[0]);
+      continue;
+    }
+    if (d && d.visible && d.type === "practice") practiceSeen++;
+    i++;
+  }
+  if (!misplaced.length) return;
+  let insertAt = order.length;
+  let seen = 0;
+  for (let i = 0; i < order.length; i++) {
+    const d = appRowDescriptor(order[i]);
+    if (d && d.visible && d.type === "practice") seen++;
+    if (seen >= MOBILE_PINNED_COUNT) {
+      insertAt = i + 1;
+      break;
+    }
+  }
+  order.splice(insertAt, 0, ...misplaced);
+}
+
+// The set of app ids currently occupying a Home-bar slot — first
+// MOBILE_PINNED_COUNT visible Practices, in appOrder order.
+function toolbarAppIds() {
+  ensureAppOrder();
+  const ids = [];
+  for (const id of state.appOrder) {
+    const d = appRowDescriptor(id);
+    if (d && d.visible && d.type === "practice") {
+      ids.push(id);
+      if (ids.length >= MOBILE_PINNED_COUNT) break;
+    }
+  }
+  return ids;
+}
+
+// Mirrors the old isPinnedSheet, generalized to any app id (sheet-backed
+// or not) under the new Practices-only toolbar rule.
+function isPinnedSheet(id) {
+  return toolbarAppIds().includes(id);
+}
+
+let draggedAppId = null;
+
+function reorderAppOrder(draggedId, targetId, before) {
+  const order = state.appOrder;
+  const fromIdx = order.indexOf(draggedId);
+  if (fromIdx < 0) return;
+  order.splice(fromIdx, 1);
+  let targetIdx = order.indexOf(targetId);
+  if (targetIdx < 0) targetIdx = order.length;
+  const insertAt = before ? targetIdx : targetIdx + 1;
+  order.splice(insertAt, 0, draggedId);
+  normalizeAppOrder();
+  scheduleSave();
+  recomputeRewardDollarPerLog();
+  rebuildNav();
+  renderSettings();
+}
+
+const APP_TYPE_LABEL = { practice: "Practice", tracker: "Tracker", tool: "Tool" };
+
+function removeAppRow(id, descriptor) {
+  const label = descriptor.label;
+  if (descriptor.isExtraTracker) {
+    confirmModal(
+      `Remove ${label}?`,
+      id === "sobriety"
+        ? "It'll disappear from Home and Settings. Your check-in history stays saved if you ever add it back."
+        : "It'll disappear from Home and Settings. Nothing logged is deleted — add it back anytime.",
+      "Remove",
+      () => {
+        state.extraTrackers ||= {};
+        state.extraTrackers[id] = false;
+        scheduleSave();
+        recomputeRewardDollarPerLog();
+        rebuildNav();
+        renderSettings();
+        renderHome();
+      }
+    );
+    return;
+  }
+  if (descriptor.isCustom) {
+    confirmModal(
+      `Remove ${label}?`,
+      "It'll disappear from your sidebar. You can add it again anytime from Settings, but its items will be gone for good.",
+      "Remove",
+      () => removeCustomSheet(id)
+    );
+  } else {
+    confirmModal(
+      `Remove ${label}?`,
+      "This is a built-in app — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, tap the eye instead.",
+      "Delete for good",
+      () => removeBuiltinSheet(id)
+    );
+  }
+}
 
 function renderSettings() {
   const panel = document.getElementById("panel-settings");
@@ -1630,17 +2042,14 @@ function renderSettings() {
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">Settings</h2>`));
 
-  // My Practices (reorder/hide what you have), Marketplace (add
-  // something new — practice or tracker), and Pillar Mapping (how what
-  // you have counts toward a streak) are three different tasks, but all
-  // three are "practice configuration" in a way Account isn't — they
-  // used to be split between here and the avatar menu; now everything
-  // about how practices work lives on this one segmented control.
+  // My Apps (reorder/hide/remove everything you have) and Marketplace
+  // (add something new — a practice, a tracker, or a tool) are the two
+  // "app configuration" tasks now that Pillar Mapping is gone — there's
+  // nothing left to map a practice to.
   const segment = el(`
     <div class="settings-segment">
-      <button type="button" class="${settingsSubTab === "mine" ? "active" : ""}" data-target="mine">My Practices</button>
+      <button type="button" class="${settingsSubTab === "mine" ? "active" : ""}" data-target="mine">My Apps</button>
       <button type="button" class="${settingsSubTab === "gallery" ? "active" : ""}" data-target="gallery">Marketplace</button>
-      <button type="button" class="${settingsSubTab === "pillars" ? "active" : ""}" data-target="pillars">Pillar Mapping</button>
     </div>
   `);
   segment.querySelectorAll("button").forEach((btn) => {
@@ -1653,102 +2062,74 @@ function renderSettings() {
 
   const minePanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "mine" ? "" : "display:none;"}"></div>`);
   const galleryPanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "gallery" ? "" : "display:none;"}"></div>`);
-  const pillarsPanel = el(`<div class="settings-subpanel" style="${settingsSubTab === "pillars" ? "" : "display:none;"}"></div>`);
 
-  minePanel.appendChild(el(`<div class="settings-group-title">Your practices</div>`));
+  minePanel.appendChild(el(`<div class="settings-group-title">Your apps</div>`));
   minePanel.appendChild(
     el(
-      `<div class="settings-group-desc">Drag a row (⠿) to reorder it or move it between zones. Your first ${MOBILE_PINNED_COUNT} visible practices form the Home toolbar and pin to the bottom bar on mobile, marked "Bar" — the rest are Additional practices. Tap the eye to hide instantly, no prompt. Tap the X to remove — that always asks first, since it deletes the practice's data for good. Practices you added from the Gallery can be added back anytime; built-in ones can't.</div>`
+      `<div class="settings-group-desc">Drag a row (⠿) to reorder. Your first ${MOBILE_PINNED_COUNT} Practices form the Home toolbar and pin to the bottom bar on mobile, marked "Bar" — Trackers and Tools can never land above the dashed line, whatever order you drop them in. Tap the eye to hide instantly, no prompt. Tap the X to remove — that always asks first, since it deletes the app's data for good. Apps you added from the Marketplace can be added back anytime; built-in ones can't.</div>`
     )
   );
 
-  const toolbarLabel = el(`<div class="practice-zone-label">Home toolbar</div>`);
-  const toolbarGrid = el(`<div class="practice-row-list"></div>`);
-  const extraLabel = el(`<div class="practice-zone-label">Additional practices</div>`);
-  const extraGrid = el(`<div class="practice-row-list"></div>`);
-  const hiddenLabel = el(`<div class="practice-zone-label">Hidden</div>`);
-  const hiddenGrid = el(`<div class="practice-row-list"></div>`);
-  minePanel.appendChild(toolbarLabel);
-  minePanel.appendChild(toolbarGrid);
-  minePanel.appendChild(extraLabel);
-  minePanel.appendChild(extraGrid);
-  minePanel.appendChild(hiddenLabel);
-  minePanel.appendChild(hiddenGrid);
+  ensureAppOrder();
+  const list = el(`<div class="practice-row-list"></div>`);
+  minePanel.appendChild(list);
 
   const dragHandleSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>`;
   const eyeOpenSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
   const eyeOffSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.3 20.3 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a20.3 20.3 0 0 1-2.68 3.9M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
   const removeXSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>`;
 
-  let visibleIdx = 0;
-  let anyHidden = false;
-  // Wellness deliberately doesn't appear here at all — it isn't an
-  // optional space you'd add or hide the way Book List or Sleep is, it's
-  // the trend view behind Home itself, and every pillar/deposit/streak
-  // already reads from it. Listing it next to Book List implied a choice
-  // that was never really there.
-  state.sheets.filter((s) => s.id !== "wellness").forEach((s) => {
-    const isCustom = s.kind === "custom";
-    const label = sheetLabel(s);
-    const pinnedSlot = s.visible && visibleIdx < MOBILE_PINNED_COUNT;
-    if (s.visible) visibleIdx++;
-    if (!s.visible) anyHidden = true;
+  const barIds = new Set(toolbarAppIds());
 
+  state.appOrder.forEach((id) => {
+    const d = appRowDescriptor(id);
+    if (!d) return;
+
+    const pinnedSlot = barIds.has(id);
     const row = el(`
-      <div class="practice-row" draggable="true" data-sheet-id="${s.id}">
+      <div class="practice-row app-row-type-${d.type}" draggable="true" data-app-id="${id}">
         <span class="row-drag-handle">${dragHandleSvg}</span>
-        <span class="row-icon"${s.visible ? "" : ' style="opacity:.5;"'}>${iconSvg(sheetIcon(s)).replace('width="20" height="20"', 'width="17" height="17"')}</span>
-        <span class="row-label"${s.visible ? "" : ' style="color:var(--muted);"'}>${escapeHtml(label)}</span>
+        <span class="row-icon"${d.visible ? "" : ' style="opacity:.5;"'}>${iconSvg(d.icon || `<circle cx="12" cy="12" r="9"></circle>`).replace('width="20" height="20"', 'width="17" height="17"')}</span>
+        <span class="row-label"${d.visible ? "" : ' style="color:var(--muted);"'}>${escapeHtml(d.label)}<span class="app-type-tag app-type-tag-${d.type}">${APP_TYPE_LABEL[d.type]}</span></span>
         ${pinnedSlot ? `<span class="row-pinned-badge">Bar</span>` : ""}
         <span class="row-actions">
-          <button type="button" class="row-icon-btn ${s.visible ? "eye-on" : "eye-off"}" title="${s.visible ? "Hide" : "Show"}">${s.visible ? eyeOpenSvg : eyeOffSvg}</button>
+          ${
+            d.hideable
+              ? `<button type="button" class="row-icon-btn ${d.visible ? "eye-on" : "eye-off"}" title="${d.visible ? "Hide" : "Show"}">${d.visible ? eyeOpenSvg : eyeOffSvg}</button>`
+              : ""
+          }
           <button type="button" class="row-icon-btn remove-x" title="Remove">${removeXSvg}</button>
         </span>
       </div>
     `);
 
-    // Eye: instant toggle, no confirm — non-destructive, reversible.
-    row.querySelector(".eye-on, .eye-off").addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleSheetVisible(s.id);
-    });
-
-    // X: always confirms first — this deletes data, hiding doesn't.
+    if (d.hideable) {
+      row.querySelector(".eye-on, .eye-off").addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleSheetVisible(id);
+      });
+    }
     row.querySelector(".remove-x").addEventListener("click", (e) => {
       e.stopPropagation();
-      if (isCustom) {
-        confirmModal(
-          `Remove ${label}?`,
-          "It'll disappear from your sidebar. You can add it again anytime from Settings, but its items will be gone for good.",
-          "Remove",
-          () => removeCustomSheet(s.id)
-        );
-      } else {
-        confirmModal(
-          `Remove ${label}?`,
-          "This is a built-in practice — unlike the gallery ones, there's no template to add it back from. Removing it deletes everything in it for good. If you just want it off your sidebar without losing anything, tap the eye instead.",
-          "Delete for good",
-          () => removeBuiltinSheet(s.id)
-        );
-      }
+      removeAppRow(id, d);
     });
 
     row.addEventListener("dragstart", (e) => {
-      draggedSheetId = s.id;
+      draggedAppId = id;
       row.classList.add("dragging");
       e.dataTransfer.effectAllowed = "move";
       try {
-        e.dataTransfer.setData("text/plain", s.id);
+        e.dataTransfer.setData("text/plain", id);
       } catch (err) {
         // Some browsers require this call to not throw even if unused.
       }
     });
     row.addEventListener("dragend", () => {
-      draggedSheetId = null;
+      draggedAppId = null;
       document.querySelectorAll(".practice-row").forEach((r) => r.classList.remove("dragging", "drag-over-above", "drag-over-below"));
     });
     row.addEventListener("dragover", (e) => {
-      if (!draggedSheetId || draggedSheetId === s.id) return;
+      if (!draggedAppId || draggedAppId === id) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       const rect = row.getBoundingClientRect();
@@ -1761,43 +2142,39 @@ function renderSettings() {
     });
     row.addEventListener("drop", (e) => {
       e.preventDefault();
-      if (!draggedSheetId || draggedSheetId === s.id) return;
+      if (!draggedAppId || draggedAppId === id) return;
       const rect = row.getBoundingClientRect();
       const above = e.clientY - rect.top < rect.height / 2;
-      reorderSheet(draggedSheetId, s.id, above);
+      reorderAppOrder(draggedAppId, id, above);
     });
-    // Tapping the row itself (not an action button) goes straight to that
-    // practice — this list is a jumping-off point to a practice you
-    // already have, not just a reorder tool.
     row.addEventListener("click", (e) => {
       if (e.target.closest(".row-actions")) return;
-      activateTab(s.id);
+      if (id === "sobriety") openSobrietyScreen();
+      else if (id === "cycle") openCycleScreen(() => renderHome());
+      else activateTab(id);
     });
 
-    if (pinnedSlot) toolbarGrid.appendChild(row);
-    else if (s.visible) extraGrid.appendChild(row);
-    else hiddenGrid.appendChild(row);
+    list.appendChild(row);
+    if (pinnedSlot && [...barIds][barIds.size - 1] === id) {
+      list.appendChild(el(`<div class="app-order-divider"><span>Home bar ends here</span></div>`));
+    }
   });
-
-  hiddenLabel.style.display = anyHidden ? "" : "none";
-  hiddenGrid.style.display = anyHidden ? "" : "none";
-  if (!extraGrid.children.length) extraGrid.appendChild(el(`<div class="row-empty">Drag a practice here</div>`));
+  if (!barIds.size) {
+    list.insertBefore(el(`<div class="app-order-divider"><span>Home bar ends here</span></div>`), list.firstChild);
+  }
+  if (!list.children.length) list.appendChild(el(`<div class="row-empty">Add an app from the Marketplace to get started</div>`));
 
   minePanel.appendChild(
-    el(`<div class="settings-note">Wellness isn't a practice you add or hide — it's built into Home now, not a separate page.</div>`)
+    el(`<div class="settings-note">Wellness isn't an app you add or hide — it's built into Home now, not a separate page.</div>`)
   );
 
   panel.appendChild(minePanel);
 
+  // Marketplace — three shelves (Practices, Trackers, Tools), one
+  // Add/Remove button style throughout regardless of shelf.
   galleryPanel.appendChild(el(`<div class="settings-group-title">Marketplace</div>`));
-  galleryPanel.appendChild(el(`<div class="settings-group-desc">Browse and add — practices that count toward a pillar, and trackers that don't.</div>`));
+  galleryPanel.appendChild(el(`<div class="settings-group-desc">Browse and add — practices you log, trackers you note, and tools that are just checklists.</div>`));
 
-  galleryPanel.appendChild(el(`
-    <div class="marketplace-category-head">
-      <span class="marketplace-category-title">Practices</span>
-      <span class="marketplace-category-badge practices">Counts toward a pillar</span>
-    </div>
-  `));
   const usedCount = countedSpaces();
   const limit = spaceCapForAccount();
   const atCap = usedCount >= limit;
@@ -1812,14 +2189,21 @@ function renderSettings() {
     </div>
   `));
 
-  const gallery = el(`<div class="sheet-gallery"></div>`);
-  SHEET_GALLERY.forEach((tpl) => {
+  function marketplaceShelf(title, badgeClass, explainer) {
+    galleryPanel.appendChild(el(`
+      <div class="marketplace-category-head" style="margin-top:20px;">
+        <span class="marketplace-category-title">${title}</span>
+        <span class="marketplace-category-badge ${badgeClass}">${explainer}</span>
+      </div>
+    `));
+  }
+
+  // Practices — log it and it can deposit toward your reward, with its
+  // own streak.
+  marketplaceShelf("Practices", "practices", "Log it and it can deposit");
+  const practiceGallery = el(`<div class="sheet-gallery"></div>`);
+  SHEET_GALLERY.filter((t) => t.type === "practice").forEach((tpl) => {
     const alreadyAdded = Object.values(state.customSheets).some((cs) => cs.templateKey === tpl.key);
-    // Capsule Wardrobe is grandfathered in for accounts that already have
-    // one — never removed, still fully usable — but it's off the shelf
-    // for everyone else. Not a habit pillar, so it no longer gets offered
-    // as something new to add; it's leftover, not featured.
-    if (tpl.key === "wardrobe" && !alreadyAdded) return;
     const cardEl = el(`
       <div class="sheet-card">
         <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
@@ -1837,53 +2221,103 @@ function renderSettings() {
     if (!alreadyAdded) {
       cardEl.querySelector("button").addEventListener("click", () => addSheetFromTemplate(tpl));
     }
-    gallery.appendChild(cardEl);
+    practiceGallery.appendChild(cardEl);
   });
-  galleryPanel.appendChild(gallery);
+  // Sobriety lives in EXTRA_TRACKERS_GALLERY (no space-cap gate, no
+  // template/customSheets backing) but is a Practice now, so it belongs
+  // on this shelf, not the Trackers one below.
+  const sobrietyTpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === "sobriety");
+  if (sobrietyTpl) {
+    const added = !!state.extraTrackers?.sobriety;
+    const cardEl = el(`
+      <div class="sheet-card">
+        <span class="sheet-card-icon">${iconSvg(sobrietyTpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <div class="sheet-card-name">${escapeHtml(sobrietyTpl.label)}</div>
+        <div class="sheet-card-desc">${escapeHtml(sobrietyTpl.desc)}</div>
+        ${added ? `<button type="button" class="btn-ghost small">Remove</button>` : `<button type="button" class="btn-ghost small">+ Add</button>`}
+      </div>
+    `);
+    cardEl.querySelector("button").addEventListener("click", () => {
+      state.extraTrackers ||= {};
+      state.extraTrackers.sobriety = !added;
+      scheduleSave();
+      recomputeRewardDollarPerLog();
+      rebuildNav();
+      renderSettings();
+      renderHome();
+    });
+    practiceGallery.appendChild(cardEl);
+  }
+  galleryPanel.appendChild(practiceGallery);
 
-  // Trackers — its own category, deliberately separate from the
-  // practice cards above and not sharing their usage bar or upgrade
-  // gate: adding one is always free, since these aren't practices tied
-  // to a pillar in the first place.
-  galleryPanel.appendChild(el(`
-    <div class="marketplace-category-head" style="margin-top:24px;">
-      <span class="marketplace-category-title">Trackers</span>
-      <span class="marketplace-category-badge trackers">Not a practice — always free</span>
-    </div>
-  `));
-  const extraGallery = el(`<div class="sheet-gallery trackers-style"></div>`);
-  EXTRA_TRACKERS_GALLERY.forEach((tpl) => {
+  // Trackers — note it, no streak, no deposit.
+  marketplaceShelf("Trackers", "trackers", "Note it — no streak");
+  const trackerGallery = el(`<div class="sheet-gallery trackers-style"></div>`);
+  EXTRA_TRACKERS_GALLERY.filter((t) => t.type === "tracker").forEach((tpl) => {
     const added = !!state.extraTrackers?.[tpl.key];
     const cardEl = el(`
       <div class="sheet-card trackers-style">
         <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
         <div class="sheet-card-name">${escapeHtml(tpl.label)}</div>
         <div class="sheet-card-desc">${escapeHtml(tpl.desc)}</div>
-        ${added ? `<button type="button" class="btn-ghost small remove-tracker">Remove</button>` : `<button type="button" class="btn-ghost small">+ Add</button>`}
+        ${added ? `<button type="button" class="btn-ghost small">Remove</button>` : `<button type="button" class="btn-ghost small">+ Add</button>`}
       </div>
     `);
     cardEl.querySelector("button").addEventListener("click", () => {
       state.extraTrackers ||= {};
       state.extraTrackers[tpl.key] = !added;
       scheduleSave();
+      recomputeRewardDollarPerLog();
+      rebuildNav();
       renderSettings();
       renderHome();
     });
-    extraGallery.appendChild(cardEl);
+    trackerGallery.appendChild(cardEl);
   });
-  galleryPanel.appendChild(extraGallery);
+  galleryPanel.appendChild(trackerGallery);
+
+  // Tools — a checklist, nothing dated or tracked.
+  marketplaceShelf("Tools", "tools", "Just a checklist");
+  const toolGallery = el(`<div class="sheet-gallery"></div>`);
+  SHEET_GALLERY.filter((t) => t.type === "tool").forEach((tpl) => {
+    const alreadyAdded = Object.values(state.customSheets).some((cs) => cs.templateKey === tpl.key);
+    // Capsule Wardrobe is grandfathered in for accounts that already have
+    // one — never removed, still fully usable — but it's off the shelf
+    // for everyone else, same as before.
+    if (tpl.key === "wardrobe" && !alreadyAdded) return;
+    const cardEl = el(`
+      <div class="sheet-card">
+        <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <div class="sheet-card-name">${escapeHtml(tpl.label)}</div>
+        <div class="sheet-card-desc">${escapeHtml(tpl.desc)}</div>
+        ${
+          alreadyAdded
+            ? `<span class="sheet-card-added">${checkSvg} Added</span>`
+            : `<button type="button" class="btn-ghost small" style="align-self:flex-start;">+ Add</button>`
+        }
+      </div>
+    `);
+    if (!alreadyAdded) {
+      cardEl.querySelector("button").addEventListener("click", () => addSheetFromTemplate(tpl));
+    }
+    toolGallery.appendChild(cardEl);
+  });
+  // Lists (todo) is a built-in Tool with no template to add back from —
+  // shown here read-only if it's ever been removed there'd be nothing to
+  // re-add anyway, so it's just informational when present.
+  if (state.sheets.some((s) => s.id === "todo")) {
+    toolGallery.appendChild(el(`
+      <div class="sheet-card">
+        <span class="sheet-card-icon">${iconSvg(BUILTIN_SHEET_META.todo.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <div class="sheet-card-name">Lists</div>
+        <div class="sheet-card-desc">General-purpose checklists — a built-in utility, not a habit.</div>
+        <span class="sheet-card-added">${checkSvg} Added</span>
+      </div>
+    `));
+  }
+  galleryPanel.appendChild(toolGallery);
 
   panel.appendChild(galleryPanel);
-
-  // Pillar Mapping — its own sub-tab now (was previously reachable only
-  // through a contextual popup from Home); the popup still exists for
-  // that in-context flow and shares this same section-builder.
-  pillarsPanel.appendChild(el(`<div class="settings-group-title">Pillar mapping</div>`));
-  pillarsPanel.appendChild(el(`<div class="settings-group-desc">Which of your practices count toward each daily pillar.</div>`));
-  const pillarsSectionsWrap = el(`<div></div>`);
-  pillarsPanel.appendChild(pillarsSectionsWrap);
-  renderPillarMappingSections(pillarsSectionsWrap, () => renderHome());
-  panel.appendChild(pillarsPanel);
 }
 
 // Cached so building the section doesn't have to be async — refreshed
@@ -3451,12 +3885,10 @@ function renderActivitySheet(id) {
   const weeklyMinutes = computeActivityWeeklyMinutes(sheet, today);
   const goal = sheet.weeklyGoalMinutes;
   const barPct = goal ? Math.min(100, Math.round((weeklyMinutes / goal) * 100)) : 0;
-  // Movement streak is shared with Workout Log — both feed the same
-  // pillar, so a hike here keeps it alive on a day nothing gets lifted,
-  // and vice versa. Reuses Home's existing per-pillar streak instead of
-  // counting only this sheet's own items, which used to quietly
-  // disagree with whatever Workout Log showed for the same pillar.
-  const streak = pillarCurrentStreak("movement", today);
+  // 2026-09 apps rearchitecture: Activity Log is its own Practice now,
+  // with its own independent streak from its own logged days — it no
+  // longer shares a combined "movement" streak with Workout Log.
+  const streak = appCurrentStreak(id, today);
   const summaryCard = el(`
     <div class="card">
       <div class="al-summary-row">
@@ -5807,11 +6239,11 @@ function renderWorkoutSheet(sheetId) {
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
-  // ---- Streak, at the top like the other practices — shared with
-  // Activity Log, since both feed Movement. See the matching comment on
-  // renderActivitySheet for why. ----
+  // ---- Streak, at the top like the other practices. 2026-09 apps
+  // rearchitecture: Workout Log is its own Practice now, with its own
+  // independent streak — no longer shared with Activity Log. ----
   const workoutToday = todayISO();
-  panel.appendChild(buildStreakCard(pillarCurrentStreak("movement", workoutToday), "day movement streak"));
+  panel.appendChild(buildStreakCard(appCurrentStreak(sheetId, workoutToday), "day streak"));
 
   const workoutStatsHere = computeWorkoutProgressStats(sheet);
   if (workoutStatsHere) {
@@ -7799,253 +8231,6 @@ function pillarKeyForTemplateKey(templateKey) {
   return null;
 }
 
-// When a pillar has exactly one space that fits it and nothing's chosen
-// yet, just pick it — no manual step needed for a "choice" that isn't
-// really a choice. Leaves anything already set alone, and leaves pillars
-// with zero or multiple candidates for the modal to handle.
-function ensurePillarSourceDefaults() {
-  let changed = false;
-  WELLNESS_YESNO_FIELDS.forEach(([key]) => {
-    if ((state.pillarSourceMap[key] || []).length) return;
-    const candidates = pillarCandidateSheets(key);
-    if (candidates.length === 1) {
-      state.pillarSourceMap[key] = [candidates[0].id];
-      changed = true;
-    }
-  });
-  if (changed) scheduleSave();
-}
-
-// Did she log something today in this particular space? Used to
-// auto-complete a pillar without needing a manual tap.
-function sheetActiveToday(sheetId, today) {
-  if (sheetId === "bible") {
-    return state.bible.some((r) => r.done && r.completedDate === today);
-  }
-  if (sheetId === "sleep") {
-    // Sleep protected is an outcome, not just a logged action — logging a
-    // rough, short night shouldn't count the same as a real one. "Today"
-    // reads on last night specifically, since that's what a morning log
-    // is actually reporting on.
-    const nightEntry = state.sleepLogs.find((e) => e.date === addDays(today, -1));
-    return sleepNightProtected(nightEntry);
-  }
-  const cs = state.customSheets[sheetId];
-  if (cs && cs.templateKey === "books") {
-    // Books don't have a "done today" shape the way a checklist does —
-    // finishing a whole book is rare, but reading is meant to be daily.
-    // Learning completes off a real reading-log entry (which book, what
-    // chapter) logged from inside the Book List panel — see
-    // renderBookSheet / openReadingLogModal.
-    return (state.learningLog || []).some((e) => e.date === today);
-  }
-  if (cs && cs.templateKey === "social") {
-    // Social connection completes off a real logged entry today — who,
-    // what, when — not a flat yes/no toggle.
-    return cs.items.some((i) => i.date === today);
-  }
-  if (cs && cs.templateKey === "activity") {
-    // Same shape as Social: a real logged activity today, not a toggle.
-    return cs.items.some((i) => i.date === today);
-  }
-  if (cs && (cs.templateKey === "prayer" || cs.templateKey === "breathe")) {
-    // Same shape again — a real logged entry (a prayer tapped, a breathing
-    // session saved) today, not a toggle.
-    return cs.items.some((i) => i.date === today);
-  }
-  if (cs && cs.templateKey === "workout") {
-    // A week/day slot has no calendar date of its own — day.lastLoggedDate
-    // is what actually gets stamped the moment a set's Actual is filled
-    // in (see renderWorkoutExercise), so that's what "today" reads on
-    // here. Without this branch, logging a workout never marked Movement
-    // done at all — it fell through to the generic items/completedDate
-    // fallback below, which doesn't apply to Workout Log's shape.
-    return workoutLoggedDatesSet(cs).has(today);
-  }
-  if (cs && cs.templateKey === "mealLog") {
-    // Not just "logged something" — mirrors Sleep protected: only counts
-    // once today has a real Nourishing/Balanced entry. See the block
-    // comment above the Meal Log completion helpers for why.
-    return mealLogDayQualifies(cs, today);
-  }
-  if (!cs || !Array.isArray(cs.items)) return false;
-  return cs.items.some((i) => i.done && i.completedDate === today);
-}
-
-// ------------------------------------------------------------------
-// Pillar activity — one real record per pillar per day it's marked Yes,
-// whichever way that happened: auto-detected from a linked space, or a
-// manual quick-log (a hike, a church visit — anything real that isn't
-// tracked in a structured space). This is what makes a trend report
-// possible at all: without it, a manual "Yes" is a bare checkmark with
-// nothing behind it. `source` is either "manual" or the id of the space
-// that triggered it, so a trend can tell "12 workouts" from "5 hikes"
-// even though both just read as Movement=Yes on the day.
-// ------------------------------------------------------------------
-function pillarActivityFor(pillar, date) {
-  return state.pillarActivity.find((a) => a.pillar === pillar && a.date === date);
-}
-
-// Idempotent — replaces whatever was recorded for this pillar+day, since
-// there's only ever one real explanation for a given day's Yes.
-function setPillarActivity(pillar, date, label, source) {
-  state.pillarActivity = state.pillarActivity.filter((a) => !(a.pillar === pillar && a.date === date));
-  state.pillarActivity.push({ id: nextId(), pillar, date, label: label || null, source });
-}
-
-function clearPillarActivity(pillar, date) {
-  state.pillarActivity = state.pillarActivity.filter((a) => !(a.pillar === pillar && a.date === date));
-}
-
-// A space's own label, for attributing an auto-detected day (e.g. "via
-// Workout Log") — separate from a manual entry's freeform label.
-function labelForActivitySource(source) {
-  if (!source || source === "manual") return null;
-  const sheet = state.sheets.find((s) => s.id === source);
-  return sheet ? sheetLabel(sheet) : null;
-}
-
-// What to show under a pillar tile today — the real thing that happened,
-// not just the fact that something did. Falls back to the configured
-// mapping's label for a Yes that predates this feature (no activity
-// record yet), so nothing regresses for old data.
-function pillarTodayCaption(key, today) {
-  const activity = pillarActivityFor(key, today);
-  if (activity) {
-    if (activity.source === "manual") return activity.label || "Marked done manually";
-    return `via ${labelForActivitySource(activity.source) || activity.label || "a practice"}`;
-  }
-  const mapped = pillarSourceLabel(key);
-  return mapped ? `via ${mapped}` : null;
-}
-
-// Chips for the quick-log sheet: this pillar's own history of manual
-// labels, most recent distinct label first — so "Hike" and "Walk" show
-// up as one-tap options once you've used them, without ever asking you
-// to type the same thing twice.
-function pillarManualLabelHistory(key) {
-  const seen = new Set();
-  const labels = [];
-  [...state.pillarActivity]
-    .filter((a) => a.pillar === key && a.source === "manual" && a.label)
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    .forEach((a) => {
-      const k = a.label.trim().toLowerCase();
-      if (!seen.has(k)) {
-        seen.add(k);
-        labels.push(a.label);
-      }
-    });
-  return labels.slice(0, 4);
-}
-
-// Runs on every Home render: for each pillar with mapped spaces, if
-// there's real activity today in any of them and the pillar isn't marked
-// yet, mark it — additive to (never overriding) a manual tap or a manual
-// correction made in the day editor.
-function applyPillarAutoDetection(todaysEntry, today) {
-  let changed = false;
-  WELLNESS_YESNO_FIELDS.forEach(([key]) => {
-    if (todaysEntry[key] === "Yes") return;
-    const ids = state.pillarSourceMap?.[key] || [];
-    const activeId = ids.find((id) => sheetActiveToday(id, today));
-    if (activeId) {
-      todaysEntry[key] = "Yes";
-      changed = true;
-      setPillarActivity(key, today, labelForActivitySource(activeId), activeId);
-      awardRewardForPillarLog();
-    }
-  });
-  if (changed) scheduleSave();
-}
-
-// Reached from the "You" page. One checkbox list per pillar — pick zero or
-// more spaces that count toward it. Checking a box doesn't retroactively
-// mark today done; it just means from now on, logging something there
-// today will. Tapping the pillar on Home always still works too.
-// Shared renderer — used both by the Settings > Pillar Mapping sub-tab
-// (the normal way in) and by openPillarMappingModal's contextual popup
-// (triggered from Home when a pillar has nothing connected to it yet).
-// onAfterChange lets each caller decide what "done" means: the modal
-// re-renders Home when it closes, the Settings tab just needs the
-// section itself current since Home already re-renders on tab switch.
-function renderPillarMappingSections(container, onAfterChange) {
-  ensurePillarSourceDefaults();
-  container.innerHTML = "";
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    const candidates = pillarCandidateSheets(key);
-    const meta = ONBOARDING_PILLAR_META[key];
-    const card = el(`<div class="pillar-map-card"></div>`);
-    card.appendChild(el(`
-      <div class="pillar-map-head">
-        <div class="pillar-map-icon">${meta ? onboardingPillarIconSvg(key) : "•"}</div>
-        <div class="pillar-map-name">${escapeHtml(label)}</div>
-        ${candidates.length <= 1 ? `<div class="pillar-map-auto-tag">Auto</div>` : ""}
-      </div>
-    `));
-
-    if (!candidates.length) {
-      card.appendChild(el(`<div class="pillar-map-note">No practices fit this pillar yet — add one from the Marketplace so it can be logged.</div>`));
-    } else if (candidates.length === 1) {
-      const sp = candidates[0];
-      // Only one practice fits here, so it's on automatically — shown as
-      // a locked chip rather than something to toggle.
-      card.appendChild(el(`<div class="pillar-map-chip-row"><span class="pillar-map-chip auto">${escapeHtml(sp.label)} ✓</span></div>`));
-      card.appendChild(el(`<div class="pillar-map-note">Only one practice fits here, so it's on automatically.</div>`));
-    } else {
-      const chipRow = el(`<div class="pillar-map-chip-row"></div>`);
-      candidates.forEach((sp) => {
-        const checked = (state.pillarSourceMap[key] || []).includes(sp.id);
-        const chip = el(`<span class="pillar-map-chip${checked ? " on" : ""}">${escapeHtml(sp.label)}${checked ? ' <span class="x">✓</span>' : ""}</span>`);
-        chip.addEventListener("click", () => {
-          const set = new Set(state.pillarSourceMap[key] || []);
-          if (set.has(sp.id)) set.delete(sp.id);
-          else set.add(sp.id);
-          state.pillarSourceMap[key] = Array.from(set);
-          scheduleSave();
-          renderPillarMappingSections(container, onAfterChange);
-          if (onAfterChange) onAfterChange();
-        });
-        chipRow.appendChild(chip);
-      });
-      card.appendChild(chipRow);
-    }
-    container.appendChild(card);
-  });
-}
-
-// The contextual popup — triggered from Home when a pillar has nothing
-// connected to it yet, so it's the fastest way to fix that in the
-// moment rather than a detour through Settings.
-function openPillarMappingModal() {
-  const overlay = el(`
-    <div class="modal-overlay">
-      <div class="modal-box info-modal-box account-modal-box">
-        <div class="info-modal-header">
-          <h3>Pillar Mapping</h3>
-          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
-        </div>
-        <p class="muted" style="font-size:12.5px;line-height:1.5;margin:0 0 14px;">
-          Each pillar only shows the practices that actually fit it. Log something there today and it marks itself done. A pillar with nothing connected yet can't be marked done from Home — connect a practice to it here first.
-        </p>
-        <div id="pillar-mapping-sections"></div>
-      </div>
-    </div>
-  `);
-  const sectionsWrap = overlay.querySelector("#pillar-mapping-sections");
-  renderPillarMappingSections(sectionsWrap, null);
-
-  const close = () => {
-    overlay.remove();
-    renderHome();
-  };
-  overlay.querySelector(".info-modal-close").addEventListener("click", close);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) close();
-  });
-  document.body.appendChild(overlay);
-}
-
 function wellnessColorClass(field, value) {
   if (!value) return "";
   if (field === "foodQuality") return value === "Good" ? "good" : value === "Poor" ? "bad" : "mid";
@@ -9331,13 +9516,12 @@ function computeRewardProgress(prize, today) {
   return { enabled, linked, goal, earned, pct, reached, realGrowth, targetDate };
 }
 
-// Credits one pillar completion toward the reward the moment it happens —
-// called from applyPillarAutoDetection, the single place a pillar
-// actually flips to Yes now that manual quick-log is gone. Idempotent
-// per pillar per day isn't needed here since this only runs at the exact
-// moment `changed` becomes true for that key, never on a re-render of an
-// already-Yes day.
-function awardRewardForPillarLog() {
+// Credits one Practice log toward the reward the moment it happens —
+// called from applyPracticeDepositsForToday, the single place a Practice's
+// deposit ledger flips to true for a given day. Idempotent per app per day
+// isn't needed here since the ledger check upstream already guarantees
+// this only runs once per app per day.
+function awardRewardForPracticeLog() {
   const prize = state.veronikasPrize;
   if (!prize?.enabled || !prize.dollarPerLog) return;
   prize.earnedAmount = Math.max(0, (prize.earnedAmount || 0) + prize.dollarPerLog);
@@ -9469,9 +9653,11 @@ function computeStreakStats(today) {
 const GRACE_BANK_CAP = 7;
 const GRACE_LOOKBACK_DAYS = 14; // how far back reconcileGraceDays scans for a coverable gap
 // Bonus tokens ride the same streak ladder the push notifications already
-// celebrate, starting at 30 days — the point where a streak has real
-// weight — rather than every small early milestone.
-const GRACE_BONUS_MILESTONES = [30, 60, 100, 150, 200, 365];
+// celebrate. 2026-09 apps rearchitecture: this now runs per Practice app
+// (state.grace.bonusAwardedAt[appId]) instead of once off a combined
+// "overall" streak, so tracking more Practices means more chances to
+// earn, never fewer. 14 added ahead of 30 per the plan's milestone list.
+const GRACE_BONUS_MILESTONES = [14, 30, 60, 100, 150, 200, 365];
 
 function graceMonthlyEarnRate() {
   const acct = state.account || {};
@@ -9531,44 +9717,62 @@ function reconcileGraceDays(today) {
     g.lastGrantMonthKey = currentMonthKey;
   }
 
-  const streakKeys = [...WELLNESS_YESNO_FIELDS.map(([k]) => k), "overall"];
+  // 2026-09 apps rearchitecture: coverage runs off every currently-added
+  // Practice app's own id — no more fixed pillar keys, no more combined
+  // "overall" key. A Practice removed after a gap was covered keeps its
+  // history (coveredDates is permanent), it just stops being scanned here.
+  const appIds = currentPracticeAppIds();
   for (let i = GRACE_LOOKBACK_DAYS; i >= 1; i--) {
     const date = addDays(today, -i);
     const prevDate = addDays(date, -1);
 
-    // Every key that actually needs covering on this date — a real gap,
+    // Every app that actually needs covering on this date — a real gap,
     // bridging a streak that was genuinely alive the day before.
-    const needsCoverage = streakKeys.filter((key) => {
-      if (g.coveredDates[`${key}|${date}`]) return false; // already decided, permanent
-      if (isStreakDayPositive(key, date)) return false; // nothing to cover
-      const prevAlive = isStreakDayPositive(key, prevDate) || g.coveredDates[`${key}|${prevDate}`];
+    const needsCoverage = appIds.filter((id) => {
+      if (g.coveredDates[`${id}|${date}`]) return false; // already decided, permanent
+      if (isAppLoggedToday(id, date)) return false; // nothing to cover
+      const prevAlive = isAppLoggedToday(id, prevDate) || g.coveredDates[`${id}|${prevDate}`];
       return prevAlive;
     });
     if (!needsCoverage.length) continue;
 
     // When the bank can't cover everything missed on the same day, the
-    // longest-standing streak wins — losing 100 days of Movement hurts
-    // more than losing 3 days of Food, whatever order the pillars happen
-    // to be listed in. Ties (equal length) keep the pillar-list order.
+    // longest-standing streak wins — losing 100 days of one practice hurts
+    // more than losing 3 days of another, whatever order they're listed
+    // in. Ties (equal length) keep the app-list order.
     needsCoverage
-      .map((key) => ({ key, runLength: graceStreakRunEndingAt(key, prevDate) }))
+      .map((id) => ({ id, runLength: appStreakRunEndingAt(id, prevDate) }))
       .sort((a, b) => b.runLength - a.runLength)
-      .forEach(({ key }) => {
+      .forEach(({ id }) => {
         if (g.banked <= 0) return;
-        g.coveredDates[`${key}|${date}`] = true;
+        g.coveredDates[`${id}|${date}`] = true;
         g.banked -= 1;
       });
   }
 
-  // Bonus tokens for a long overall streak — checked last, using the
-  // grace-aware current streak so a bridged gap still counts toward it.
-  const overallStreak = computeStreakStats(today).current;
-  GRACE_BONUS_MILESTONES.forEach((day) => {
-    if (overallStreak >= day && (g.bonusAwardedAt.overall || 0) < day) {
-      g.bonusAwardedAt.overall = day;
-      if (g.banked < GRACE_BANK_CAP) g.banked += 1;
-    }
+  // Bonus tokens per Practice, off that Practice's own streak — every
+  // current Practice runs its own independent set of checkpoints.
+  appIds.forEach((id) => {
+    const streak = appCurrentStreak(id, today);
+    GRACE_BONUS_MILESTONES.forEach((day) => {
+      if (streak >= day && (g.bonusAwardedAt[id] || 0) < day) {
+        g.bonusAwardedAt[id] = day;
+        if (g.banked < GRACE_BANK_CAP) g.banked += 1;
+      }
+    });
   });
+}
+
+// Same shape as graceStreakRunEndingAt, but for an app id under the new
+// per-Practice model — grace-aware, walking backward from endDate.
+function appStreakRunEndingAt(appId, endDate) {
+  let run = 0;
+  let cursor = endDate;
+  while (isAppDayPositiveWithGrace(appId, cursor)) {
+    run++;
+    cursor = addDays(cursor, -1);
+  }
+  return run;
 }
 
 // The most recent day grace actually stepped in for, if any — this is
@@ -9577,11 +9781,10 @@ function reconcileGraceDays(today) {
 // after a day, rather than needing its own "seen it" flag.
 function mostRecentGraceCoverage(today) {
   const yesterday = addDays(today, -1);
-  const streakKeys = [...WELLNESS_YESNO_FIELDS.map(([k]) => k), "overall"];
-  for (const key of streakKeys) {
-    if (state.grace?.coveredDates[`${key}|${yesterday}`]) {
-      const label = key === "overall" ? "Your streak" : WELLNESS_YESNO_FIELDS.find(([k]) => k === key)?.[1];
-      return { key, label };
+  const appLookup = new Map(currentAppEntries().map((a) => [a.id, a.label]));
+  for (const id of currentPracticeAppIds()) {
+    if (state.grace?.coveredDates[`${id}|${yesterday}`]) {
+      return { key: id, label: appLookup.get(id) || id };
     }
   }
   return null;
@@ -9614,25 +9817,21 @@ function renderHome() {
   // real-dollar goal with the habit surface. All it gets here is the slim
   // pill inside renderHomeHero; the photo, quote, and full progress live
   // in Settings → Your Reward.
-  panel.appendChild(renderHomeHero(today));
-  panel.appendChild(renderHomeTodayPillarsCard(today));
+  const hero = renderHomeHero(today);
+  if (hero) panel.appendChild(hero);
+  panel.appendChild(renderHomeAppsGrid(today));
   panel.appendChild(renderHomeTodayDetailsCard(today));
 
-  // Additional Practices moved up here per the 2026-09 Home reorder — it's
-  // daily-use content (open a practice), so it sits with the rest of
-  // today's stuff instead of buried below the lower-frequency look-back
-  // cards. Trends and History now sit next to each other at the bottom,
-  // and the "strongest habit" line lives inside Trends instead of
-  // floating above it, disconnected from the section it's describing.
-  // The identity quote ("Who do you say you are?") moved to the You
-  // sheet — it was sitting between Trends and History for no real reason.
-  panel.appendChild(renderYourSpaces());
-
+  // Trends and History sit next to each other at the bottom — both read
+  // straight off the historical Wellness records exactly as they always
+  // have (2026-09: past days aren't rewritten under the new per-app
+  // model, only going forward does it take over). The identity quote
+  // ("Who do you say you are?") lives on the You sheet.
   renderCooccurrenceCard(panel, today);
   renderHomeTrendsSection(panel, today);
   renderWellnessHistory(panel, today);
 
-  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap a pillar above to log it, or a practice below to open it.</div>`));
+  panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap an app above to log it.</div>`));
 }
 
 // The streak flame's own color climbs from a dark ember to a bright gold
@@ -9761,7 +9960,10 @@ function rewardPiggyBankSvg() {
 // banner opens Settings → Your Reward, same as the old pill did.
 function renderHomeRewardBanner(today) {
   const prize = state.veronikasPrize;
-  if (!prize.enabled) return null;
+  // The reward pill is hidden entirely once there are zero Practice
+  // apps — nothing can deposit toward it, so showing an empty/stuck
+  // progress bar would just be confusing.
+  if (!prize.enabled || !currentPracticeAppIds().length) return null;
   const stats = computeRewardProgress(prize, today);
   const name = prize.itemName || "your reward";
 
@@ -9804,7 +10006,7 @@ function renderHomeRewardBanner(today) {
 // dollars" content as a bottom sheet instead of a permanent Home fixture.
 function renderHomeRewardLinkLine() {
   const prize = state.veronikasPrize;
-  if (!prize.enabled || (prize.linkedAccount && prize.linkedAccount.itemId)) return null;
+  if (!prize.enabled || !currentPracticeAppIds().length || (prize.linkedAccount && prize.linkedAccount.itemId)) return null;
   const line = el(`
     <div class="home-link-line">
       <span class="home-link-line-icon">${rewardPiggyBankSvg()}</span>
@@ -9845,28 +10047,15 @@ function openLinkBankAccountSheet() {
   document.body.appendChild(overlay);
 }
 
-// The new front door: streak flame + today's four pillars, all in one
-// card. The reward is deliberately NOT part of this card's content
-// anymore — see renderHomeRewardBanner just below, appended separately so
-// it can render nothing at all when no reward is set up.
+// The new front door: the reward-progress pill (2026-09 — no more
+// combined streak flame, since there's no single combined streak once
+// every Practice runs its own). Hidden entirely when there are zero
+// Practice apps — see renderHomeRewardBanner/renderHomeRewardLinkLine.
 function renderHomeHero(today) {
-  const todaysEntry = ensureTodaysWellnessEntry(today);
-  ensurePillarSourceDefaults();
-  applyPillarAutoDetection(todaysEntry, today);
-  const streak = computeStreakStats(today);
+  ensureTodaysWellnessEntry(today);
+  applyPracticeDepositsForToday(today);
 
   const hero = el(`<div class="card"></div>`);
-
-  hero.appendChild(el(`
-    <div class="home-streak-flame">
-      <div class="home-streak-flame-top">
-        <span class="home-streak-flame-icon">${streak.current > 0 ? homeStreakFlameSvg(streak.current) : "〰️"}</span>
-        <span class="home-streak-flame-num">${streak.current}</span>
-        <span class="home-streak-flame-label">day streak</span>
-      </div>
-      <div class="home-streak-flame-longest">Consecutive days &middot; longest ever ${streak.longest} day${streak.longest === 1 ? "" : "s"}</div>
-    </div>
-  `));
 
   const graceCovered = mostRecentGraceCoverage(today);
   if (graceCovered) {
@@ -9886,21 +10075,92 @@ function renderHomeHero(today) {
   const linkLine = renderHomeRewardLinkLine();
   if (linkLine) hero.appendChild(linkLine);
 
-  return hero;
+  return hero.children.length ? hero : null;
 }
 
-// The tap grid on its own card, kept visually light (no streak/deposit
-// text stacked above it) — per Veronika's call, the reward photo needs to
-// stay high up with as little text ahead of it as possible, so the grid
-// moved to right after the reward instead of piling more text-heavy
-// content between the hero and the image.
-function renderHomeTodayPillarsCard(today) {
-  const todaysEntry = ensureTodaysWellnessEntry(today);
+// ------------------------------------------------------------------
+// Home's unified apps grid (2026-09 rearchitecture) — replaces the old
+// six-pillar tap grid entirely. One grid, every added Practice + Tracker
+// (never Tools) as same-style tiles, a small checkmark on anything
+// logged today, an "Add / remove" tile at the end opening the
+// Marketplace. Empty state (zero Practices) shows a plain prompt instead
+// — Trackers/Tools still show normally even then.
+// ------------------------------------------------------------------
+function renderHomeAppsGrid(today) {
+  // Sobriety's milestone check runs here now that its own Home row is
+  // gone — this is still the first place a new day's crossing gets
+  // noticed, same as before.
+  if (state.extraTrackers?.sobriety) {
+    const newTier = sobrietyRecomputeMilestones(today);
+    if (newTier) {
+      scheduleSave();
+      setTimeout(() => openSobrietyCelebration(newTier), 0);
+    }
+  }
+
   const card = el(`<div class="card"></div>`);
   card.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
-  card.appendChild(renderPillarCycleGrid(todaysEntry, today, () => renderHome()));
-  const extraSection = renderExtraTrackersSection(todaysEntry, today, () => renderHome());
-  if (extraSection) card.appendChild(extraSection);
+
+  const nudges = renderExtraTrackersSection(today, () => renderHome());
+  if (nudges) card.appendChild(nudges);
+
+  const apps = currentAppEntries();
+  const hasPractice = apps.some((a) => a.type === "practice");
+
+  if (!hasPractice) {
+    const empty = el(`
+      <div class="home-empty-practices">
+        <div class="home-empty-practices-title">Add a practice to start tracking</div>
+        <button type="button" class="btn-primary home-empty-practices-btn">Browse the Marketplace</button>
+      </div>
+    `);
+    empty.querySelector(".home-empty-practices-btn").addEventListener("click", () => {
+      settingsSubTab = "gallery";
+      activateTab("settings");
+    });
+    card.appendChild(empty);
+    // Trackers/Tools still show normally even with zero Practices — the
+    // grid below just won't have any Practice tiles in it.
+    if (!apps.length) return card;
+  }
+
+  const grid = el(`<div class="home-yourspaces-grid home-apps-grid"></div>`);
+  apps.forEach((app) => {
+    const loggedToday = isAppLoggedToday(app.id, today);
+    const tile = el(`
+      <button type="button" class="home-yourspaces-tile home-app-tile${app.type === "tracker" ? " is-tracker" : ""}">
+        <span class="home-yourspaces-tile-icon">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}${
+      loggedToday ? `<span class="home-app-tile-check">${checkSvg}</span>` : ""
+    }</span>
+        <span class="home-yourspaces-tile-label">${escapeHtml(app.label)}</span>
+      </button>
+    `);
+    tile.addEventListener("click", () => {
+      if (app.id === "cycle") {
+        openCycleScreen(() => renderHome());
+        return;
+      }
+      if (app.id === "sobriety") {
+        openSobrietyScreen();
+        return;
+      }
+      activateTab(app.id);
+    });
+    grid.appendChild(tile);
+  });
+  const addTile = el(`
+    <button type="button" class="home-yourspaces-tile manage">
+      <span class="home-yourspaces-tile-icon">+</span>
+      <span class="home-yourspaces-tile-label">Add / remove</span>
+    </button>
+  `);
+  addTile.addEventListener("click", () => {
+    settingsSubTab = "gallery";
+    activateTab("settings");
+  });
+  grid.appendChild(addTile);
+  card.appendChild(grid);
+
   return card;
 }
 
@@ -10259,7 +10519,7 @@ function openEditRewardModal(onSaved) {
       prize.dollarPerLog = computeDollarPerLog(
         prize.depositGoal,
         prize.cycleLengthDays,
-        WELLNESS_YESNO_FIELDS.length
+        currentPracticeAppIds().length
       );
     }
     scheduleSave();
@@ -10291,106 +10551,6 @@ function renderHomeTrendsSection(panel, today) {
   renderPulseChart(section, today);
   section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
   renderPillarStreakList(section, today);
-}
-
-// Tapping an undone pillar — a bottom sheet instead of a silent toggle,
-// so a real day (a hike, church, a walk with a friend) becomes a real
-// record instead of a bare checkmark. Chips are this pillar's own past
-// manual labels; "+ New" is a one-line prompt for anything not seen
-// before; "Just mark done" keeps the zero-friction path fully intact for
-// days you don't want to bother with the detail.
-// Which currently-mapped spaces for this pillar are actually visible/
-// navigable right now — same mapping as pillarSourceLabel, but returning
-// real sheet ids so a tap can jump straight there instead of just naming
-// it in a caption.
-function pillarSourceSheets(key) {
-  const ids = state.pillarSourceMap?.[key] || [];
-  return ids
-    .map((id) => {
-      const sheet = state.sheets.find((s) => s.id === id && s.visible);
-      return sheet ? { id, label: sheetLabel(sheet) } : null;
-    })
-    .filter(Boolean);
-}
-
-// A pillar with a connected space gets one extra tap before logging,
-// instead of jumping straight there or always opening the manual popup —
-// per Veronika's call: some days you're about to go do the real thing
-// (open Bible Reading and actually read), other days you already did it
-// off-app and just want to say so (manual). Reuses the exact same
-// pillarql-* styling as the manual popup right below it so the two read
-// as one flow, not two different modals.
-function openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDone) {
-  const overlay = el(`
-    <div class="modal-overlay sheet">
-      <div class="modal-box pillarql-box">
-        <div class="pillarql-title">${escapeHtml(label)}</div>
-        <div class="pillarql-sub">Which practice do you want to open?</div>
-        <div class="pillarql-chip-row"></div>
-      </div>
-    </div>
-  `);
-  const row = overlay.querySelector(".pillarql-chip-row");
-  sources.forEach(({ id, label: sourceLabel }) => {
-    const btn = el(`<button type="button" class="pillarql-chip">Open ${escapeHtml(sourceLabel)}</button>`);
-    btn.addEventListener("click", () => {
-      overlay.remove();
-      activateTab(id);
-    });
-    row.appendChild(btn);
-  });
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-  document.body.appendChild(overlay);
-}
-
-
-// The six real pillar tiles, in one grid — shared by Home and the
-// Wellness page's own "Today" card so the exact same tap targets, same
-// visual language, and same tap behavior show up wherever today's
-// record is edited. Cycle used to live in this same grid; it's since
-// moved to its own row below (see renderCycleTrackerRow) since it isn't
-// a pillar at all — nothing to pass or fail, no streak, just a state
-// worth noting for richer trend reports later.
-function renderPillarCycleGrid(todaysEntry, today, onDone) {
-  const grid = el(`<div class="home-hero-pillars"></div>`);
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    const done = todaysEntry[key] === "Yes";
-    const caption = done ? pillarTodayCaption(key, today) : null;
-    const sources = pillarSourceSheets(key);
-    // Every completion has to trace back to a real practice now — no more
-    // freeform "what did you do" quick-log. A pillar with nothing mapped
-    // to it yet still gets a tap target, but it goes straight to Pillar
-    // Mapping to connect one, dimmed so it reads as "not loggable yet"
-    // rather than looking broken.
-    const unlinked = !done && !sources.length;
-    const tile = el(`
-      <button type="button" class="home-pillar${done ? " done" : ""}${unlinked ? " unlinked" : ""}">
-        <span class="home-pillar-icon ${done ? "on" : "off"}">${done ? checkSvg : ""}</span>
-        <span class="home-pillar-label">${escapeHtml(label)}</span>
-        ${caption ? `<span class="home-pillar-source">${escapeHtml(caption)}</span>` : unlinked ? `<span class="home-pillar-source">Connect a practice</span>` : ""}
-      </button>
-    `);
-    tile.addEventListener("click", () => {
-      if (done) {
-        openWellnessDayEditor(today, onDone);
-        return;
-      }
-      if (!sources.length) {
-        openPillarMappingModal();
-        return;
-      }
-      if (sources.length === 1) {
-        // Only one practice fits here — nothing to choose, just go log it.
-        activateTab(sources[0].id);
-        return;
-      }
-      openPillarTapChoiceSheet(key, label, sources, today, todaysEntry, onDone);
-    });
-    grid.appendChild(tile);
-  });
-  return grid;
 }
 
 // ------------------------------------------------------------------
@@ -10587,6 +10747,7 @@ function renderCycleNudges(today, onDone) {
     `);
     card.querySelector(".still-going").addEventListener("click", () => {
       info.current.ackStillGoingDate = today;
+      state.cycle.updatedAt = new Date().toISOString();
       scheduleSave();
       onDone();
     });
@@ -10597,24 +10758,13 @@ function renderCycleNudges(today, onDone) {
   return any ? wrap : null;
 }
 
-// Shared "Also tracking" section on Home — one label, one row per extra
-// tracker that's actually turned on. Cycle and Sobriety are siblings
-// here, not a special case of each other. Cycle's Home nudges live
-// right above the label, same as the mockup, since they're specific to
-// whether Cycle is even on.
-function renderExtraTrackersSection(todaysEntry, today, onDone) {
-  const cycleOn = !!state.extraTrackers?.cycle;
-  const sobrietyOn = !!state.extraTrackers?.sobriety;
-  if (!cycleOn && !sobrietyOn) return null;
-  const wrap = el(`<div class="cycle-tracker-wrap"></div>`);
-  if (cycleOn) {
-    const nudges = renderCycleNudges(today, onDone);
-    if (nudges) wrap.appendChild(nudges);
-  }
-  wrap.appendChild(el(`<div class="cycle-tracker-label">Also tracking</div>`));
-  if (cycleOn) wrap.appendChild(renderCycleTrackerRowInner(todaysEntry, today, onDone));
-  if (sobrietyOn) wrap.appendChild(renderSobrietyTrackerRowInner(today, onDone));
-  return wrap;
+// Cycle's own Home nudges (period due soon / still going past the usual
+// length) — Cycle itself is just another tile in the unified apps grid
+// now (2026-09), but these two reminders are specific to whether Cycle
+// is even on, so they still get their own small banner above the grid.
+function renderExtraTrackersSection(today, onDone) {
+  if (!state.extraTrackers?.cycle) return null;
+  return renderCycleNudges(today, onDone);
 }
 
 // A small bottom sheet, the same chrome as Sobriety's reset sheet
@@ -10699,6 +10849,7 @@ function openCycleLogPeriodSheet(defaultDate, onDone) {
       period.endDate = addDays(startDate, len - 1);
     }
     state.cycle.periods.push(period);
+    state.cycle.updatedAt = new Date().toISOString();
     scheduleSave();
     close();
     onDone();
@@ -10749,6 +10900,7 @@ function openCycleEndPeriodSheet(period, today, onDone) {
     const chosen = endInput.value || today;
     period.endDate = chosen < period.startDate ? period.startDate : chosen;
     delete period.ackStillGoingDate;
+    state.cycle.updatedAt = new Date().toISOString();
     scheduleSave();
     close();
     onDone();
@@ -10787,6 +10939,7 @@ function openCycleEditAveragesSheet(onDone) {
     const periodLen = Number(overlay.querySelector(".cyc-avg-period-input").value);
     if (cycleLen > 0) state.cycle.manualCycleLengthDays = Math.round(cycleLen);
     if (periodLen > 0) state.cycle.manualPeriodLengthDays = Math.round(periodLen);
+    state.cycle.updatedAt = new Date().toISOString();
     scheduleSave();
     close();
     onDone();
@@ -10824,12 +10977,14 @@ function openCycleEditPeriodSheet(period, onDone) {
     const end = overlay.querySelector(".cyc-edit-end").value || null;
     period.startDate = start;
     period.endDate = end && end >= start ? end : null;
+    state.cycle.updatedAt = new Date().toISOString();
     scheduleSave();
     close();
     onDone();
   });
   overlay.querySelector(".cyc-edit-delete").addEventListener("click", () => {
     state.cycle.periods = state.cycle.periods.filter((p) => p.id !== period.id);
+    state.cycle.updatedAt = new Date().toISOString();
     scheduleSave();
     close();
     onDone();
@@ -10897,9 +11052,15 @@ function openCycleScreen(onDone) {
       </div>
     `));
 
+    // The count-down alone ("3 days") makes you do the math yourself to
+    // know whether that lands before a trip or a weekend — the actual
+    // calendar date underneath it is what Veronika asked for directly.
+    // Skipped once you're overdue: predictedNextStart is already in the
+    // past by then, so a date there would just restate "days past due"
+    // less usefully.
     const predictCell =
       info.daysToNext >= 0
-        ? `<div class="cyc-predict-cell"><div class="cyc-predict-num">${info.daysToNext}</div><div class="cyc-predict-label">Days to next period</div></div>`
+        ? `<div class="cyc-predict-cell"><div class="cyc-predict-num">${info.daysToNext}</div><div class="cyc-predict-label">Days to next period</div><div class="cyc-predict-date">${escapeHtml(activityDateShort(info.predictedNextStart))}</div></div>`
         : `<div class="cyc-predict-cell"><div class="cyc-predict-num" style="color:var(--cyc-menstrual);">${info.daysToNext}</div><div class="cyc-predict-label">Days past due</div></div>`;
     box.appendChild(el(`
       <div class="cyc-predict-strip">
@@ -11025,6 +11186,19 @@ function sobrietyDayCount(today) {
   const now = new Date(today + "T00:00:00");
   return Math.max(1, daysBetween(start, now) + 1);
 }
+// Full 24-hour periods actually elapsed since startDate — 0 on the day
+// the tracker is started/reset, 1 the next day, and so on. Milestones
+// are checked against this, never against sobrietyDayCount's display
+// number: that display count is 1-indexed ("Day 1" the moment you
+// start) specifically so it reads well on screen, but it means "count
+// >= 1" is already true the instant the tracker is added, which used
+// to hand out the 24 Hours badge — and its celebration popup — before
+// any actual time had passed.
+function sobrietyElapsedDays(today) {
+  const start = new Date(state.sobriety.startDate + "T00:00:00");
+  const now = new Date(today + "T00:00:00");
+  return Math.max(0, daysBetween(start, now));
+}
 function sobrietyAffirmation(today) {
   return SOBRIETY_AFFIRMATIONS[sobrietyDayCount(today) % SOBRIETY_AFFIRMATIONS.length];
 }
@@ -11038,10 +11212,11 @@ function sobrietyCheckInToday(today) {
 // re-crossing an already-earned all-time tier doesn't count), or null.
 function sobrietyRecomputeMilestones(today) {
   const count = sobrietyDayCount(today);
+  const elapsed = sobrietyElapsedDays(today);
   state.sobriety.allTimeBestDays = Math.max(state.sobriety.allTimeBestDays, count);
   let newlyEarned = null;
   SOBRIETY_TIERS.forEach((t) => {
-    if (count >= t.days) {
+    if (elapsed >= t.days) {
       if (!state.sobriety.milestonesAllTime[t.key]) state.sobriety.milestonesAllTime[t.key] = today;
       if (!state.sobriety.milestonesCurrent[t.key]) {
         state.sobriety.milestonesCurrent[t.key] = today;
@@ -11526,61 +11701,6 @@ function openSobrietyWhyEditor(onDone) {
 // takes over (a screen-size limit, the same for every plan); under that,
 // an explicit "Add a space" tile closes out the grid so there's always
 // one visible, obvious way in — never a hidden gesture.
-function renderYourSpaces() {
-  const wrap = el(`<div class="card"></div>`);
-  const barVisible = state.sheets.filter((s) => s.visible);
-  const pinnedIds = new Set(barVisible.slice(0, MOBILE_PINNED_COUNT).map((s) => s.id));
-  const additional = barVisible.filter((s) => s.id !== "wellness" && !pinnedIds.has(s.id));
-
-  wrap.appendChild(el(`
-    <div class="home-yourspaces-head-static">
-      <span class="home-yourspaces-title">Your additional practices</span>
-      <span class="home-yourspaces-count">${additional.length}</span>
-    </div>
-  `));
-
-  const grid = el(`<div class="home-yourspaces-grid"></div>`);
-  additional.slice(0, 6).forEach((s) => {
-    const tile = el(`
-      <button type="button" class="home-yourspaces-tile">
-        <span class="home-yourspaces-tile-icon">${iconSvg(sheetIcon(s))}</span>
-        <span class="home-yourspaces-tile-label">${escapeHtml(sheetLabel(s))}</span>
-      </button>
-    `);
-    tile.addEventListener("click", () => activateTab(s.id));
-    grid.appendChild(tile);
-  });
-
-  if (additional.length > 6) {
-    const seeAllTile = el(`
-      <button type="button" class="home-yourspaces-tile manage">
-        <span class="home-yourspaces-tile-icon">+${additional.length - 6}</span>
-        <span class="home-yourspaces-tile-label">See all</span>
-      </button>
-    `);
-    seeAllTile.addEventListener("click", () => {
-      settingsSubTab = "mine";
-      activateTab("settings");
-    });
-    grid.appendChild(seeAllTile);
-  } else {
-    const addTile = el(`
-      <button type="button" class="home-yourspaces-tile manage">
-        <span class="home-yourspaces-tile-icon">+</span>
-        <span class="home-yourspaces-tile-label">Add a practice</span>
-      </button>
-    `);
-    addTile.addEventListener("click", () => {
-      settingsSubTab = "gallery";
-      activateTab("settings");
-    });
-    grid.appendChild(addTile);
-  }
-  wrap.appendChild(grid);
-
-  return wrap;
-}
-
 function homeGreetingTime() {
   const hour = new Date().getHours();
   if (hour < 12) return "morning";
@@ -12113,7 +12233,7 @@ function showOnboardingFlow() {
       state.veronikasPrize.dollarPerLog = computeDollarPerLog(
         rewardGoalDollars,
         rewardTargetDays,
-        WELLNESS_YESNO_FIELDS.length
+        currentPracticeAppIds().length
       );
       if (rewardPhotoDataUrl) state.veronikasPrize.itemPhoto = rewardPhotoDataUrl;
       // A bank linked during this flow already snapshotted its own
@@ -12523,7 +12643,7 @@ async function boot() {
     state.veronikasPrize.dollarPerLog = computeDollarPerLog(
       state.veronikasPrize.depositGoal,
       state.veronikasPrize.cycleLengthDays,
-      WELLNESS_YESNO_FIELDS.length
+      currentPracticeAppIds().length
     );
   }
   // One-time backfill for accounts that already had a reward going before
