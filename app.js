@@ -104,7 +104,7 @@ const EXTRA_TRACKERS_GALLERY = [
     key: "cycle",
     label: "Cycle",
     icon: `<path d="M12 3a9 9 0 1 0 9 9"></path><path d="M12 3v9l6 3"></path>`,
-    desc: "A state to note, not a habit to complete — no streak, no pass or fail.",
+    desc: "Log when your period starts and Addley predicts your phase from there — no streak, no pass or fail.",
   },
   {
     key: "sobriety",
@@ -412,6 +412,21 @@ function showBootLoadError() {
 // closes normally) while never reaching the record that gets saved.
 // Only a record local has never seen at all becomes a new array entry,
 // since there's no existing object for that one to preserve.
+// A field counts as "missing locally" if it's null/undefined/empty —
+// NOT merely absent as a key. This mattered concretely for sleepLogs:
+// sleepEntryForDate() creates a night's record as { pm: null, am: null }
+// the moment either half is first logged, so the OTHER half's key is
+// always already present locally (just null) well before it's ever
+// filled in on any device. The original `field in existingLocal` check
+// treated that null placeholder as "already have it" and refused to
+// copy in the real value — so a stale tab (or a different device) that
+// still had that half as null, saving for any unrelated reason, would
+// silently blank out a sleep entry someone had just finished logging
+// elsewhere. This is the bug behind Veronika seeing a morning's sleep
+// entry vanish after using both her phone and desktop.
+function journalFieldIsMissing(value) {
+  return value === null || value === undefined || value === "";
+}
 function mergeJournalRecords(remoteList, localList, keyFn) {
   const remoteArr = Array.isArray(remoteList) ? remoteList : [];
   const localArr = Array.isArray(localList) ? localList : [];
@@ -421,7 +436,7 @@ function mergeJournalRecords(remoteList, localList, keyFn) {
     const existingLocal = localByKey.get(keyFn(r));
     if (existingLocal) {
       Object.keys(r).forEach((field) => {
-        if (!(field in existingLocal)) existingLocal[field] = r[field];
+        if (journalFieldIsMissing(existingLocal[field]) && !journalFieldIsMissing(r[field])) existingLocal[field] = r[field];
       });
     } else {
       merged.push(r);
@@ -480,13 +495,27 @@ function mergeRemoteBeforeSave(remote, local) {
   if (!remote) return; // nothing saved yet from anywhere — nothing to merge with
   local.wellness = mergeJournalRecords(remote.wellness, local.wellness, (w) => w.logDate);
   local.learningLog = mergeJournalRecords(remote.learningLog, local.learningLog, (l) => l.date);
+  // Each night's record is built up in two halves (pm, then am the next
+  // morning) that are often logged from different devices — exactly the
+  // shape journalFieldIsMissing above exists to handle correctly.
+  local.sleepLogs = mergeJournalRecords(remote.sleepLogs, local.sleepLogs, (s) => s.date);
   local.sleepSettings = mergeLastWriteWins(remote.sleepSettings, local.sleepSettings);
+  // Same journal shape as wellness/sleepLogs — added or edited by date,
+  // never deleted through the UI — so a check-in logged on one device
+  // survives a blind overwrite autosaved from another.
+  if (local.sobriety && remote.sobriety) {
+    local.sobriety.checkIns = mergeJournalRecords(remote.sobriety.checkIns, local.sobriety.checkIns, (c) => c.date);
+  }
   // Lifetime Milestones records — permanent by design, so these use
   // union merges rather than last-write-wins: a milestone earned on one
   // device must survive a blind overwrite autosaved from another.
   local.bibleBooksEverFinished = mergeStringArrayUnion(remote.bibleBooksEverFinished, local.bibleBooksEverFinished);
   local.bibleMilestonesEarned = mergeEarnedDates(remote.bibleMilestonesEarned, local.bibleMilestonesEarned);
   local.sleepMilestonesEarned = mergeEarnedDates(remote.sleepMilestonesEarned, local.sleepMilestonesEarned);
+  if (local.sobriety && remote.sobriety) {
+    local.sobriety.milestonesAllTime = mergeEarnedDates(remote.sobriety.milestonesAllTime, local.sobriety.milestonesAllTime);
+    local.sobriety.milestonesCurrent = mergeEarnedDates(remote.sobriety.milestonesCurrent, local.sobriety.milestonesCurrent);
+  }
 }
 
 async function saveStateToSupabase(userId, stateToSave) {
@@ -8122,27 +8151,30 @@ function buildExamplesInfoBody(info) {
 // A simplified 28-day cycle timeline — four segments sized roughly to
 // how many days each phase tends to span, with a short plain-language
 // description under each. Illustrative, not medical guidance.
+// fertility is a static label for this generic 28-day reference guide
+// only — the real full screen computes its own fertility line per day
+// from her actual averages (see cycleFertilityForDay), which can land a
+// little differently than this general picture. Both say the same
+// thing in spirit: fertility rises through late follicular, peaks
+// across ovulation, then drops off in luteal.
 const CYCLE_PHASE_INFO = [
-  { key: "menstrual", label: "1. Menstrual", days: "Days 1–5", flex: 5, desc: "Your period. Energy is often lowest here — a natural time to rest more." },
-  { key: "follicular", label: "2. Follicular", days: "Days 6–13", flex: 8, desc: "After your period. Energy tends to build as estrogen rises." },
-  { key: "ovulatory", label: "3. Ovulatory", days: "~Day 14", flex: 2, desc: "Mid-cycle. Often the highest-energy window, around when an egg is released." },
-  { key: "luteal", label: "4. Luteal", days: "Days 15–28", flex: 13, desc: "After ovulation, before your next period. Energy gradually tapers; PMS symptoms can show up toward the end." },
+  { key: "menstrual", label: "1. Menstrual", days: "Days 1–5", flex: 5, desc: "Your period. Energy is often lowest here — a natural time to rest more.", fertility: "Low chance of pregnancy" },
+  { key: "follicular", label: "2. Follicular", days: "Days 6–13", flex: 8, desc: "After your period. Energy tends to build as estrogen rises.", fertility: "Rising toward the end of this phase" },
+  { key: "ovulatory", label: "3. Ovulatory", days: "~Day 14", flex: 2, desc: "Mid-cycle. Often the highest-energy window, around when an egg is released.", fertility: "High chance of pregnancy" },
+  { key: "luteal", label: "4. Luteal", days: "Days 15–28", flex: 13, desc: "After ovulation, before your next period. Energy gradually tapers; PMS symptoms can show up toward the end.", fertility: "Low chance of pregnancy" },
 ];
 
 // activeValue (e.g. "Ovulatory") highlights that phase's card — used by
-// the Cycle quick-log sheet so the diagram doubles as a "here's where you
-// are" reminder, not just reference material. Omitted entirely for the
-// plain info-popup use, which has nothing to highlight.
-// onSelectPhase is only passed from the actual logging sheet
-// (openCyclePhaseSheet) — the plain "what does this mean" info popup
-// (openFieldInfo) calls this with no second argument, so those cards stay
-// purely informational there. Where it IS passed, the cards themselves
-// become the tap target: "click it and be able to select" was the whole
-// point of pulling this diagram out from behind an (i) button in the
-// first place, so a separate row of buttons below it as the ONLY way to
-// actually log was never going to read as obvious — someone can tap
-// squarely on "Ovulatory" here, watch nothing happen, and reasonably
-// think they just logged it.
+// the Cycle full screen (openCycleScreen) so the diagram doubles as a
+// "here's where the prediction places you" reminder, not just reference
+// material. Omitted entirely for the plain info-popup use (openFieldInfo),
+// which has nothing to highlight.
+// onSelectPhase used to be how the old daily quick-log sheet let you tap
+// a card to log that phase directly; Cycle no longer logs a phase by
+// hand at all (see cyclePhaseForDay/cycleTodayInfo — it's predicted from
+// logged period dates instead), so nothing currently passes this, but
+// the parameter stays since the cards were built to double as tap
+// targets and there's no reason to lose that.
 function buildCyclePhaseInfoBody(activeValue, onSelectPhase) {
   const body = el(`<div></div>`);
   body.appendChild(el(`<p class="muted" style="font-size:13px;margin:0 0 14px 0;line-height:1.5;">A general guide to a typical 28-day cycle — yours may run shorter, longer, or less predictably, and that's normal.</p>`));
@@ -8160,6 +8192,7 @@ function buildCyclePhaseInfoBody(activeValue, onSelectPhase) {
         <div class="cycle-phase-card-body">
           <div class="cycle-phase-card-title">${escapeHtml(p.label)} <span class="muted" style="font-weight:400;">&middot; ${escapeHtml(p.days)}</span></div>
           <div class="cycle-phase-card-desc">${escapeHtml(p.desc)}</div>
+          <div class="cycle-phase-card-fertility cyc-fertility-${p.key === "ovulatory" ? "high" : p.key === "follicular" ? "medium" : "low"}">${escapeHtml(p.fertility)}</div>
         </div>
         ${onSelectPhase ? `<div class="cycle-phase-card-tap">${isActive ? "Logged" : "Tap to log"}</div>` : ""}
       </div>
@@ -10360,70 +10393,583 @@ function renderPillarCycleGrid(todaysEntry, today, onDone) {
   return grid;
 }
 
-// Cycle, on its own — a state worth tracking for depth in trend reports,
-// not a habit with a pass/fail. First of what should eventually be a
-// small family of optional "extra" trackers (gallery items that aren't
-// practices, don't map to a pillar, and don't ask anything of you beyond
-// adding a little more context to your insights).
+// ------------------------------------------------------------------
+// Cycle — built from real dates instead of a daily manual tap: logging
+// when a period starts (and, once it's over, when it ended) is the
+// only input. Today's predicted phase, the countdown to the next
+// period, and the running averages are all computed fresh from that
+// log every render, never stored separately. Fewer than 2 logged
+// periods falls back to the standard 28-day cycle (plus whatever
+// period length was given at setup); from the 2nd period on, real
+// history quietly takes over — see cycleAvgCycleLength/
+// cycleAvgPeriodLength. Veronika was explicit this should predict from
+// history like a real period-tracking app, not repeat the old
+// tap-a-phase-every-day dropdown (still kept as WELLNESS_ENUM_FIELDS.
+// cyclePhase / CYCLE_PHASE_INFO for History/trend compatibility — see
+// cycleSyncTodaysWellnessPhase — and its diagram is reused as-is in
+// the full screen below, just no longer the way you log anything).
+// ------------------------------------------------------------------
+const cycleDropSvgPath = `<path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"></path>`;
+const CYCLE_FLOW_OPTIONS = ["Light", "Medium", "Heavy"];
+
+function cycleSortedPeriods() {
+  return [...state.cycle.periods].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0));
+}
+
+// "Where you are right now" — the period whose start date is on or
+// before today, closest to it. Not just the most recently logged one,
+// in case a period was ever back-logged out of order.
+function cycleCurrentPeriod(today) {
+  const sorted = cycleSortedPeriods().filter((p) => p.startDate <= today);
+  return sorted.length ? sorted[sorted.length - 1] : null;
+}
+
+// Real logged data always wins once there's enough of it (2+ periods
+// for cycle length, 1+ closed period for period length); the manual
+// numbers — set at first setup, editable any time after from the
+// average card — are only ever the fallback for before that.
+function cycleAvgCycleLength() {
+  const sorted = cycleSortedPeriods();
+  if (sorted.length >= 2) {
+    const gaps = [];
+    for (let i = 1; i < sorted.length; i++) {
+      gaps.push(daysBetween(new Date(sorted[i - 1].startDate + "T00:00:00"), new Date(sorted[i].startDate + "T00:00:00")));
+    }
+    const recent = gaps.slice(-6).filter((g) => g > 0);
+    if (recent.length) return Math.round(recent.reduce((a, b) => a + b, 0) / recent.length);
+  }
+  return state.cycle.manualCycleLengthDays || 28;
+}
+function cycleAvgPeriodLength() {
+  const lengths = cycleSortedPeriods()
+    .filter((p) => p.endDate)
+    .slice(-6)
+    .map((p) => daysBetween(new Date(p.startDate + "T00:00:00"), new Date(p.endDate + "T00:00:00")) + 1)
+    .filter((n) => n > 0);
+  if (lengths.length) return Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length);
+  return state.cycle.manualPeriodLengthDays || 5;
+}
+
+// Which of the four phases a given cycle day falls in, given the
+// average cycle/period lengths. Ovulation is placed 14 days before the
+// NEXT period rather than a fixed day number, since the luteal phase
+// is the most biologically consistent part of the cycle even when the
+// rest runs short or long.
+function cyclePhaseForDay(day, avgCycleLen, avgPeriodLen) {
+  const ovulationCenter = Math.max(avgPeriodLen + 2, avgCycleLen - 14);
+  const ovulStart = ovulationCenter - 1;
+  const ovulEnd = ovulationCenter + 1;
+  if (day <= avgPeriodLen) return { key: "menstrual", label: "Menstrual", color: "var(--cyc-menstrual)" };
+  if (day < ovulStart) return { key: "follicular", label: "Follicular", color: "var(--cyc-follicular)" };
+  if (day <= ovulEnd) return { key: "ovulatory", label: "Ovulatory", color: "var(--cyc-ovulatory)" };
+  if (day <= avgCycleLen) return { key: "luteal", label: "Luteal", color: "var(--cyc-luteal)" };
+  return { key: "luteal", label: "Late luteal", color: "var(--cyc-luteal)" };
+}
+
+// Same ovulation-day math as cyclePhaseForDay, translated into a
+// pregnancy-chance line instead of a phase name — sperm can survive a
+// few days, and the egg about a day past ovulation, so "high" spans a
+// window around ovulation rather than just that one day. Veronika
+// asked for this directly: the phase name alone ("Ovulatory") doesn't
+// tell you what it means for fertility unless you already know.
+function cycleFertilityForDay(day, avgCycleLen, avgPeriodLen) {
+  const ovulationCenter = Math.max(avgPeriodLen + 2, avgCycleLen - 14);
+  const highStart = ovulationCenter - 5;
+  const highEnd = ovulationCenter + 1;
+  const medStart = highStart - 2;
+  if (day >= highStart && day <= highEnd) return { level: "high", label: "High chance of pregnancy" };
+  if (day >= medStart && day < highStart) return { level: "medium", label: "Rising chance of pregnancy" };
+  return { level: "low", label: "Low chance of pregnancy" };
+}
+
+// The one function everything else reads from. Null means no periods
+// logged yet at all — handled as its own setup state everywhere this
+// is called, never faked as "Day 1".
+function cycleTodayInfo(today) {
+  const current = cycleCurrentPeriod(today);
+  if (!current) return null;
+  const avgCycleLen = cycleAvgCycleLength();
+  const avgPeriodLen = cycleAvgPeriodLength();
+  const day = daysBetween(new Date(current.startDate + "T00:00:00"), new Date(today + "T00:00:00")) + 1;
+  const phase = cyclePhaseForDay(day, avgCycleLen, avgPeriodLen);
+  const fertility = cycleFertilityForDay(day, avgCycleLen, avgPeriodLen);
+  const predictedNextStart = addDays(current.startDate, avgCycleLen);
+  const daysToNext = daysBetween(new Date(today + "T00:00:00"), new Date(predictedNextStart + "T00:00:00"));
+  return { current, day, avgCycleLen, avgPeriodLen, phase, fertility, predictedNextStart, daysToNext, isOpen: !current.endDate };
+}
+
+// Keeps the pre-existing wellness enum field in sync so History's day
+// editor and anything built on WELLNESS_ENUM_FIELDS.cyclePhase keep
+// working exactly as before — it's just auto-filled from the
+// prediction now instead of manually tapped in.
+function cycleSyncTodaysWellnessPhase(todaysEntry, info) {
+  const label = info ? info.phase.label.replace(/^Late /, "") : null;
+  if (label && todaysEntry.cyclePhase !== label) {
+    todaysEntry.cyclePhase = label;
+    scheduleSave();
+  }
+}
+
 function renderCycleTrackerRowInner(todaysEntry, today, onDone) {
-  const phase = todaysEntry.cyclePhase || null;
+  if (!state.cycle.periods.length) {
+    const row = el(`
+      <button type="button" class="cycle-tracker-row">
+        <span class="cycle-tracker-icon cycle-off">${iconSvg(cycleDropSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="14" height="14"')}</span>
+        <span class="cycle-tracker-text">
+          <span class="cycle-tracker-title">Cycle</span>
+          <span class="cycle-tracker-sub">Let's find your rhythm</span>
+        </span>
+        <span class="cycle-tracker-value muted">Set up</span>
+      </button>
+    `);
+    row.addEventListener("click", () => openCycleScreen(onDone));
+    return row;
+  }
+  const info = cycleTodayInfo(today);
+  cycleSyncTodaysWellnessPhase(todaysEntry, info);
   const row = el(`
-    <button type="button" class="cycle-tracker-row">
-      <span class="cycle-tracker-icon ${phase ? "cycle-on" : "cycle-off"}">${phase ? checkSvg : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'}</span>
+    <button type="button" class="cycle-tracker-row predicted">
+      <span class="cycle-tracker-icon" style="background:var(--cyc-light);border-color:var(--cyc-light);color:${info.phase.color};">${iconSvg(cycleDropSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="14" height="14"')}</span>
       <span class="cycle-tracker-text">
-        <span class="cycle-tracker-title">Cycle</span>
-        <span class="cycle-tracker-sub">A state to note, not a habit to complete</span>
+        <span class="cycle-tracker-title">Cycle &middot; Day ${info.day}</span>
+        <span class="cycle-tracker-sub">${escapeHtml(info.phase.label)}</span>
       </span>
-      ${phase ? `<span class="cycle-tracker-value">${escapeHtml(phase)}</span>` : `<span class="cycle-tracker-value muted">Tap to log</span>`}
+      <span class="cycle-tracker-value" style="background:${info.phase.color};color:#fff;">${escapeHtml(info.phase.label)}</span>
     </button>
   `);
-  row.addEventListener("click", () => openCyclePhaseSheet(todaysEntry, today, onDone));
+  row.addEventListener("click", () => openCycleScreen(onDone));
   return row;
+}
+
+// The two Home nudges Veronika asked for — same visual family as the
+// existing Connections reconnect nudge, so this reads as a familiar
+// pattern rather than a new kind of interruption. Recomputed every
+// render, no separate "seen it" state to manage, except the one small
+// per-period ack below so tapping "Still going" doesn't just re-show
+// the same card again a second later on the very same day.
+function renderCycleNudges(today, onDone) {
+  if (!state.cycle.periods.length) return null;
+  const info = cycleTodayInfo(today);
+  const wrap = el(`<div></div>`);
+  let any = false;
+
+  if (!info.isOpen && info.daysToNext <= 1) {
+    any = true;
+    const text =
+      info.daysToNext === 1
+        ? "Your period is predicted to start <strong>tomorrow</strong>, based on your average."
+        : info.daysToNext === 0
+        ? "Your period is predicted to start <strong>today</strong>, based on your average."
+        : `Your period was predicted <strong>${Math.abs(info.daysToNext)} day${Math.abs(info.daysToNext) === 1 ? "" : "s"} ago</strong>.`;
+    const card = el(`
+      <div class="cyc-nudge-card">
+        <span class="cyc-nudge-icon">🩸</span>
+        <span class="cyc-nudge-text">${text}</span>
+        <button type="button" class="cyc-nudge-btn">Log it</button>
+      </div>
+    `);
+    card.querySelector(".cyc-nudge-btn").addEventListener("click", () => openCycleLogPeriodSheet(today, onDone));
+    wrap.appendChild(card);
+  }
+
+  if (info.isOpen && info.day > info.avgPeriodLen && info.current.ackStillGoingDate !== today) {
+    any = true;
+    const over = info.day - info.avgPeriodLen;
+    const card = el(`
+      <div class="cyc-nudge-card">
+        <span class="cyc-nudge-icon">🩸</span>
+        <span class="cyc-nudge-text">Still on your period? Day <strong>${info.day}</strong> is ${over} day${over === 1 ? "" : "s"} longer than your usual ${info.avgPeriodLen}.</span>
+        <div class="cyc-nudge-row">
+          <button type="button" class="cyc-nudge-btn still-going">Still going</button>
+          <button type="button" class="cyc-nudge-btn ghost it-ended">It ended</button>
+        </div>
+      </div>
+    `);
+    card.querySelector(".still-going").addEventListener("click", () => {
+      info.current.ackStillGoingDate = today;
+      scheduleSave();
+      onDone();
+    });
+    card.querySelector(".it-ended").addEventListener("click", () => openCycleEndPeriodSheet(info.current, today, onDone));
+    wrap.appendChild(card);
+  }
+
+  return any ? wrap : null;
 }
 
 // Shared "Also tracking" section on Home — one label, one row per extra
 // tracker that's actually turned on. Cycle and Sobriety are siblings
-// here, not a special case of each other.
+// here, not a special case of each other. Cycle's Home nudges live
+// right above the label, same as the mockup, since they're specific to
+// whether Cycle is even on.
 function renderExtraTrackersSection(todaysEntry, today, onDone) {
   const cycleOn = !!state.extraTrackers?.cycle;
   const sobrietyOn = !!state.extraTrackers?.sobriety;
   if (!cycleOn && !sobrietyOn) return null;
   const wrap = el(`<div class="cycle-tracker-wrap"></div>`);
+  if (cycleOn) {
+    const nudges = renderCycleNudges(today, onDone);
+    if (nudges) wrap.appendChild(nudges);
+  }
   wrap.appendChild(el(`<div class="cycle-tracker-label">Also tracking</div>`));
   if (cycleOn) wrap.appendChild(renderCycleTrackerRowInner(todaysEntry, today, onDone));
   if (sobrietyOn) wrap.appendChild(renderSobrietyTrackerRowInner(today, onDone));
   return wrap;
 }
 
-// Tapping Cycle — the same diagram that used to hide behind the little
-// (i) button next to the old dropdown, surfaced as the actual point of
-// the interaction instead of a footnote to it, with today's phase (if
-// any) highlighted and four taps to log or change it.
-function openCyclePhaseSheet(todaysEntry, today, onDone) {
-  const currentPhase = todaysEntry.cyclePhase || null;
+// A small bottom sheet, the same chrome as Sobriety's reset sheet
+// (.sheet-overlay/.sheet-box/.sheet-primary-btn) — logging a period
+// start is the one new piece of manual input the whole feature runs
+// on. defaultDate lets the Home/full-screen "it started" actions and
+// the overdue nudge all default sensibly instead of always assuming
+// today.
+function openCycleLogPeriodSheet(defaultDate, onDone) {
+  const isFirst = !state.cycle.periods.length;
+  const suggestedLen = cycleAvgPeriodLength();
   const overlay = el(`
-    <div class="modal-overlay sheet">
-      <div class="modal-box pillarql-box cycle-sheet-box">
-        <div class="pillarql-title">Where are you in your cycle?</div>
+    <div class="sheet-overlay">
+      <div class="sheet-box" style="max-width:400px;">
+        <button type="button" class="icon-btn sheet-close" aria-label="Close">${closeSvg}</button>
+        <div class="onboarding-headline">${isFirst ? "Let's find your rhythm" : "Log your period"}</div>
+        <div class="onboarding-subline">${
+          isFirst
+            ? "One start date and about how many days it usually runs is enough to start predicting — Addley gets more accurate every period after this."
+            : "This is the one thing that powers everything else — your predicted phase, your next period, your average."
+        }</div>
+        <div class="cyc-field" style="text-align:left;">
+          <label>${isFirst ? "Last period started" : "Start date"}</label>
+          <input type="date" class="cyc-input cyc-start-input" value="${escapeHtml(defaultDate)}" max="${escapeHtml(todayISO())}" />
+        </div>
+        ${
+          isFirst
+            ? ""
+            : `<div class="cyc-field" style="text-align:left;">
+                <label>How's the flow, if you know yet</label>
+                <div class="cyc-toggle-row cyc-flow-row">
+                  ${CYCLE_FLOW_OPTIONS.map((f, i) => `<div class="cyc-toggle${i === 0 ? " sel" : ""}" data-flow="${f}">${f}</div>`).join("")}
+                </div>
+              </div>`
+        }
+        <div class="cyc-field" style="text-align:left;">
+          <label>Usually lasts about</label>
+          <div class="cyc-toggle-row cyc-len-row">
+            ${[4, 5, 6, 7].map((n) => `<div class="cyc-toggle${n === Math.min(7, Math.max(4, suggestedLen)) ? " sel" : ""}" data-len="${n}">${n === 7 ? "7+" : `${n} days`}</div>`).join("")}
+          </div>
+        </div>
+        <button type="button" class="sheet-primary-btn cyc-log-save">${isFirst ? "Start predicting" : "Save"}</button>
       </div>
     </div>
   `);
-  const logPhase = (phaseValue) => {
-    todaysEntry.cyclePhase = phaseValue;
+  let flow = CYCLE_FLOW_OPTIONS[0];
+  overlay.querySelectorAll(".cyc-flow-row .cyc-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      overlay.querySelectorAll(".cyc-flow-row .cyc-toggle").forEach((b) => b.classList.remove("sel"));
+      btn.classList.add("sel");
+      flow = btn.dataset.flow;
+    });
+  });
+  let len = Math.min(7, Math.max(4, suggestedLen));
+  overlay.querySelectorAll(".cyc-len-row .cyc-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      overlay.querySelectorAll(".cyc-len-row .cyc-toggle").forEach((b) => b.classList.remove("sel"));
+      btn.classList.add("sel");
+      len = Number(btn.dataset.len);
+    });
+  });
+
+  const close = () => overlay.remove();
+  overlay.querySelector(".sheet-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector(".cyc-log-save").addEventListener("click", () => {
+    const startDate = overlay.querySelector(".cyc-start-input").value || defaultDate;
+    state.cycle.manualPeriodLengthDays = len;
+
+    // Never leave two periods open at once — if the previous one was
+    // never closed, this new start date is exactly the signal that it
+    // must have ended, so close it out the day before.
+    const openPrev = cycleSortedPeriods().find((p) => !p.endDate && p.startDate < startDate);
+    if (openPrev) openPrev.endDate = addDays(startDate, -1);
+
+    const period = { id: nextId(), startDate, endDate: null, flow: isFirst ? null : flow };
+    if (isFirst) {
+      // A first-time setup date is describing a period that's already
+      // over, not one starting today — close it immediately using the
+      // length just given, so it seeds cycleAvgPeriodLength as real
+      // data right away instead of sitting open indefinitely.
+      period.endDate = addDays(startDate, len - 1);
+    }
+    state.cycle.periods.push(period);
     scheduleSave();
-    overlay.remove();
+    close();
     onDone();
+  });
+  document.body.appendChild(overlay);
+}
+
+// The popup Veronika asked for specifically: tapping "It ended" never
+// just stamps today's date, because by the time that's tapped the
+// period may well have actually ended a day or two earlier — and that
+// date is what the period-length average is built from.
+function openCycleEndPeriodSheet(period, today, onDone) {
+  const yesterday = addDays(today, -1);
+  const overlay = el(`
+    <div class="sheet-overlay">
+      <div class="sheet-box" style="max-width:400px;">
+        <button type="button" class="icon-btn sheet-close" aria-label="Close">${closeSvg}</button>
+        <div class="onboarding-headline">When did it end?</div>
+        <div class="onboarding-subline">Started ${escapeHtml(activityDateShort(period.startDate))}</div>
+        <div class="cyc-toggle-row" style="margin:14px 0;">
+          <div class="cyc-toggle" data-date="${yesterday}">Yesterday</div>
+          <div class="cyc-toggle sel" data-date="${today}">Today</div>
+        </div>
+        <div class="cyc-field" style="text-align:left;">
+          <label>Or pick a date</label>
+          <input type="date" class="cyc-input cyc-end-input" value="${escapeHtml(today)}" min="${escapeHtml(period.startDate)}" max="${escapeHtml(today)}" />
+        </div>
+        <button type="button" class="sheet-primary-btn cyc-end-save">Save</button>
+      </div>
+    </div>
+  `);
+  const endInput = overlay.querySelector(".cyc-end-input");
+  overlay.querySelectorAll(".cyc-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      overlay.querySelectorAll(".cyc-toggle").forEach((b) => b.classList.remove("sel"));
+      btn.classList.add("sel");
+      endInput.value = btn.dataset.date;
+    });
+  });
+  endInput.addEventListener("change", () => {
+    overlay.querySelectorAll(".cyc-toggle").forEach((b) => b.classList.remove("sel"));
+  });
+
+  const close = () => overlay.remove();
+  overlay.querySelector(".sheet-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector(".cyc-end-save").addEventListener("click", () => {
+    const chosen = endInput.value || today;
+    period.endDate = chosen < period.startDate ? period.startDate : chosen;
+    delete period.ackStillGoingDate;
+    scheduleSave();
+    close();
+    onDone();
+  });
+  document.body.appendChild(overlay);
+}
+
+// "Edit manually" on the average card — adjusts the fallback numbers
+// only; once there's enough real history, cycleAvgCycleLength /
+// cycleAvgPeriodLength ignore these in favor of the actual logged
+// dates, same as the note on the mockup said they would.
+function openCycleEditAveragesSheet(onDone) {
+  const overlay = el(`
+    <div class="sheet-overlay">
+      <div class="sheet-box" style="max-width:400px;">
+        <button type="button" class="icon-btn sheet-close" aria-label="Close">${closeSvg}</button>
+        <div class="onboarding-headline">Edit your averages</div>
+        <div class="onboarding-subline">Used as a fallback before you've logged enough for Addley to average from your own history — real dates always win once there's enough of them.</div>
+        <div class="cyc-field" style="text-align:left;">
+          <label>Cycle length (days)</label>
+          <input type="number" min="10" max="90" class="cyc-input cyc-avg-cycle-input" value="${cycleAvgCycleLength()}" />
+        </div>
+        <div class="cyc-field" style="text-align:left;">
+          <label>Period length (days)</label>
+          <input type="number" min="1" max="14" class="cyc-input cyc-avg-period-input" value="${cycleAvgPeriodLength()}" />
+        </div>
+        <button type="button" class="sheet-primary-btn cyc-avg-save">Save</button>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".sheet-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector(".cyc-avg-save").addEventListener("click", () => {
+    const cycleLen = Number(overlay.querySelector(".cyc-avg-cycle-input").value);
+    const periodLen = Number(overlay.querySelector(".cyc-avg-period-input").value);
+    if (cycleLen > 0) state.cycle.manualCycleLengthDays = Math.round(cycleLen);
+    if (periodLen > 0) state.cycle.manualPeriodLengthDays = Math.round(periodLen);
+    scheduleSave();
+    close();
+    onDone();
+  });
+  document.body.appendChild(overlay);
+}
+
+// A logged period, correctable — tapping a history row opens this
+// rather than the log being permanent once entered, same as
+// everywhere else in the app.
+function openCycleEditPeriodSheet(period, onDone) {
+  const overlay = el(`
+    <div class="sheet-overlay">
+      <div class="sheet-box" style="max-width:400px;">
+        <button type="button" class="icon-btn sheet-close" aria-label="Close">${closeSvg}</button>
+        <div class="onboarding-headline">Edit this period</div>
+        <div class="cyc-field" style="text-align:left;">
+          <label>Start date</label>
+          <input type="date" class="cyc-input cyc-edit-start" value="${escapeHtml(period.startDate)}" max="${escapeHtml(todayISO())}" />
+        </div>
+        <div class="cyc-field" style="text-align:left;">
+          <label>End date (leave blank if still ongoing)</label>
+          <input type="date" class="cyc-input cyc-edit-end" value="${escapeHtml(period.endDate || "")}" max="${escapeHtml(todayISO())}" />
+        </div>
+        <button type="button" class="sheet-primary-btn cyc-edit-save">Save</button>
+        <button type="button" class="btn-ghost cyc-edit-delete" style="width:100%;margin-top:10px;color:#8C3F2B;">Delete this period</button>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".sheet-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector(".cyc-edit-save").addEventListener("click", () => {
+    const start = overlay.querySelector(".cyc-edit-start").value || period.startDate;
+    const end = overlay.querySelector(".cyc-edit-end").value || null;
+    period.startDate = start;
+    period.endDate = end && end >= start ? end : null;
+    scheduleSave();
+    close();
+    onDone();
+  });
+  overlay.querySelector(".cyc-edit-delete").addEventListener("click", () => {
+    state.cycle.periods = state.cycle.periods.filter((p) => p.id !== period.id);
+    scheduleSave();
+    close();
+    onDone();
+  });
+  document.body.appendChild(overlay);
+}
+
+// The full screen — same pattern as openSobrietyScreen: a modal
+// overlay, re-rendered in place after every action so the day count /
+// prediction / history always reflects whatever was just logged.
+function openCycleScreen(onDone) {
+  const overlay = el(`<div class="modal-overlay"><div class="modal-box info-modal-box account-modal-box" style="width:400px;"></div></div>`);
+  const box = overlay.querySelector(".modal-box");
+  const done = () => {
+    render();
+    if (onDone) onDone();
   };
 
-  // One way to log, not two: the diagram cards ARE the buttons now (see
-  // buildCyclePhaseInfoBody's "tappable" mode) — an extra row of the same
-  // four choices underneath was just the same action twice.
-  const box = overlay.querySelector(".cycle-sheet-box");
-  box.appendChild(buildCyclePhaseInfoBody(currentPhase, logPhase));
+  function render() {
+    const today = todayISO();
+    box.innerHTML = "";
+    box.appendChild(el(`
+      <div class="info-modal-header">
+        <h3>Cycle</h3>
+        <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+      </div>
+    `));
+    box.querySelector(".info-modal-close").addEventListener("click", () => { overlay.remove(); if (onDone) onDone(); });
 
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
+    if (!state.cycle.periods.length) {
+      box.appendChild(el(`
+        <div>
+          <div style="text-align:center;padding:14px 10px 4px;">
+            <div class="cyc-empty-icon">${iconSvg(cycleDropSvgPath).replace('class="tab-icon" width="20" height="20"', 'width="24" height="24" stroke="#7A3B26"')}</div>
+            <div class="cyc-phase-name" style="color:var(--text);">Let's find your rhythm</div>
+            <div class="cyc-phase-sub" style="max-width:280px;margin-left:auto;margin-right:auto;">Log your last period's start date and about how many days it usually runs — Addley predicts from those two numbers until it has enough of your own history to do better.</div>
+          </div>
+          <button type="button" class="cyc-log-btn cyc-setup-btn">When did your last period start?</button>
+        </div>
+      `));
+      box.querySelector(".cyc-setup-btn").addEventListener("click", () => openCycleLogPeriodSheet(today, done));
+      return;
+    }
+
+    const info = cycleTodayInfo(today);
+    const circumference = 276.5;
+    const frac = Math.max(0, Math.min(1, info.day / info.avgCycleLen));
+    const offset = Math.round(circumference * (1 - frac) * 10) / 10;
+
+    box.appendChild(el(`
+      <div class="cyc-hero">
+        <div class="cyc-hero-ring">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="44" fill="none" stroke="var(--border)" stroke-width="8"/>
+            <circle cx="50" cy="50" r="44" fill="none" stroke="${info.phase.color}" stroke-width="8" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"/>
+          </svg>
+          <div class="cyc-hero-inner">
+            <div class="cyc-day-num">${info.day}</div>
+            <div class="cyc-day-label">of ~${info.avgCycleLen}</div>
+          </div>
+        </div>
+        <div class="cyc-phase-name" style="color:${info.phase.color};">${escapeHtml(info.phase.label)}</div>
+        <div class="cyc-phase-sub">${escapeHtml(CYCLE_PHASE_INFO.find((p) => p.key === info.phase.key)?.desc || "")}</div>
+        <div class="cyc-fertility cyc-fertility-${info.fertility.level}">${escapeHtml(info.fertility.label)}</div>
+      </div>
+    `));
+
+    const predictCell =
+      info.daysToNext >= 0
+        ? `<div class="cyc-predict-cell"><div class="cyc-predict-num">${info.daysToNext}</div><div class="cyc-predict-label">Days to next period</div></div>`
+        : `<div class="cyc-predict-cell"><div class="cyc-predict-num" style="color:var(--cyc-menstrual);">${info.daysToNext}</div><div class="cyc-predict-label">Days past due</div></div>`;
+    box.appendChild(el(`
+      <div class="cyc-predict-strip">
+        ${predictCell}
+        <div class="cyc-predict-cell"><div class="cyc-predict-num">${info.avgCycleLen}</div><div class="cyc-predict-label">Avg. cycle length</div></div>
+      </div>
+    `));
+
+    if (info.isOpen) {
+      const stillBtn = el(`<button type="button" class="cyc-log-ghost">It ended</button>`);
+      stillBtn.addEventListener("click", () => openCycleEndPeriodSheet(info.current, today, done));
+      box.appendChild(stillBtn);
+    } else if (info.daysToNext <= 0) {
+      const startedBtn = el(`<button type="button" class="cyc-log-btn period-due">My period started</button>`);
+      startedBtn.addEventListener("click", () => openCycleLogPeriodSheet(today, done));
+      box.appendChild(startedBtn);
+      const notYetBtn = el(`<button type="button" class="cyc-log-ghost" style="margin-top:8px;">Not yet — remind me tomorrow</button>`);
+      notYetBtn.addEventListener("click", () => { overlay.remove(); if (onDone) onDone(); });
+      box.appendChild(notYetBtn);
+    } else {
+      const logBtn = el(`<button type="button" class="cyc-log-ghost">Log period start</button>`);
+      logBtn.addEventListener("click", () => openCycleLogPeriodSheet(today, done));
+      box.appendChild(logBtn);
+    }
+
+    box.appendChild(el(`<div class="cyc-section-title">Where you are in the cycle</div>`));
+    const track = el(`<div class="cyc-track"></div>`);
+    CYCLE_PHASE_INFO.forEach((p) => {
+      let flex = p.flex;
+      if (p.key === "menstrual") flex = info.avgPeriodLen;
+      if (p.key === "ovulatory") flex = Math.max(1, Math.min(3, info.avgCycleLen - 14 >= info.avgPeriodLen + 2 ? 3 : 1));
+      track.appendChild(el(`<div class="cyc-seg cycle-phase-${p.key}" style="flex:${flex};"></div>`));
+    });
+    track.appendChild(el(`<div class="cyc-track-marker" style="left:${Math.round(frac * 100)}%;"></div>`));
+    box.appendChild(track);
+
+    box.appendChild(el(`<div class="cyc-section-title">Your average</div>`));
+    const avgStrip = el(`
+      <div class="cyc-avg-strip">
+        <div class="cyc-avg"><div class="cyc-avg-num">${info.avgCycleLen}</div><div class="cyc-avg-label">days, cycle</div></div>
+        <div class="cyc-avg-divider"></div>
+        <div class="cyc-avg"><div class="cyc-avg-num">${info.avgPeriodLen}</div><div class="cyc-avg-label">days, period</div></div>
+        <div class="cyc-avg-divider"></div>
+        <div class="cyc-avg-note">Based on your last ${Math.min(6, cycleSortedPeriods().length)} logged period${cycleSortedPeriods().length === 1 ? "" : "s"}. <a href="#" class="cyc-edit-avg-link">Edit manually</a> if you know your numbers run differently.</div>
+      </div>
+    `);
+    avgStrip.querySelector(".cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(done); });
+    box.appendChild(avgStrip);
+
+    const history = cycleSortedPeriods().reverse();
+    box.appendChild(el(`<div class="cyc-section-title">History</div>`));
+    history.forEach((p, i) => {
+      const next = history[i - 1]; // one newer than p, since the list is newest-first
+      const lenLabel = next ? `${daysBetween(new Date(p.startDate + "T00:00:00"), new Date(next.startDate + "T00:00:00"))}-day cycle` : "&mdash;";
+      const row = el(`
+        <div class="cyc-hist-row" role="button" tabindex="0">
+          <div class="cyc-hist-dates">Started ${escapeHtml(activityDateShort(p.startDate))}</div>
+          <div class="cyc-hist-len">${lenLabel}</div>
+        </div>
+      `);
+      row.addEventListener("click", () => openCycleEditPeriodSheet(p, done));
+      box.appendChild(row);
+    });
+
+    box.appendChild(el(`<div class="cyc-section-title" style="margin-top:26px;">About this cycle</div>`));
+    box.appendChild(buildCyclePhaseInfoBody(info.phase.label.replace(/^Late /, "")));
+  }
+
+  render();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) { overlay.remove(); if (onDone) onDone(); } });
   document.body.appendChild(overlay);
 }
 
@@ -12051,6 +12597,17 @@ async function boot() {
   state.sobriety.milestonesCurrent ||= {};
   state.sobriety.checkIns ||= [];
   state.sobriety.whyItems ||= [];
+
+  // Cycle tracker data — a list of logged periods (start date, optional
+  // end date, optional flow) is the only real input; everything else
+  // (today's predicted phase, days to next period, the averages) is
+  // computed from it every render, never stored. manualCycleLengthDays
+  // and manualPeriodLengthDays are just the fallback numbers used before
+  // there's enough real history to average from (see cycleAvgCycleLength
+  // / cycleAvgPeriodLength) — real logged data always wins once there's
+  // enough of it.
+  state.cycle ||= { periods: [], manualCycleLengthDays: null, manualPeriodLengthDays: null };
+  state.cycle.periods ||= [];
 
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
