@@ -1288,7 +1288,7 @@ function openAccountSheet() {
           <span>My Apps</span>
         </button>
         <button type="button" class="you-list-row" id="you-marketplace-row">
-          <span class="you-list-row-emoji" aria-hidden="true">🏪</span>
+          ${iconSvg('<path d="M5 8l1.5-4h11L19 8"></path><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8z"></path><path d="M9 12a3 3 0 0 0 6 0"></path>')}
           <span>Marketplace</span>
         </button>
 
@@ -9288,24 +9288,34 @@ function renderPulseChart(panel, today) {
 // of the last 7 days, and the current streak on the right. Five items in
 // a single column always reads evenly; the earlier 2-up ring grid left an
 // odd one stranded alone on its own row, which is what this replaces.
+// Per-app streaks, not per-pillar — each Practice you've added gets its
+// own row, its own 7-day dot strip, and its own streak count, matching
+// the "no combined streak, every app runs its own" model. Trackers are
+// left out here on purpose: they never have a streak to show.
+const APP_TREND_COLOR_CYCLE = ["#A9804F", "#5B7A93", "#6E9B6A", "#B3543E", "#8A6A22", "#7C5C36"];
 function renderPillarStreakList(panel, today) {
   const list = el(`<div class="streak-chip-list"></div>`);
   const last7 = [];
   for (let i = 6; i >= 0; i--) last7.push(addDays(today, -i));
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    const streak = pillarCurrentStreak(key, today);
-    const color = PILLAR_TREND_COLOR[key] || "var(--accent)";
+  const practiceApps = currentAppEntries().filter((e) => e.type === "practice");
+  if (!practiceApps.length) {
+    list.appendChild(el(`<div class="muted" style="font-size:12px;padding:4px 0;">Add a practice to start building streaks.</div>`));
+    panel.appendChild(list);
+    return;
+  }
+  practiceApps.forEach((app, i) => {
+    const streak = appCurrentStreak(app.id, today);
+    const color = APP_TREND_COLOR_CYCLE[i % APP_TREND_COLOR_CYCLE.length];
     const dots = last7
       .map((d) => {
-        const entry = state.wellness.find((w) => w.logDate === d);
-        const on = entry && entry[key] === "Yes";
+        const on = isAppLoggedToday(app.id, d);
         return `<i class="${on ? "on" : ""}" style="${on ? `background:${color}` : ""}"></i>`;
       })
       .join("");
     list.appendChild(el(`
       <div class="streak-chip">
         <span class="sc-dot" style="background:${color}"></span>
-        <span class="sc-label">${escapeHtml(label)}</span>
+        <span class="sc-label">${escapeHtml(app.label)}</span>
         <span class="sc-mini">${dots}</span>
         <span class="sc-streak">${streak ? `${streak}d` : "&mdash;"}</span>
       </div>
@@ -10535,12 +10545,33 @@ function openEditRewardModal(onSaved) {
   document.body.appendChild(overlay);
 }
 
-// Trends, collapsed by default — the pulse chart and per-pillar streak
-// list, same <details class="card"> pattern as History right below it, so
-// the heavier look-back content doesn't turn Home into an endless scroll.
+// Same milestone ladder the push notifications celebrate — used here just
+// to say "you've hit this" per practice, not to fire anything.
+const HOME_STREAK_MILESTONES = [3, 7, 10, 14, 21, 30, 60, 100, 150, 200, 365];
+function renderTrendMilestonesRow(panel, today) {
+  const practiceApps = currentAppEntries().filter((e) => e.type === "practice");
+  const hits = practiceApps
+    .map((app) => {
+      const streak = appCurrentStreak(app.id, today);
+      const reached = HOME_STREAK_MILESTONES.filter((m) => streak >= m).pop();
+      return reached ? { label: app.label, reached } : null;
+    })
+    .filter(Boolean);
+  if (!hits.length) return;
+  panel.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Milestones</div>`));
+  const row = el(`<div class="streak-chip-list"></div>`);
+  hits.forEach((h) => {
+    row.appendChild(el(`<div class="streak-chip"><span class="sc-label">🎉 ${escapeHtml(h.label)}</span><span class="sc-streak">${h.reached}d</span></div>`));
+  });
+  panel.appendChild(row);
+}
+
+// Trends — open by default (per Veronika's call, this is one of the more
+// important sections, not something to bury behind a tap), but still a
+// <details> so it can be collapsed same as History right below it.
 function renderHomeTrendsSection(panel, today) {
   const section = el(`
-    <details class="card">
+    <details class="card" open>
       <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="home-section-icon">📈</span><span class="subsection-title serif" style="margin:0;">Trends</span></span></summary>
     </details>
   `);
@@ -10549,6 +10580,7 @@ function renderHomeTrendsSection(panel, today) {
   // this section's own data, so it reads as this section's own data.
   renderTrendInsightBanner(section, today);
   renderPulseChart(section, today);
+  renderTrendMilestonesRow(section, today);
   section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
   renderPillarStreakList(section, today);
 }
