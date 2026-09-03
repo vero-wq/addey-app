@@ -645,33 +645,26 @@ td input:hover { border-color: var(--border); }
 
 .practice-zone-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 8px; }
 .practice-zone-label:first-of-type { margin-top: 4px; }
-.practice-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
-.practice-tile {
-  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 12px 6px 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
-  cursor: pointer; user-select: none;
+.practice-row-list { display: flex; flex-direction: column; }
+.practice-row {
+  display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 8px 8px 8px 6px; margin-bottom: 8px; cursor: pointer; user-select: none;
 }
-.practice-tile.dragging { opacity: 0.4; }
-.practice-tile.drag-over-before { box-shadow: inset 2px 0 0 var(--accent); }
-.practice-tile.drag-over-after { box-shadow: inset -2px 0 0 var(--accent); }
-.practice-tile-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--accent); }
-.practice-tile-label { font-size: 11.5px; font-weight: 600; text-align: center; line-height: 1.25; }
-.practice-tile-menu-btn {
-  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: none;
-  background: transparent; color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; font-family: inherit;
-}
-.practice-tile-menu-btn:hover { background: var(--bg); color: var(--text); }
-.practice-tile-menu {
-  position: absolute; top: 24px; right: 3px; z-index: 5; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12); display: flex; flex-direction: column; min-width: 90px; overflow: hidden;
-}
-.practice-tile-menu button {
-  border: none; background: none; text-align: left; padding: 8px 12px; font-size: 12px; font-weight: 600;
-  color: var(--text); cursor: pointer; font-family: inherit;
-}
-.practice-tile-menu button:hover { background: var(--bg); }
-.practice-tile-menu button.danger { color: #B3543E; }
-.practice-tile-empty { grid-column: 1 / -1; border: 1.5px dashed var(--border); border-radius: 12px; padding: 16px 8px; text-align: center; font-size: 12px; color: var(--muted); }
+.practice-row.dragging { opacity: 0.4; }
+.practice-row.drag-over-above { box-shadow: inset 0 2px 0 var(--accent); }
+.practice-row.drag-over-below { box-shadow: inset 0 -2px 0 var(--accent); }
+.row-drag-handle { color: var(--muted); cursor: grab; flex-shrink: 0; padding: 4px; touch-action: none; display: flex; }
+.row-drag-handle svg { width: 16px; height: 16px; display: block; }
+.row-icon { width: 32px; height: 32px; border-radius: 9px; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--accent); flex-shrink: 0; }
+.row-label { font-size: 13.5px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-pinned-badge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--accent-dark); background: #FBF0DE; padding: 2px 7px; border-radius: 100px; flex-shrink: 0; }
+.row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.row-icon-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--bg); color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.row-icon-btn svg { width: 16px; height: 16px; }
+.row-icon-btn.eye-on { color: var(--accent-dark); }
+.row-icon-btn.eye-off { color: var(--muted); background: transparent; border: 1px dashed var(--border); }
+.row-icon-btn.remove-x { color: var(--danger); background: #F6E4DF; }
+.row-empty { border: 1.5px dashed var(--border); border-radius: 12px; padding: 16px 8px; text-align: center; font-size: 12px; color: var(--muted); }
 
 .pillar-map-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--surface); }
 .pillar-map-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
