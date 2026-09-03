@@ -1997,6 +1997,13 @@ function reorderAppOrder(draggedId, targetId, before) {
 }
 
 const APP_TYPE_LABEL = { practice: "Practice", tracker: "Tracker", tool: "Tool" };
+// One tint per app type, applied to every icon well wherever an app
+// shows up (Home tile, My Apps row, Marketplace card) so the same app
+// reads the same way on every screen — see the CSS comment by
+// .icon-well-practice for why this is type-based, not per-app.
+function appIconWellClass(type) {
+  return type === "tracker" ? "icon-well-tracker" : type === "tool" ? "icon-well-tool" : "icon-well-practice";
+}
 
 function removeAppRow(id, descriptor) {
   const label = descriptor.label;
@@ -2066,7 +2073,7 @@ function renderSettings() {
   minePanel.appendChild(el(`<div class="settings-group-title">Your apps</div>`));
   minePanel.appendChild(
     el(
-      `<div class="settings-group-desc">Drag a row (⠿) to reorder. Your first ${MOBILE_PINNED_COUNT} Practices form the Home toolbar and pin to the bottom bar on mobile, marked "Bar" — Trackers and Tools can never land above the dashed line, whatever order you drop them in. Tap the eye to hide instantly, no prompt. Tap the X to remove — that always asks first, since it deletes the app's data for good. Apps you added from the Marketplace can be added back anytime; built-in ones can't.</div>`
+      `<div class="settings-group-desc">Drag a row (⠿) to reorder. Your first ${MOBILE_PINNED_COUNT} Practices form the Home toolbar and pin to the bottom bar on mobile, marked "Bar" — Trackers and Tools can never land above the dashed line, whatever order you drop them in. Additional apps can be hidden with the eye, no prompt — bar apps can't be hidden directly; drag one below the line first if you want to hide it. Tap the X to remove — that always asks first, since it deletes the app's data for good. Apps you added from the Marketplace can be added back anytime; built-in ones can't.</div>`
     )
   );
 
@@ -2089,12 +2096,12 @@ function renderSettings() {
     const row = el(`
       <div class="practice-row app-row-type-${d.type}" draggable="true" data-app-id="${id}">
         <span class="row-drag-handle">${dragHandleSvg}</span>
-        <span class="row-icon"${d.visible ? "" : ' style="opacity:.5;"'}>${iconSvg(d.icon || `<circle cx="12" cy="12" r="9"></circle>`).replace('width="20" height="20"', 'width="17" height="17"')}</span>
+        <span class="row-icon ${appIconWellClass(d.type)}"${d.visible ? "" : ' style="opacity:.5;"'}>${iconSvg(d.icon || `<circle cx="12" cy="12" r="9"></circle>`).replace('width="20" height="20"', 'width="17" height="17"')}</span>
         <span class="row-label"${d.visible ? "" : ' style="color:var(--muted);"'}>${escapeHtml(d.label)}<span class="app-type-tag app-type-tag-${d.type}">${APP_TYPE_LABEL[d.type]}</span></span>
         ${pinnedSlot ? `<span class="row-pinned-badge">Bar</span>` : ""}
         <span class="row-actions">
           ${
-            d.hideable
+            d.hideable && !pinnedSlot
               ? `<button type="button" class="row-icon-btn ${d.visible ? "eye-on" : "eye-off"}" title="${d.visible ? "Hide" : "Show"}">${d.visible ? eyeOpenSvg : eyeOffSvg}</button>`
               : ""
           }
@@ -2103,7 +2110,7 @@ function renderSettings() {
       </div>
     `);
 
-    if (d.hideable) {
+    if (d.hideable && !pinnedSlot) {
       row.querySelector(".eye-on, .eye-off").addEventListener("click", (e) => {
         e.stopPropagation();
         toggleSheetVisible(id);
@@ -2206,7 +2213,7 @@ function renderSettings() {
     const alreadyAdded = Object.values(state.customSheets).some((cs) => cs.templateKey === tpl.key);
     const cardEl = el(`
       <div class="sheet-card">
-        <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <span class="sheet-card-icon icon-well-practice">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
         <div class="sheet-card-name">${escapeHtml(tpl.label)}</div>
         <div class="sheet-card-desc">${escapeHtml(tpl.desc)}</div>
         ${
@@ -2231,7 +2238,7 @@ function renderSettings() {
     const added = !!state.extraTrackers?.sobriety;
     const cardEl = el(`
       <div class="sheet-card">
-        <span class="sheet-card-icon">${iconSvg(sobrietyTpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <span class="sheet-card-icon icon-well-practice">${iconSvg(sobrietyTpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
         <div class="sheet-card-name">${escapeHtml(sobrietyTpl.label)}</div>
         <div class="sheet-card-desc">${escapeHtml(sobrietyTpl.desc)}</div>
         ${added ? `<button type="button" class="btn-ghost small">Remove</button>` : `<button type="button" class="btn-ghost small">+ Add</button>`}
@@ -2257,7 +2264,7 @@ function renderSettings() {
     const added = !!state.extraTrackers?.[tpl.key];
     const cardEl = el(`
       <div class="sheet-card trackers-style">
-        <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <span class="sheet-card-icon icon-well-tracker">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
         <div class="sheet-card-name">${escapeHtml(tpl.label)}</div>
         <div class="sheet-card-desc">${escapeHtml(tpl.desc)}</div>
         ${added ? `<button type="button" class="btn-ghost small">Remove</button>` : `<button type="button" class="btn-ghost small">+ Add</button>`}
@@ -2287,7 +2294,7 @@ function renderSettings() {
     if (tpl.key === "wardrobe" && !alreadyAdded) return;
     const cardEl = el(`
       <div class="sheet-card">
-        <span class="sheet-card-icon">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <span class="sheet-card-icon icon-well-tool">${iconSvg(tpl.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
         <div class="sheet-card-name">${escapeHtml(tpl.label)}</div>
         <div class="sheet-card-desc">${escapeHtml(tpl.desc)}</div>
         ${
@@ -2308,7 +2315,7 @@ function renderSettings() {
   if (state.sheets.some((s) => s.id === "todo")) {
     toolGallery.appendChild(el(`
       <div class="sheet-card">
-        <span class="sheet-card-icon">${iconSvg(BUILTIN_SHEET_META.todo.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
+        <span class="sheet-card-icon icon-well-tool">${iconSvg(BUILTIN_SHEET_META.todo.icon).replace('width="20" height="20"', 'width="18" height="18"')}</span>
         <div class="sheet-card-name">Lists</div>
         <div class="sheet-card-desc">General-purpose checklists — a built-in utility, not a habit.</div>
         <span class="sheet-card-added">${checkSvg} Added</span>
@@ -4945,32 +4952,44 @@ const BREATH_VOICES = {
       out.gain.value = 1;
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.value = 500;
+      filter.frequency.value = 340; // darker/rounder than before — less edge, more warmth
+      filter.Q.value = 0.3;
       filter.connect(out);
       const root = ctx.createOscillator();
       root.type = "sine";
       root.frequency.value = 130.81; // C3
+      const rootSub = ctx.createOscillator(); // an octave below — body/warmth, not brightness
+      rootSub.type = "sine";
+      rootSub.frequency.value = 65.41;
       const fifth = ctx.createOscillator();
       fifth.type = "sine";
-      fifth.frequency.value = 196.0; // G3
+      fifth.frequency.value = 196.03; // G3, a hair off-pure so it doesn't beat hard against the root
       const rootGain = ctx.createGain();
-      rootGain.gain.value = 0.6;
+      rootGain.gain.value = 0.5;
+      const subGain = ctx.createGain();
+      subGain.gain.value = 0.28;
       const fifthGain = ctx.createGain();
-      fifthGain.gain.value = 0.4;
+      fifthGain.gain.value = 0.22;
       root.connect(rootGain).connect(filter);
+      rootSub.connect(subGain).connect(filter);
       fifth.connect(fifthGain).connect(filter);
       root.start();
+      rootSub.start();
       fifth.start();
       return {
         output: out,
         modulate(direction, now, tc) {
-          const base = direction === "in" ? 146.83 : 130.81; // lift a whole step on inhale
+          // Slower glide (tc is already scaled up from the phase length below)
+          // so a breath transition reads as a slow drift, not a pitch-bend siren.
+          const base = direction === "in" ? 138.59 : 130.81; // a gentle half-step lift, not a whole step
           root.frequency.setTargetAtTime(base, now, tc);
+          rootSub.frequency.setTargetAtTime(base / 2, now, tc);
           fifth.frequency.setTargetAtTime(base * 1.5, now, tc);
-          filter.frequency.setTargetAtTime(direction === "in" ? 650 : 450, now, tc);
+          filter.frequency.setTargetAtTime(direction === "in" ? 420 : 300, now, tc);
         },
         stop(t) {
           root.stop(t);
+          rootSub.stop(t);
           fifth.stop(t);
         },
       };
@@ -4983,33 +5002,39 @@ const BREATH_VOICES = {
       out.gain.value = 1;
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.value = 2200;
+      filter.frequency.value = 1400;
       filter.connect(out);
-      const a = ctx.createOscillator();
-      a.type = "sine";
-      a.frequency.value = 261.63; // C4
-      const b = ctx.createOscillator();
-      b.type = "sine";
-      b.frequency.value = 264.5; // slightly detuned for a natural shimmer/beat
-      const gA = ctx.createGain();
-      gA.gain.value = 0.5;
-      const gB = ctx.createGain();
-      gB.gain.value = 0.5;
-      a.connect(gA).connect(filter);
-      b.connect(gB).connect(filter);
-      a.start();
-      b.start();
+      // A real bowl's overtones aren't a perfectly-tuned harmonic stack — they're
+      // slightly inharmonic, which is what gives it a "shimmer" instead of a
+      // synth-chord sound. Fundamental plus two soft, quiet upper partials,
+      // each barely detuned from a clean ratio, replaces the old "two near-
+      // identical fundamentals beating at 3Hz" (which read as an electronic
+      // warble, not a resonant strike).
+      const partials = [
+        { ratio: 1, detune: 0, gain: 0.55 },
+        { ratio: 2.42, detune: 1.015, gain: 0.16 },
+        { ratio: 3.86, detune: 0.992, gain: 0.09 },
+      ];
+      const fundamental = 196.0; // G3 — lower and less piercing than the old C4
+      const oscs = partials.map((p) => {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = fundamental * p.ratio * p.detune === 0 ? fundamental * p.ratio : fundamental * p.ratio * (p.detune || 1);
+        const g = ctx.createGain();
+        g.gain.value = p.gain;
+        o.connect(g).connect(filter);
+        o.start();
+        return { o, g, ratio: p.ratio, detune: p.detune || 1 };
+      });
       return {
         output: out,
         modulate(direction, now, tc) {
-          const base = direction === "in" ? 293.66 : 261.63;
-          a.frequency.setTargetAtTime(base, now, tc);
-          b.frequency.setTargetAtTime(base + 2.9, now, tc);
-          filter.frequency.setTargetAtTime(direction === "in" ? 2600 : 2000, now, tc);
+          const base = direction === "in" ? 220.0 : 196.0;
+          oscs.forEach(({ o, ratio, detune }) => o.frequency.setTargetAtTime(base * ratio * detune, now, tc));
+          filter.frequency.setTargetAtTime(direction === "in" ? 1700 : 1300, now, tc);
         },
         stop(t) {
-          a.stop(t);
-          b.stop(t);
+          oscs.forEach(({ o }) => o.stop(t));
         },
       };
     },
@@ -10142,7 +10167,7 @@ function renderHomeAppsGrid(today) {
     const loggedToday = isAppLoggedToday(app.id, today);
     const tile = el(`
       <button type="button" class="home-yourspaces-tile home-app-tile${app.type === "tracker" ? " is-tracker" : ""}">
-        <span class="home-yourspaces-tile-icon">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}${
+        <span class="home-yourspaces-tile-icon ${appIconWellClass(app.type)}">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}${
       loggedToday ? `<span class="home-app-tile-check">${checkSvg}</span>` : ""
     }</span>
         <span class="home-yourspaces-tile-label">${escapeHtml(app.label)}</span>
@@ -11142,14 +11167,48 @@ function openCycleScreen(onDone) {
         <div class="cyc-avg-divider"></div>
         <div class="cyc-avg"><div class="cyc-avg-num">${info.avgPeriodLen}</div><div class="cyc-avg-label">days, period</div></div>
         <div class="cyc-avg-divider"></div>
-        <div class="cyc-avg-note">Based on your last ${Math.min(6, cycleSortedPeriods().length)} logged period${cycleSortedPeriods().length === 1 ? "" : "s"}. <a href="#" class="cyc-edit-avg-link">Edit manually</a> if you know your numbers run differently.</div>
+        <div class="cyc-avg-note">Based on your last ${Math.min(6, cycleSortedPeriods().length)} logged period${cycleSortedPeriods().length === 1 ? "" : "s"}.</div>
       </div>
     `);
-    avgStrip.querySelector(".cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(done); });
     box.appendChild(avgStrip);
 
+    // Just this phase, not the full 4-phase education dump — the hero up
+    // top already names the phase and gives its one-line description, so
+    // repeating all four here (with History shoved below it) only pushed
+    // History further down every time the list grew. A "see all phases"
+    // link opens the same full breakdown via the existing generic info
+    // modal, for anyone who wants it.
+    const phaseKey = info.phase.key;
+    const phaseInfo = CYCLE_PHASE_INFO.find((p) => p.key === phaseKey);
+    if (phaseInfo) {
+      box.appendChild(el(`
+        <div class="cyc-section-title" style="margin-top:22px;">About ${escapeHtml(phaseInfo.label.replace(/^\d+\.\s*/, ""))}</div>
+        <div class="cycle-phase-cards" style="margin-bottom:4px;">
+          <div class="cycle-phase-card active">
+            <div class="cycle-phase-card-dot cycle-phase-${phaseInfo.key}"></div>
+            <div class="cycle-phase-card-body">
+              <div class="cycle-phase-card-title">${escapeHtml(phaseInfo.days)}</div>
+              <div class="cycle-phase-card-desc">${escapeHtml(phaseInfo.desc)}</div>
+              <div class="cycle-phase-card-fertility cyc-fertility-${phaseInfo.key === "ovulatory" ? "high" : phaseInfo.key === "follicular" ? "medium" : "low"}">${escapeHtml(phaseInfo.fertility)}</div>
+            </div>
+          </div>
+        </div>
+        <a href="#" class="cyc-see-all-phases-link" style="font-size:12px;font-weight:600;color:var(--accent-dark);">See all phases &rarr;</a>
+      `));
+      box.querySelector(".cyc-see-all-phases-link").addEventListener("click", (e) => {
+        e.preventDefault();
+        infoModal("Cycle phases", buildCyclePhaseInfoBody(info.phase.label.replace(/^Late /, "")));
+      });
+    }
+
     const history = cycleSortedPeriods().reverse();
-    box.appendChild(el(`<div class="cyc-section-title">History</div>`));
+    box.appendChild(el(`
+      <div class="cyc-section-title" style="margin-top:26px;display:flex;align-items:baseline;justify-content:space-between;">
+        <span>History</span>
+        <a href="#" class="cyc-edit-avg-link" style="font-size:11px;font-weight:600;">Edit manually</a>
+      </div>
+    `));
+    box.querySelector(".cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(done); });
     history.forEach((p, i) => {
       const next = history[i - 1]; // one newer than p, since the list is newest-first
       const lenLabel = next ? `${daysBetween(new Date(p.startDate + "T00:00:00"), new Date(next.startDate + "T00:00:00"))}-day cycle` : "&mdash;";
@@ -11162,9 +11221,6 @@ function openCycleScreen(onDone) {
       row.addEventListener("click", () => openCycleEditPeriodSheet(p, done));
       box.appendChild(row);
     });
-
-    box.appendChild(el(`<div class="cyc-section-title" style="margin-top:26px;">About this cycle</div>`));
-    box.appendChild(buildCyclePhaseInfoBody(info.phase.label.replace(/^Late /, "")));
   }
 
   render();
