@@ -898,7 +898,21 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cycle-phase-card-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .cycle-phase-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .cycle-phase-card-desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+.cycle-phase-card-fertility { font-size: 10.5px; font-weight: 700; margin-top: 5px; }
 .cycle-phase-card-body { flex: 1; }
+
+/* Fertility — a pregnancy-chance reading layered on top of the phase
+   name, since "Ovulatory" alone doesn't say what that means unless you
+   already know. Separate color language from the phase colors above
+   (which are about energy/what's happening) so the two never blur
+   together. */
+.cyc-fertility { display: inline-block; font-size: 11px; font-weight: 700; margin-top: 8px; padding: 4px 11px; border-radius: 100px; }
+.cyc-fertility-low { background: var(--bg); color: var(--muted); }
+.cyc-fertility-medium { background: #FBF0DA; color: #8A6A22; }
+.cyc-fertility-high { background: #FBE3E8; color: #A23A55; }
+.cycle-phase-card-fertility.cyc-fertility-low { color: var(--muted); background: none; padding: 0; }
+.cycle-phase-card-fertility.cyc-fertility-medium { color: #8A6A22; background: none; padding: 0; }
+.cycle-phase-card-fertility.cyc-fertility-high { color: #A23A55; background: none; padding: 0; }
 .cycle-phase-card.active { background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 8px 10px; margin: -6px -10px 6px; }
 /* Only present when this diagram is the actual logging control (the
    sheet, not the plain info popup) — the card itself is the tap target,
@@ -1587,7 +1601,77 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cycle-tracker-sub { display: block; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
 .cycle-tracker-value { font-size: 11.5px; font-weight: 600; color: var(--accent-dark); background: #EFE3D0; padding: 4px 9px; border-radius: 8px; flex-shrink: 0; white-space: nowrap; }
 .cycle-tracker-value.muted { color: var(--muted); background: transparent; }
+.cycle-tracker-row.predicted { border-style: solid; }
 .home-hero-history-link { display: block; width: 100%; text-align: center; margin-top: 14px; font-size: 12px; color: var(--accent-dark); font-weight: 600; background: none; border: none; cursor: pointer; font-family: inherit; }
+
+/* ---------- Cycle — full screen, nudges, log/edit sheets ----------
+   Predicts phase and next-period date from logged period start/end
+   dates (see cycleTodayInfo in app.js) instead of a daily manual tap.
+   Colors match the education diagram's .cycle-phase-* classes above so
+   the prediction and the reference material never look like two
+   different features. */
+:root {
+  --cyc-menstrual: #B3543E; --cyc-follicular: #C98A4B; --cyc-ovulatory: #6E9B6A; --cyc-luteal: #5B7A93;
+  --cyc-light: #EFE3D0;
+}
+
+.cyc-hero { text-align: center; padding: 10px 10px 4px; }
+.cyc-hero-ring { width: 112px; height: 112px; border-radius: 50%; margin: 0 auto 4px; position: relative; display: flex; align-items: center; justify-content: center; }
+.cyc-hero-ring svg { width: 112px; height: 112px; position: absolute; top: 0; left: 0; transform: rotate(-90deg); }
+.cyc-hero-inner { position: relative; display: flex; flex-direction: column; align-items: center; }
+.cyc-day-num { font-family: "Source Serif 4", Georgia, serif; font-size: 34px; line-height: 1; }
+.cyc-day-label { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.cyc-phase-name { font-size: 16px; font-weight: 700; margin-top: 12px; }
+.cyc-phase-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+.cyc-predict-strip { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-top: 18px; overflow: hidden; }
+.cyc-predict-cell { flex: 1; text-align: center; padding: 12px 6px; }
+.cyc-predict-cell + .cyc-predict-cell { border-left: 1px solid var(--border); }
+.cyc-predict-num { font-family: "Source Serif 4", Georgia, serif; font-size: 20px; line-height: 1; color: var(--accent-dark); }
+.cyc-predict-label { font-size: 9.5px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .03em; }
+
+.cyc-log-btn { display: block; width: 100%; margin-top: 16px; background: var(--accent-dark); color: #fff; border: none; border-radius: 12px; padding: 13px; font-size: 13.5px; font-weight: 700; font-family: inherit; cursor: pointer; text-align: center; }
+.cyc-log-btn.period-due { background: var(--cyc-menstrual); }
+.cyc-log-ghost { display: block; width: 100%; margin-top: 8px; background: none; border: 1.5px solid var(--border); color: var(--accent-dark); border-radius: 12px; padding: 11px; font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; text-align: center; }
+
+.cyc-track { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 20px 0 6px; position: relative; }
+.cyc-seg { height: 100%; }
+.cyc-track-marker { position: absolute; top: -4px; width: 3px; height: 22px; background: var(--text); border-radius: 2px; }
+
+.cyc-section-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 22px 2px 8px; }
+.cyc-avg-strip { display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+.cyc-avg { display: flex; flex-direction: column; flex-shrink: 0; }
+.cyc-avg-num { font-family: "Source Serif 4", Georgia, serif; font-size: 24px; line-height: 1; }
+.cyc-avg-label { font-size: 10px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.cyc-avg-divider { width: 1px; align-self: stretch; background: var(--border); }
+.cyc-avg-note { font-size: 10.5px; color: var(--muted); line-height: 1.4; flex: 1; }
+.cyc-avg-note a { color: var(--accent-dark); font-weight: 600; }
+
+.cyc-hist-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-top: 1px solid var(--border); font-size: 12.5px; cursor: pointer; }
+.cyc-hist-row:first-child { border-top: none; }
+.cyc-hist-dates { flex: 1; font-weight: 600; }
+.cyc-hist-len { color: var(--muted); font-size: 11.5px; }
+
+.cyc-empty-icon { width: 52px; height: 52px; border-radius: 50%; margin: 0 auto 14px; background: radial-gradient(circle at 35% 30%, #F0D9CE, #C9846A 70%); display: flex; align-items: center; justify-content: center; }
+
+/* Nudges — same visual family as .social-nudge-card so this reads as a
+   familiar kind of card rather than a new kind of interruption. */
+.cyc-nudge-card { background: #FBF0EA; border: 1px solid #EAD3C4; border-radius: 12px; padding: 11px 12px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.cyc-nudge-icon { font-size: 16px; flex-shrink: 0; }
+.cyc-nudge-text { font-size: 11.5px; line-height: 1.4; flex: 1; }
+.cyc-nudge-text strong { color: #8A3D2B; }
+.cyc-nudge-btn { flex-shrink: 0; font-size: 10.5px; font-weight: 700; color: var(--accent-dark); background: var(--surface); border: 1px solid var(--border); border-radius: 100px; padding: 6px 11px; font-family: inherit; cursor: pointer; }
+.cyc-nudge-row { display: flex; gap: 6px; flex-shrink: 0; }
+.cyc-nudge-btn.ghost { background: none; color: var(--muted); }
+
+/* Log/edit sheet fields — shared by the log-period, end-period,
+   edit-averages, and edit-period sheets. */
+.cyc-field { margin: 14px 0; }
+.cyc-field label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+.cyc-input { width: 100%; box-sizing: border-box; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 13px; font-size: 14px; font-family: inherit; background: var(--surface); color: var(--text); }
+.cyc-toggle-row { display: flex; gap: 8px; }
+.cyc-toggle { flex: 1; text-align: center; padding: 10px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--surface); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.cyc-toggle.sel { border-color: var(--cyc-menstrual); background: #F6E2DC; color: #8A3D2B; }
 
 /* Sobriety — a day count with a daily check-in behind it, milestones
    that clear and re-earn on a reset (a permanent all-time record sits
