@@ -998,6 +998,17 @@ function openAccountSheet() {
           ${iconSvg('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>')}
           <span>Pillar Mapping</span>
         </button>
+        <button type="button" class="you-list-row" id="account-grace-btn">
+          ${graceFeatherSvg()}
+          <span>Grace Days</span>
+        </button>
+        <button type="button" class="you-list-row" id="account-reward-btn">
+          ${iconSvg(rewardCupcakeSvg())}
+          <span>Your Reward</span>
+        </button>
+
+        <div class="you-list-divider"></div>
+
         <button type="button" class="you-list-row" id="you-appearance-row">
           ${iconSvg('<circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>')}
           <span>Appearance</span>
@@ -1006,9 +1017,6 @@ function openAccountSheet() {
           ${iconSvg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>')}
           <span>Notifications</span>
         </button>
-
-        <div class="you-list-divider"></div>
-
         <button type="button" class="you-list-row" id="account-password-btn">
           ${iconSvg('<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/>')}
           <span>Email &amp; password</span>
@@ -1016,10 +1024,6 @@ function openAccountSheet() {
         <button type="button" class="you-list-row" id="account-billing-btn">
           ${iconSvg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>')}
           <span>Plan &amp; Billing</span>
-        </button>
-        <button type="button" class="you-list-row" id="account-grace-btn">
-          ${graceFeatherSvg()}
-          <span>Grace Days</span>
         </button>
 
         <div class="you-list-divider"></div>
@@ -1070,6 +1074,10 @@ function openAccountSheet() {
   overlay.querySelector("#account-grace-btn").addEventListener("click", () => {
     close();
     openGraceDaysModal();
+  });
+  overlay.querySelector("#account-reward-btn").addEventListener("click", () => {
+    close();
+    openYourRewardScreen();
   });
   const signOutBtn = overlay.querySelector("#account-signout-btn");
   signOutBtn.addEventListener("click", async () => {
@@ -9154,32 +9162,34 @@ function openWellnessDayEditor(dateStr, onClose) {
 }
 
 // ------------------------------------------------------------------
-// Her Bonus to Myself — an identity statement at the very top of the
-// tab, her quarterly progress toward it (dots, not percentages), and a
-// self-directed check-in once the window runs out. Never an automatic
-// pass/fail: claiming or extending is always her call.
+// Your Reward — an optional real-dollar savings goal, entirely separate
+// from the habit/streak system. Set up (or skipped) once at the end of
+// onboarding, and revisited only in Settings → Your Reward — Home shows
+// at most a single slim pill (see renderHomeRewardPill), never the full
+// card, per Veronika's call to stop it from dominating the screen.
 //
-// Split into three pieces (quote / progress / prize) so they can sit
-// in whatever order the page wants — quote first, then today's
-// check-in, then progress, then the prize itself.
+// Deliberately no tie-in to streaks, grace days, or logging of any kind:
+// "saved" is purely (linked account's current balance) minus (its
+// balance the day this cycle started), and "reached" fires the moment
+// that gap clears the goal — early or late, the calendar target date is
+// just framing text, never a gate.
 // ------------------------------------------------------------------
-function computeBonusCycleStats(prize, today) {
-  const endDate = addDays(prize.cycleStartDate, prize.cycleLengthDays);
-  const reached = today >= endDate;
-  const days = [];
-  let cursor = prize.cycleStartDate;
-  let goodCount = 0;
-  let totalCount = 0;
-  while (cursor <= endDate && cursor <= today) {
-    const entry = state.wellness.find((w) => w.logDate === cursor);
-    const positive = isWellnessDayPositive(entry);
-    if (positive) goodCount++;
-    totalCount++;
-    days.push({ date: cursor, positive });
-    cursor = addDays(cursor, 1);
-  }
-  return { endDate, reached, goodCount, totalCount, days };
+function computeRewardProgress(prize, today) {
+  const enabled = !!prize.enabled;
+  const linked = !!(prize.linkedAccount && prize.linkedAccount.itemId);
+  const goal = prize.depositGoal || 0; // dollars, set during reward setup — not a Yes-day count
+  const saved = linked
+    ? Math.max(0, (prize.linkedAccount.currentBalance || 0) - (prize.linkedAccount.cycleStartBalance || 0))
+    : 0;
+  const pct = linked && goal ? Math.max(0, Math.min(100, Math.round((saved / goal) * 100))) : 0;
+  const reached = linked && goal > 0 && saved >= goal;
+  const targetDate = addDays(prize.cycleStartDate, prize.cycleLengthDays);
+  return { enabled, linked, goal, saved, pct, reached, targetDate };
 }
+
+// Fractions of the dollar goal, marked as ticks right on the progress
+// bar (Settings → Your Reward) rather than a separate callout card.
+const REWARD_MILESTONE_FRACTIONS = [0.25, 0.5, 0.75];
 
 // Same "good day" logic as isWellnessDayPositive, but as a 3-step tone
 // instead of a strict yes/no, so a day with SOME logging that just missed
@@ -9244,55 +9254,6 @@ function buildProgressCard(title, pct, ringCaptionHtml, tones, gridCaption, onOp
   card.appendChild(renderTrackingGrid(tones, gridCaption));
   return card;
 }
-
-// Shared by Home's Wellness Progress card and the same card at the top of
-// the Wellness page itself, so the two never drift out of sync.
-function computeWellnessProgress(today) {
-  const prize = state.veronikasPrize;
-  const stats = computeBonusCycleStats(prize, today);
-  const pct = stats.totalCount ? Math.round((stats.goodCount / stats.totalCount) * 100) : 0;
-  const tones = [];
-  for (let i = 13; i >= 0; i--) {
-    const date = addDays(today, -i);
-    const entry = state.wellness.find((w) => w.logDate === date);
-    tones.push(wellnessDayTone(entry));
-  }
-  return { prize, stats, pct, tones };
-}
-
-// ------------------------------------------------------------------
-// Deposits — every pillar logged "Yes" on a given day mints one deposit
-// toward this cycle's prize. Deliberately derived from state.wellness
-// rather than stored as its own counter, same as goodCount/totalCount
-// above — one source of truth, nothing to keep in sync by hand.
-//
-// The goal itself is a number on the prize (depositGoal), not a fixed
-// formula, so it can be set deliberately per prize later; until it is,
-// it defaults to half of the theoretical max (every pillar, every day of
-// the cycle) — reachable without requiring a perfect run.
-// ------------------------------------------------------------------
-function computeDepositStats(prize, today) {
-  const endDate = addDays(prize.cycleStartDate, prize.cycleLengthDays);
-  let cursor = prize.cycleStartDate;
-  let deposits = 0;
-  while (cursor <= endDate && cursor <= today) {
-    const entry = state.wellness.find((w) => w.logDate === cursor);
-    if (entry) {
-      WELLNESS_YESNO_FIELDS.forEach(([key]) => {
-        if (entry[key] === "Yes") deposits++;
-      });
-    }
-    cursor = addDays(cursor, 1);
-  }
-  const goal = prize.depositGoal || Math.round(prize.cycleLengthDays * WELLNESS_YESNO_FIELDS.length * 0.5);
-  const pct = goal ? Math.max(0, Math.min(100, Math.round((deposits / goal) * 100))) : 0;
-  return { deposits, goal, pct };
-}
-
-// Milestones are fractions of the deposit goal, not fixed counts, so they
-// scale with whatever goal a prize ends up with — marked as ticks right on
-// the deposit bar (see renderHomeHero) rather than a separate callout card.
-const DEPOSIT_MILESTONE_FRACTIONS = [0.25, 0.5, 0.75];
 
 // ------------------------------------------------------------------
 // Streaks — consecutive "good" days (same 80%-of-logged-pillars bar as
@@ -9490,18 +9451,14 @@ function renderHome() {
 
   panel.appendChild(el(`<div class="home-greeting">Good ${homeGreetingTime()}</div>`));
 
-  // One page now, not two — Wellness's unique content (the reward, today's
-  // pillars/reflection, trends, history) lives here. The reward image
-  // stays as high as possible, right after the streak/deposits, with as
-  // little text stacked ahead of it as the milestone nudge allows — per
-  // Veronika's call, that matters more than pillars being the literal
-  // first thing on the page. Pillars and reflection follow the image,
-  // then the lower-frequency look-back stuff collapsed out of the way.
-  // See the 2026-09 Home/Wellness merge discussion for the reasoning
-  // behind cutting the old progress ring and calendar — Deposits above
-  // already said the same thing more concretely.
+  // One page now, not two — Wellness's unique content (today's
+  // pillars/reflection, trends, history) lives here. The reward — if one's
+  // even set up — is deliberately NOT a card on Home anymore: per
+  // Veronika's 2026-09 call, it was taking up too much room and mixing a
+  // real-dollar goal with the habit surface. All it gets here is the slim
+  // pill inside renderHomeHero; the photo, quote, and full progress live
+  // in Settings → Your Reward.
   panel.appendChild(renderHomeHero(today));
-  panel.appendChild(renderHomeRewardCard(today));
   panel.appendChild(renderHomeTodayPillarsCard(today));
   panel.appendChild(renderHomeTodayDetailsCard(today));
 
@@ -9604,29 +9561,86 @@ function homeStreakFlameSvg(days) {
     </svg>`;
 }
 
-// The new front door: wellness ring + reward + today's four pillars, all in
-// one card, so Wellness no longer needs its own bottom-bar slot — Home
-// *is* Wellness plus the reward now. Tapping an unfilled pillar logs a
-// quick "Yes" for today; tapping one that's already done reopens the full
-// day editor in case it needs correcting. "See full wellness history"
-// still reaches the original Wellness page (cycle settings, history,
-// notes) — that page didn't go away, it's just not pinned to the bar.
+// Lucide-style cupcake glyph — the icon for the reward feature everywhere
+// it shows up (Home pill, Settings row, Your Reward screen): a fluted
+// liner, a scalloped frosting dome with a couple of sprinkles, and a
+// little flag on top. `stroke` lets callers match either the white-on-
+// gradient badge treatment or a plain muted list-row icon.
+function rewardCupcakeSvg(stroke) {
+  return `
+    <path d="M5.5 14 C5 11.5 6.5 10 8 10.5 C8 8 10.5 6.5 12 8 C13.5 6.5 16 8 16 10.5 C17.5 10 19 11.5 18.5 14 Z"></path>
+    <path d="M5.5 14 L7.5 19.5 L12 21 L16.5 19.5 L18.5 14 Z"></path>
+    <path d="M9 14 L10 20"></path>
+    <path d="M12 14 L12 21"></path>
+    <path d="M14.5 14 L14 20"></path>
+    <line x1="12" y1="8" x2="12" y2="3"></line>
+    <path d="M12 3 L15.5 4 L12 5.3 Z"></path>
+    <line x1="9" y1="11.3" x2="9.7" y2="12"></line>
+    <line x1="13.2" y1="9.8" x2="13.9" y2="10.5"></line>
+  `;
+}
+function rewardCupcakeBadgeSvg() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${rewardCupcakeSvg()}</svg>`;
+}
+
+// The slim Home indicator for the reward — a single pill, never a card.
+// Three states: nothing at all if the reward was skipped in onboarding
+// (prize.enabled is false); a dashed "finish setting up" nudge if it's
+// enabled but no bank is linked yet; or the real progress pill once it
+// is, flipping to a "ready to claim" tone the moment the goal's hit.
+// Tapping it always opens Settings → Your Reward — there's nothing to
+// edit inline here.
+function renderHomeRewardPill(today) {
+  const prize = state.veronikasPrize;
+  if (!prize.enabled) return null;
+  const stats = computeRewardProgress(prize, today);
+  const name = prize.itemName || "your reward";
+
+  let bodyHtml;
+  let pillClass = "reward-pill";
+  let iconBg = "radial-gradient(circle at 35% 30%, #EFE0C4, #C7A876 60%, #8E6B3E 100%)";
+  let iconInner = rewardCupcakeSvg();
+
+  if (!stats.linked) {
+    pillClass += " needs-link";
+    bodyHtml = `<div class="reward-pill-name">Finish setting up "${escapeHtml(name)}"</div>`;
+  } else if (stats.reached) {
+    iconBg = "radial-gradient(circle at 35% 30%, #DCE6D3, #8FA57D 60%, #55694A 100%)";
+    iconInner = `<path d="M20 6 9 17l-5-5"></path>`;
+    bodyHtml = `<div class="reward-pill-name">${escapeHtml(name)} — ready to claim!</div>`;
+  } else {
+    bodyHtml = `
+      <div class="reward-pill-name">${escapeHtml(name)}</div>
+      <div class="reward-pill-bar"><div class="reward-pill-fill" style="width:${stats.pct}%;"></div></div>
+    `;
+  }
+
+  const pill = el(`
+    <div class="${pillClass}">
+      <div class="reward-pill-icon" style="background:${iconBg};">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${iconInner}</svg>
+      </div>
+      <div class="reward-pill-body">${bodyHtml}</div>
+      ${stats.linked && !stats.reached ? `<div class="reward-pill-figure">$${stats.saved}/$${stats.goal}</div>` : ""}
+      <div class="reward-pill-chevron">›</div>
+    </div>
+  `);
+  pill.addEventListener("click", () => openYourRewardScreen());
+  return pill;
+}
+
+// The new front door: streak flame + today's four pillars, all in one
+// card. The reward is deliberately NOT part of this card's content
+// anymore — see renderHomeRewardPill just below, appended separately so
+// it can render nothing at all when no reward is set up.
 function renderHomeHero(today) {
   const todaysEntry = ensureTodaysWellnessEntry(today);
   ensurePillarSourceDefaults();
   applyPillarAutoDetection(todaysEntry, today);
-  const wellness = computeWellnessProgress(today);
-  const prize = wellness.prize;
-  const deposits = computeDepositStats(prize, today);
   const streak = computeStreakStats(today);
 
   const hero = el(`<div class="card"></div>`);
 
-  // No progress ring here anymore — it was a slow-moving percentage of
-  // this cycle's good days, and it said nothing Deposits doesn't already
-  // say more concretely. Its context (how far into the cycle, the target
-  // date) still shows up, just as a small caption under Deposits instead
-  // of its own visual anchor competing with the streak for attention.
   hero.appendChild(el(`
     <div class="home-streak-flame">
       <div class="home-streak-flame-top">
@@ -9651,27 +9665,8 @@ function renderHomeHero(today) {
     `));
   }
 
-  // Streak and Deposits are deliberately two different numbers, and the
-  // small label under Deposits exists specifically to keep them from
-  // reading as the same thing: streak resets the moment a day is missed,
-  // while deposits only ever accumulate across the whole cycle. The old
-  // "Cumulative this cycle" caption and the separate "Milestone reached"
-  // callout card are gone per Veronika's call — the caption's target
-  // date/ready-to-claim info already shows on the reward card right
-  // below, and milestones are marked directly on the bar as ticks instead
-  // of a dismissible text card that showed up unexplained.
-  hero.appendChild(el(`
-    <div class="home-deposit-track">
-      <div class="home-deposit-track-row">
-        <span class="home-deposit-track-label">Deposits toward ${escapeHtml(prize.itemName || "your reward")}</span>
-        <span class="home-deposit-track-count">${deposits.deposits} of ${deposits.goal}</span>
-      </div>
-      <div class="home-deposit-track-bar">
-        <div class="home-deposit-track-fill" style="width:${deposits.pct}%;"></div>
-        ${DEPOSIT_MILESTONE_FRACTIONS.map((f) => `<div class="home-deposit-tick ${deposits.deposits >= Math.round(deposits.goal * f) ? "passed" : ""}" style="left:${f * 100}%;" title="${Math.round(deposits.goal * f)} deposits"></div>`).join("")}
-      </div>
-    </div>
-  `));
+  const rewardPill = renderHomeRewardPill(today);
+  if (rewardPill) hero.appendChild(rewardPill);
 
   return hero;
 }
@@ -9738,109 +9733,248 @@ function renderHomeTodayDetailsCard(today) {
   return card;
 }
 
-// The reward card — photo + name + unlock date, tap the photo to change
-// it, "Edit reward" for name/timeframe. Replaces three separate views of
-// the same prize that used to exist (this banner, the old "My Bonus to
-// Myself" card, and a date range on the old progress ring) with one.
-function renderHomeRewardCard(today) {
-  const prize = state.veronikasPrize;
-  const stats = computeBonusCycleStats(prize, today);
-  const card = el(`<div class="card"></div>`);
-
-  const banner = el(`<div class="home-hero-prize-banner"></div>`);
-  if (prize.itemPhoto) {
-    banner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
-  } else {
-    banner.appendChild(el(`<div class="home-hero-prize-banner-noimg">No photo yet — tap to add one</div>`));
-  }
-  banner.appendChild(el(`
-    <div class="home-hero-prize-scrim">
-      <div class="home-hero-prize-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
-      <div class="home-hero-prize-sub">${stats.reached ? "Ready to claim" : `Unlocks ${stats.endDate}`}</div>
-    </div>
-  `));
-  const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
-  banner.appendChild(photoInput);
-  banner.addEventListener("click", () => photoInput.click());
-  photoInput.addEventListener("change", () => {
-    const file = photoInput.files[0];
-    if (!file) return;
-    resizeImageToDataUrl(file).then((dataUrl) => {
-      prize.itemPhoto = dataUrl;
-      scheduleSave();
-      renderHome();
-    });
-  });
-
-  // A small pencil in the corner opens the settings modal (name, timeframe,
-  // start date) — tapping the rest of the photo still swaps the picture.
-  const editBtn = el(`
-    <button type="button" class="home-hero-prize-edit-btn" aria-label="Edit reward">
-      ${iconSvg('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>')}
-    </button>
-  `);
-  editBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openRewardSettingsModal();
-  });
-  banner.appendChild(editBtn);
-
-  card.appendChild(banner);
-
-  if (stats.reached) {
-    card.appendChild(el(`<div class="prize-divider"></div>`));
-    card.appendChild(el(`<div class="muted" style="text-align:center;margin:8px 0 12px;">${stats.goodCount} of the last ${stats.totalCount} days were good days.</div>`));
-
-    const actionRow = el(`<div style="display:flex;gap:10px;"></div>`);
-    const itemLabel = prize.itemName ? prize.itemName : "your prize";
-    const claimBtn = el(`<button type="button" class="btn-primary" style="flex:1;">Claim ${escapeHtml(itemLabel)}</button>`);
-    const extendBtn = el(`<button type="button" class="btn-ghost" style="flex:1;">Give myself more time</button>`);
-    actionRow.appendChild(claimBtn);
-    actionRow.appendChild(extendBtn);
-    card.appendChild(actionRow);
-
-    const extendChips = el(`<div style="display:none;gap:8px;margin-top:10px;justify-content:center;"></div>`);
-    [30, 60, 90].forEach((days) => {
-      const chip = el(`<button type="button" class="split-chip">+${days} days</button>`);
-      chip.addEventListener("click", () => {
-        prize.cycleLengthDays += days;
-        scheduleSave();
-        renderHome();
-      });
-      extendChips.appendChild(chip);
-    });
-    card.appendChild(extendChips);
-
-    claimBtn.addEventListener("click", () => {
-      prize.cycleStartDate = todayISO();
-      prize.cycleLengthDays = 90;
-      prize.itemName = "";
-      prize.itemPhoto = null;
-      scheduleSave();
-      renderHome();
-    });
-    extendBtn.addEventListener("click", () => {
-      extendChips.style.display = extendChips.style.display === "none" ? "flex" : "none";
-    });
-  }
-
-  return card;
+// "synced 8 minutes ago" / "synced yesterday" — coarse on purpose, this is
+// just reassurance that syncing is working, not a precise audit trail.
+function timeAgoLabel(isoString) {
+  if (!isoString) return "never";
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
 }
 
-// Name + timeframe, the two things about the reward that change rarely
-// enough to be worth tucking behind an explicit "Edit" rather than
-// sitting on the main card — replaces the old always-visible progress
-// ring/calendar's timeframe form.
-function openRewardSettingsModal() {
+// ------------------------------------------------------------------
+// Plaid — read-only bank balance sync. Addley never sees or stores your
+// Plaid access token; it lives server-side in the plaid_items table,
+// reachable only by the Edge Functions below through the service role.
+// The client only ever holds the current balance and the balance the
+// cycle started with, both plain numbers on state.veronikasPrize.
+// ------------------------------------------------------------------
+
+// Loaded lazily — most sessions never touch Plaid, so there's no reason
+// to pay for the script on every boot.
+let plaidLinkScriptPromise = null;
+function loadPlaidLinkScript() {
+  if (window.Plaid) return Promise.resolve();
+  plaidLinkScriptPromise ||= new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Couldn't load Plaid"));
+    document.head.appendChild(s);
+  });
+  return plaidLinkScriptPromise;
+}
+
+// Opens Plaid's own hosted linking flow. On success, exchanges the
+// public token server-side and snapshots the current balance as this
+// cycle's starting point — `onLinked` re-renders whatever screen asked.
+async function startPlaidLink(onLinked, onError) {
+  try {
+    await loadPlaidLinkScript();
+    const { data: tokenData, error: tokenErr } = await sb.functions.invoke("plaid-create-link-token");
+    if (tokenErr || !tokenData?.link_token) throw tokenErr || new Error("No link token returned");
+    const handler = window.Plaid.create({
+      token: tokenData.link_token,
+      onSuccess: async (public_token) => {
+        const { data, error } = await sb.functions.invoke("plaid-exchange-token", { body: { public_token } });
+        if (error || !data) { onError?.(error || new Error("Linking failed")); return; }
+        const prize = state.veronikasPrize;
+        prize.linkedAccount = {
+          itemId: data.item_id,
+          institutionName: data.institution_name,
+          mask: data.mask,
+          currentBalance: data.balance,
+          cycleStartBalance: data.balance,
+          lastSyncedAt: new Date().toISOString(),
+        };
+        scheduleSave();
+        onLinked?.();
+      },
+      onExit: () => {},
+    });
+    handler.open();
+  } catch (err) {
+    onError?.(err);
+  }
+}
+
+async function syncRewardBalance(onDone, onError) {
   const prize = state.veronikasPrize;
-  const presetLengths = [
-    { value: "30", label: "1 month" },
-    { value: "60", label: "2 months" },
-    { value: "90", label: "Quarterly (3 months)" },
-    { value: "180", label: "6 months" },
-    { value: "custom", label: "Custom" },
-  ];
-  const matchingPreset = presetLengths.find((p) => p.value === String(prize.cycleLengthDays));
+  if (!prize.linkedAccount) return;
+  try {
+    const { data, error } = await sb.functions.invoke("plaid-sync-balance", { body: { item_id: prize.linkedAccount.itemId } });
+    if (error || typeof data?.balance !== "number") throw error || new Error("No balance returned");
+    prize.linkedAccount.currentBalance = data.balance;
+    prize.linkedAccount.lastSyncedAt = new Date().toISOString();
+    scheduleSave();
+    onDone?.();
+  } catch (err) {
+    onError?.(err);
+  }
+}
+
+async function unlinkRewardAccount(onDone) {
+  const prize = state.veronikasPrize;
+  const itemId = prize.linkedAccount?.itemId;
+  prize.linkedAccount = null;
+  scheduleSave();
+  onDone?.();
+  if (itemId) {
+    try { await sb.functions.invoke("plaid-unlink", { body: { item_id: itemId } }); } catch (e) { /* already unlinked client-side either way */ }
+  }
+}
+
+// ------------------------------------------------------------------
+// Your Reward — the one screen (reached from Settings → Your Reward, or
+// by tapping the Home pill) that carries everything the old always-on
+// Home card used to: photo, quote, big dollar progress with milestone
+// ticks, the linked account's sync/unlink controls, and editing the
+// name/goal/target date. Claiming or extending the cycle is always a
+// deliberate tap here, never automatic.
+// ------------------------------------------------------------------
+function openYourRewardScreen() {
+  const prize = state.veronikasPrize;
+  const overlay = el(`<div class="modal-overlay"><div class="modal-box info-modal-box account-modal-box" style="width:380px;"></div></div>`);
+  const box = overlay.querySelector(".modal-box");
+
+  function render() {
+    box.innerHTML = "";
+    const stats = computeRewardProgress(prize, todayISO());
+
+    box.appendChild(el(`
+      <div class="info-modal-header">
+        <h3 style="display:flex;align-items:center;gap:10px;">
+          <span class="reward-pill-icon" style="width:30px;height:30px;background:radial-gradient(circle at 35% 30%, #EFE0C4, #C7A876 60%, #8E6B3E 100%);">${rewardCupcakeBadgeSvg()}</span>
+          Your Reward
+        </h3>
+        <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+      </div>
+    `));
+    box.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+
+    if (!prize.enabled) {
+      box.appendChild(el(`<div class="account-note" style="padding:14px 0;">You skipped setting up a reward during onboarding — streaks and milestones still work exactly the same without one. Set one up any time.</div>`));
+      const startBtn = el(`<button type="button" class="onboarding-primary-btn" style="margin-top:4px;">Set up a reward</button>`);
+      startBtn.addEventListener("click", () => openEditRewardModal(render));
+      box.appendChild(startBtn);
+      document.body.appendChild(overlay);
+      return;
+    }
+
+    const banner = el(`<div class="home-hero-prize-banner"></div>`);
+    if (prize.itemPhoto) {
+      banner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
+    } else {
+      banner.appendChild(el(`<div class="home-hero-prize-banner-noimg">No photo yet — tap to add one</div>`));
+    }
+    banner.appendChild(el(`
+      <div class="home-hero-prize-scrim">
+        <div class="home-hero-prize-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
+        <div class="home-hero-prize-sub">${stats.reached ? "Ready to claim" : `Targeting ${stats.targetDate}`}</div>
+      </div>
+    `));
+    const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
+    banner.appendChild(photoInput);
+    banner.addEventListener("click", (e) => { if (e.target !== editBtn && !editBtn.contains(e.target)) photoInput.click(); });
+    photoInput.addEventListener("change", () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      resizeImageToDataUrl(file).then((dataUrl) => {
+        prize.itemPhoto = dataUrl;
+        scheduleSave();
+        render();
+      });
+    });
+    const editBtn = el(`
+      <button type="button" class="home-hero-prize-edit-btn" aria-label="Edit reward">
+        ${iconSvg('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>')}
+      </button>
+    `);
+    editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditRewardModal(render); });
+    banner.appendChild(editBtn);
+    box.appendChild(banner);
+
+    if (!stats.linked) {
+      box.appendChild(el(`<div class="account-note" style="margin-bottom:10px;">Link a bank account to track real progress toward $${stats.goal || 0}. Read-only — Addley can see the balance, never move money.</div>`));
+      const linkBtn = el(`<button type="button" class="onboarding-primary-btn" style="margin-top:0;">Link a bank account</button>`);
+      linkBtn.addEventListener("click", () => {
+        linkBtn.textContent = "Connecting…";
+        linkBtn.disabled = true;
+        startPlaidLink(render, () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; });
+      });
+      box.appendChild(linkBtn);
+    } else {
+      box.appendChild(el(`
+        <div class="account-section" style="border-top:none;padding-top:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+            <span style="font-size:11.5px;font-weight:700;">Saved so far</span>
+            <span style="font-size:11.5px;font-weight:700;color:var(--accent-dark);">$${stats.saved} of $${stats.goal}</span>
+          </div>
+          <div class="home-deposit-track-bar">
+            <div class="home-deposit-track-fill" style="width:${stats.pct}%;"></div>
+            ${REWARD_MILESTONE_FRACTIONS.map((f) => `<div class="home-deposit-tick ${stats.saved >= Math.round(stats.goal * f) ? "passed" : ""}" style="left:${f * 100}%;"></div>`).join("")}
+          </div>
+        </div>
+      `));
+      const syncRow = el(`
+        <div class="account-note" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>${escapeHtml(prize.linkedAccount.institutionName)} •••• ${escapeHtml(prize.linkedAccount.mask)} &middot; synced ${timeAgoLabel(prize.linkedAccount.lastSyncedAt)}</span>
+          <button type="button" class="sync-btn" style="background:none;border:none;color:var(--accent-dark);font-weight:700;cursor:pointer;font-family:inherit;">Sync</button>
+        </div>
+      `);
+      syncRow.querySelector(".sync-btn").addEventListener("click", (e) => {
+        e.target.textContent = "…";
+        syncRewardBalance(render, () => { e.target.textContent = "Sync"; });
+      });
+      box.appendChild(syncRow);
+    }
+
+    if (stats.reached) {
+      box.appendChild(el(`<div class="prize-divider"></div>`));
+      const actionRow = el(`<div style="display:flex;gap:10px;margin-top:14px;"></div>`);
+      const itemLabel = prize.itemName ? prize.itemName : "your reward";
+      const claimBtn = el(`<button type="button" class="btn-primary" style="flex:1;">Claim ${escapeHtml(itemLabel)}</button>`);
+      const extendBtn = el(`<button type="button" class="btn-ghost" style="flex:1;">Give myself more time</button>`);
+      actionRow.appendChild(claimBtn);
+      actionRow.appendChild(extendBtn);
+      box.appendChild(actionRow);
+      claimBtn.addEventListener("click", () => {
+        prize.cycleStartDate = todayISO();
+        prize.itemName = "";
+        prize.itemPhoto = null;
+        if (prize.linkedAccount) prize.linkedAccount.cycleStartBalance = prize.linkedAccount.currentBalance;
+        scheduleSave();
+        render();
+        renderHome();
+      });
+      extendBtn.addEventListener("click", () => {
+        prize.cycleLengthDays += 30;
+        scheduleSave();
+        render();
+      });
+    } else if (stats.linked) {
+      const unlinkBtn = el(`<button type="button" class="unlink-btn">Unlink bank account</button>`);
+      unlinkBtn.addEventListener("click", () => unlinkRewardAccount(() => { render(); renderHome(); }));
+      box.appendChild(unlinkBtn);
+    }
+
+    document.body.appendChild(overlay);
+  }
+
+  render();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+// Name, dollar goal, and target date — the three things that change
+// rarely enough to sit behind an explicit edit rather than inline.
+function openEditRewardModal(onSaved) {
+  const prize = state.veronikasPrize;
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box info-modal-box account-modal-box">
@@ -9850,39 +9984,35 @@ function openRewardSettingsModal() {
         </div>
         <div class="info-modal-body">
           <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Name</label>
-          <input type="text" class="reward-name-input" value="${escapeHtml(prize.itemName || "")}" placeholder="Name this cycle's prize" style="width:100%;box-sizing:border-box;margin-bottom:14px;" />
-          <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Timeframe</label>
-          <select class="prize-length-select" style="width:100%;">
-            ${presetLengths
-              .map((p) => {
-                const isSelected = matchingPreset ? p.value === matchingPreset.value : p.value === "custom";
-                return `<option value="${p.value}" ${isSelected ? "selected" : ""}>${p.label}</option>`;
-              })
-              .join("")}
-          </select>
-          <input type="number" min="1" class="prize-length-custom" placeholder="Number of days" value="${matchingPreset ? "" : prize.cycleLengthDays}" style="${matchingPreset ? "display:none;" : ""}margin-top:8px;width:100%;box-sizing:border-box;" />
-          <label class="muted" style="display:block;font-size:12px;margin:14px 0 4px;">Start date</label>
-          <input type="date" class="prize-start-date" value="${prize.cycleStartDate}" style="width:100%;box-sizing:border-box;" />
+          <input type="text" class="reward-name-input" value="${escapeHtml(prize.itemName || "")}" placeholder="What are you saving for?" style="width:100%;box-sizing:border-box;margin-bottom:14px;" />
+          <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Savings goal</label>
+          <div class="goal-dollar-row" style="display:flex;align-items:center;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:14px;overflow:hidden;">
+            <span style="padding:10px 0 10px 12px;color:var(--muted);font-weight:700;">$</span>
+            <input type="number" min="1" class="reward-goal-input" value="${prize.depositGoal || ""}" style="border:none;padding:10px 12px 10px 4px;flex:1;min-width:0;background:transparent;font-family:inherit;font-size:14px;" />
+          </div>
+          <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Target date</label>
+          <input type="date" class="prize-start-date" value="${addDays(prize.cycleStartDate, prize.cycleLengthDays)}" style="width:100%;box-sizing:border-box;" />
           <button type="button" class="btn-primary reward-save-btn" style="margin-top:18px;width:100%;padding:10px;border-radius:8px;border:none;">Save</button>
         </div>
       </div>
     </div>
   `);
-  overlay.querySelector(".prize-length-select").addEventListener("change", (e) => {
-    overlay.querySelector(".prize-length-custom").style.display = e.target.value === "custom" ? "block" : "none";
-  });
   overlay.querySelector(".reward-save-btn").addEventListener("click", () => {
     const newName = overlay.querySelector(".reward-name-input").value;
-    const lengthSelect = overlay.querySelector(".prize-length-select").value;
-    const customDays = parseInt(overlay.querySelector(".prize-length-custom").value, 10);
-    const newLength = lengthSelect === "custom" ? customDays : parseInt(lengthSelect, 10);
-    const newStart = overlay.querySelector(".prize-start-date").value;
+    const newGoal = parseInt(overlay.querySelector(".reward-goal-input").value, 10);
+    const newTarget = overlay.querySelector(".prize-start-date").value;
+    prize.enabled = true;
     prize.itemName = newName;
-    if (newLength && newLength > 0) prize.cycleLengthDays = newLength;
-    if (newStart) prize.cycleStartDate = newStart;
+    if (newGoal > 0) prize.depositGoal = newGoal;
+    if (!prize.cycleStartDate) prize.cycleStartDate = todayISO();
+    if (newTarget) {
+      const days = Math.max(1, Math.round((new Date(newTarget) - new Date(prize.cycleStartDate)) / 86400000));
+      prize.cycleLengthDays = days;
+    }
     scheduleSave();
     overlay.remove();
     renderHome();
+    onSaved?.();
   });
   const close = () => overlay.remove();
   overlay.querySelector(".info-modal-close").addEventListener("click", close);
@@ -10313,12 +10443,29 @@ function onboardingPillarIconSvg(key) {
 }
 
 function showOnboardingFlow() {
-  const STEPS = ["welcome", "spiritual", "movement", "toolbar", "review"];
+  const STEPS = ["welcome", "spiritual", "movement", "toolbar", "review", "rewardAsk", "rewardDetails", "rewardPhoto", "rewardLink"];
   let stepIdx = 0;
   let spiritualChoice = null;
   let movementChoice = null;
   let toolbarOrder = ["movement", "spiritualAnchor", "sleepProtected", "food"];
   let extraOrder = ["socialConnection", "learning"];
+
+  // The reward ask is the one branch point in onboarding: "rewardDetails",
+  // "rewardPhoto", and "rewardLink" only get visited if she opts in on
+  // "rewardAsk" — choosing "Not right now" jumps straight to
+  // finishOnboarding, same as if those steps didn't exist.
+  let wantsReward = true;
+  let rewardName = "";
+  let rewardGoalDollars = 500;
+  let rewardTargetDays = 90;
+  let rewardPhotoDataUrl = null;
+  // finishOnboarding can legitimately fire twice for the reward branch — a
+  // successful Plaid link calls it directly, but so does the "I'll link
+  // this later" skip button, and either could theoretically double-fire.
+  // This guards the reward-writing block specifically, independent of
+  // prize.enabled (which may already be true on an account whose reward
+  // predates onboarding becoming opt-in).
+  let rewardApplied = false;
 
   const overlay = el(`<div class="onboarding-overlay"><div class="onboarding-box" id="onboardingBox"></div></div>`);
   document.body.appendChild(overlay);
@@ -10439,7 +10586,7 @@ function showOnboardingFlow() {
         </div>
         <div class="onboarding-lock-note">🔓 <div><strong>6 active practices, always free.</strong> Want more later? Practice Gallery has extra practices — upgrading unlocks up to 15 active at once.</div></div>
         <div class="closing-beat">Your six practices are set. <b>Day one starts now.</b></div>
-        <button type="button" class="onboarding-primary-btn" id="onbFinish">Go to Home</button>
+        <button type="button" class="onboarding-primary-btn" id="onbFinish">Continue</button>
       `);
       const reviewToolbarZone = box.querySelector("#reviewToolbarZone");
       const reviewExtraZone = box.querySelector("#reviewExtraZone");
@@ -10477,7 +10624,128 @@ function showOnboardingFlow() {
         });
       }
       renderReviewZones();
-      box.querySelector("#onbFinish").addEventListener("click", finishOnboarding);
+      box.querySelector("#onbFinish").addEventListener("click", () => { stepIdx++; renderStep(); });
+    }
+
+    if (step === "rewardAsk") {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">One more thing</div>
+        <div class="onboarding-headline">Want to save toward something?</div>
+        <div class="onboarding-subline">Some people like tying their streak to a real reward — a trip, a splurge, whatever. Totally optional.</div>
+        <div class="onboarding-choice-row">
+          <div class="onboarding-choice-opt${wantsReward ? " sel" : ""}" id="wantRewardOpt">
+            <span>Yes, set up a reward<span class="opt-sub">Name it, set a savings goal, link an account</span></span>
+            <span>›</span>
+          </div>
+          <div class="onboarding-choice-opt${wantsReward ? "" : " sel"}" id="skipRewardOpt">
+            <span>Not right now<span class="opt-sub">Just track streaks and milestones</span></span>
+            <span>›</span>
+          </div>
+        </div>
+        <button type="button" class="onboarding-primary-btn" id="rewardAskContinue">Continue</button>
+      `);
+      box.querySelector("#wantRewardOpt").addEventListener("click", () => {
+        wantsReward = true;
+        box.querySelector("#wantRewardOpt").classList.add("sel");
+        box.querySelector("#skipRewardOpt").classList.remove("sel");
+      });
+      box.querySelector("#skipRewardOpt").addEventListener("click", () => {
+        wantsReward = false;
+        box.querySelector("#skipRewardOpt").classList.add("sel");
+        box.querySelector("#wantRewardOpt").classList.remove("sel");
+      });
+      box.querySelector("#rewardAskContinue").addEventListener("click", () => {
+        if (wantsReward) { stepIdx++; renderStep(); }
+        else finishOnboarding();
+      });
+    }
+
+    if (step === "rewardDetails") {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Your reward</div>
+        <div class="onboarding-headline">What are you working toward?</div>
+        <label class="onboarding-field-label">Reward name</label>
+        <input class="onboarding-text-input" id="rewardNameInput" value="${escapeHtml(rewardName)}" placeholder="Weekend in Charleston" />
+        <label class="onboarding-field-label">Savings goal</label>
+        <div class="goal-dollar-row"><span class="goal-dollar-sign">$</span><input type="number" min="1" id="rewardGoalInput" value="${rewardGoalDollars}" /></div>
+        <label class="onboarding-field-label">Target date</label>
+        <input type="date" class="onboarding-text-input" id="rewardTargetInput" value="${addDays(todayISO(), rewardTargetDays)}" style="margin-bottom:0;" />
+        <button type="button" class="onboarding-primary-btn" id="rewardDetailsContinue">Continue</button>
+      `);
+      box.querySelector("#rewardDetailsContinue").addEventListener("click", () => {
+        rewardName = box.querySelector("#rewardNameInput").value.trim();
+        const goal = parseInt(box.querySelector("#rewardGoalInput").value, 10);
+        if (goal > 0) rewardGoalDollars = goal;
+        const targetVal = box.querySelector("#rewardTargetInput").value;
+        if (targetVal) {
+          rewardTargetDays = Math.max(1, Math.round((new Date(targetVal) - new Date(todayISO())) / 86400000));
+        }
+        stepIdx++;
+        renderStep();
+      });
+    }
+
+    if (step === "rewardPhoto") {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Your reward</div>
+        <div class="onboarding-headline">What does it look like?</div>
+        <div class="onboarding-subline">A photo of the actual thing you're working toward — makes it feel real every time you check in.</div>
+        <div class="photo-upload-zone" id="rewardPhotoZone">
+          <div class="photo-upload-zone-inner" id="rewardPhotoZoneInner">
+            <div class="plus-badge"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></div>
+            <div class="label">Add a photo</div>
+            <div class="sub">${rewardName ? `of ${escapeHtml(rewardName)}` : ""}</div>
+          </div>
+        </div>
+        <input type="file" accept="image/*" id="rewardPhotoInput" style="display:none;" />
+        <button type="button" class="onboarding-primary-btn" id="rewardPhotoChoose">Choose a photo</button>
+        <button type="button" class="onboarding-skip-link" id="rewardPhotoSkip">Skip for now</button>
+      `);
+      const zone = box.querySelector("#rewardPhotoZone");
+      const zoneInner = box.querySelector("#rewardPhotoZoneInner");
+      const fileInput = box.querySelector("#rewardPhotoInput");
+      if (rewardPhotoDataUrl) {
+        zone.style.backgroundImage = `url(${rewardPhotoDataUrl})`;
+        zone.style.backgroundSize = "cover";
+        zone.style.backgroundPosition = "center";
+        zoneInner.style.display = "none";
+      }
+      box.querySelector("#rewardPhotoChoose").addEventListener("click", () => fileInput.click());
+      zone.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        resizeImageToDataUrl(file).then((dataUrl) => {
+          rewardPhotoDataUrl = dataUrl;
+          stepIdx++;
+          renderStep();
+        });
+      });
+      box.querySelector("#rewardPhotoSkip").addEventListener("click", () => { stepIdx++; renderStep(); });
+    }
+
+    if (step === "rewardLink") {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Your reward</div>
+        <div class="onboarding-headline">Track it in real dollars</div>
+        <div class="onboarding-subline">Link a bank account so your progress reflects what you've actually saved. Read-only — Addley can see the balance, never move money.</div>
+        <button type="button" class="onboarding-primary-btn" id="rewardLinkBtn">Link a bank account</button>
+        <button type="button" class="onboarding-skip-link" id="rewardLinkSkip">I'll link this later, from Settings</button>
+      `);
+      const linkBtn = box.querySelector("#rewardLinkBtn");
+      linkBtn.addEventListener("click", () => {
+        linkBtn.textContent = "Connecting…";
+        linkBtn.disabled = true;
+        // The reward isn't written to state.veronikasPrize until
+        // finishOnboarding runs, but Plaid Link needs somewhere to attach
+        // its result right now — stash it locally and finishOnboarding
+        // will fold it into the real prize object it creates.
+        startPlaidLink(
+          () => finishOnboarding(),
+          () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; }
+        );
+      });
+      box.querySelector("#rewardLinkSkip").addEventListener("click", finishOnboarding);
     }
   }
 
@@ -10530,6 +10798,27 @@ function showOnboardingFlow() {
       if (found) reordered.push(found);
     });
     state.sheets = [...reordered, ...rest];
+
+    // The reward — only written if she actually opted in on "rewardAsk".
+    // A skip leaves state.veronikasPrize exactly as boot() defaulted it,
+    // so nothing reward-related shows up anywhere until she goes looking
+    // for "Your Reward" in Settings herself. Guarded by rewardApplied
+    // (not prize.enabled) so this can't double-fire — a successful Plaid
+    // link and the "link later" skip button both call finishOnboarding —
+    // without that guard also silently blocking accounts whose reward
+    // predates onboarding becoming opt-in.
+    if (wantsReward && !rewardApplied) {
+      rewardApplied = true;
+      state.veronikasPrize.enabled = true;
+      state.veronikasPrize.itemName = rewardName;
+      state.veronikasPrize.depositGoal = rewardGoalDollars;
+      state.veronikasPrize.cycleStartDate = todayISO();
+      state.veronikasPrize.cycleLengthDays = rewardTargetDays;
+      if (rewardPhotoDataUrl) state.veronikasPrize.itemPhoto = rewardPhotoDataUrl;
+      // A bank linked during this flow already snapshotted its own
+      // cycleStartBalance in startPlaidLink's onSuccess handler — nothing
+      // more to do here for that case.
+    }
 
     state.onboardingComplete = true;
     scheduleSave();
@@ -10902,12 +11191,19 @@ async function boot() {
     quote: DEFAULT_PRIZE_QUOTE,
     cycleStartDate: todayISO(),
     cycleLengthDays: 90,
-    itemName: "Your reward",
+    itemName: "",
     itemPhoto: "",
-    depositGoal: null,
+    depositGoal: null, // dollar amount now, set during reward setup — see computeRewardProgress
     nudgedMilestones: [],
+    enabled: false,
+    linkedAccount: null,
   };
   state.veronikasPrize.nudgedMilestones ||= [];
+  // The reward became opt-in (asked once, skippably, at the end of
+  // onboarding) in 2026-09. Accounts that already had one going before
+  // that keep seeing it; only brand-new accounts start with it off.
+  if (state.veronikasPrize.enabled === undefined) state.veronikasPrize.enabled = true;
+  state.veronikasPrize.linkedAccount ||= null;
   // Upgrade the default wording once, but never touch it if she's
   // written her own quote (i.e. it no longer matches either default).
   if (state.veronikasPrize.quote === OLD_DEFAULT_PRIZE_QUOTE) {
