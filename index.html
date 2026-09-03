@@ -175,6 +175,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .account-section { border-top: 1px solid var(--border); padding: 14px 0; }
 .account-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
 .account-note { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.unlink-btn { display: block; width: 100%; text-align: center; background: none; border: 1.5px solid var(--border); border-radius: 9px; padding: 10px; font-size: 12.5px; font-weight: 700; color: var(--danger); cursor: pointer; font-family: inherit; margin-top: 14px; }
 .account-btn {
   width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 11px 13px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface);
@@ -707,8 +708,9 @@ td input:hover { border-color: var(--border); }
 .onboarding-headline-icon { display: inline-flex; vertical-align: -5px; color: var(--accent); }
 .onboarding-headline-icon svg { width: 22px; height: 22px; }
 .onboarding-choice-row { display: flex; flex-direction: column; gap: 8px; }
-.onboarding-choice-opt { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 13px; font-weight: 600; background: var(--surface); cursor: pointer; }
+.onboarding-choice-opt { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 13px; font-weight: 600; background: var(--surface); cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .onboarding-choice-opt.sel, .onboarding-choice-opt:hover { border-color: var(--accent-dark); background: var(--bg); }
+.onboarding-choice-opt .opt-sub { display: block; font-size: 11px; font-weight: 400; color: var(--muted); margin-top: 2px; }
 .onboarding-extra-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 6px; }
 .onboarding-toolbar-target { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; background: var(--surface); border: 1.5px dashed var(--border); border-radius: 14px; padding: 12px; }
 .onboarding-toolbar-slot { aspect-ratio: 1; border-radius: 10px; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 9.5px; font-weight: 700; text-align: center; padding: 4px; cursor: grab; }
@@ -737,6 +739,19 @@ td input:hover { border-color: var(--border); }
 .closing-beat b { color: var(--accent-dark); }
 .onboarding-lock-note { display: flex; gap: 8px; align-items: flex-start; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 11.5px; color: var(--text); line-height: 1.5; margin-bottom: 4px; }
 .onboarding-primary-btn { display: block; width: 100%; margin-top: 18px; background: var(--accent-dark); color: var(--text-inverse); text-align: center; font-weight: 700; font-size: 14px; padding: 14px; border-radius: 12px; border: none; cursor: pointer; font-family: inherit; }
+.onboarding-text-input { width: 100%; box-sizing: border-box; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; font-size: 14px; font-family: inherit; background: var(--surface); margin-bottom: 12px; color: var(--text); }
+.onboarding-field-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; display: block; }
+.onboarding-skip-link { display: block; width: 100%; text-align: center; margin-top: 12px; font-size: 12px; color: var(--muted); text-decoration: underline; background: none; border: none; cursor: pointer; font-family: inherit; }
+.goal-dollar-row { display: flex; align-items: center; border: 1.5px solid var(--border); border-radius: 10px; background: var(--surface); margin-bottom: 12px; overflow: hidden; }
+.goal-dollar-sign { padding: 12px 0 12px 14px; font-size: 14px; color: var(--muted); font-weight: 700; }
+.goal-dollar-row input { border: none; padding: 12px 14px 12px 4px; font-size: 14px; font-family: inherit; flex: 1; min-width: 0; background: transparent; color: var(--text); }
+.goal-dollar-row input:focus { outline: none; }
+.photo-upload-zone { position: relative; width: 100%; aspect-ratio: 16/10; border-radius: 14px; border: 1.5px dashed var(--border); background: var(--surface); display: flex; align-items: center; justify-content: center; margin-bottom: 14px; cursor: pointer; overflow: hidden; }
+.photo-upload-zone-inner { text-align: center; color: var(--muted); }
+.photo-upload-zone-inner .plus-badge { width: 38px; height: 38px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #EFE0C4, #C7A876 60%, #8E6B3E 100%); display: flex; align-items: center; justify-content: center; margin: 0 auto 8px; }
+.photo-upload-zone-inner .plus-badge svg { width: 18px; height: 18px; }
+.photo-upload-zone-inner .label { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.photo-upload-zone-inner .sub { font-size: 11px; margin-top: 2px; }
 
 .space-usage-row { margin-bottom: 18px; max-width: 420px; }
 .space-usage-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
@@ -1495,6 +1510,20 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .home-deposit-track-fill { height: 100%; border-radius: 5px; background: var(--accent-dark); }
 .home-deposit-tick { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--accent); opacity: 0.55; }
 .home-deposit-tick.passed { background: rgba(255, 255, 255, 0.65); opacity: 1; }
+
+/* The slim Home reward pill — replaces the old always-on reward card.
+   Nothing renders at all if no reward is set up; see renderHomeRewardPill. */
+.reward-pill { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; margin-top: 14px; cursor: pointer; }
+.reward-pill-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.reward-pill-icon svg { width: 23px; height: 23px; }
+.reward-pill-body { flex: 1; min-width: 0; }
+.reward-pill-name { font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reward-pill-bar { position: relative; height: 4px; border-radius: 3px; background: var(--border); margin-top: 5px; overflow: hidden; }
+.reward-pill-fill { height: 100%; border-radius: 3px; background: var(--accent-dark); }
+.reward-pill-figure { font-size: 11.5px; font-weight: 700; color: var(--accent-dark); white-space: nowrap; }
+.reward-pill-chevron { color: var(--muted); flex-shrink: 0; }
+.reward-pill.needs-link { border-style: dashed; }
+.reward-pill.needs-link .reward-pill-name { color: var(--accent-dark); }
 .home-pillar { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; border-radius: 12px; border: 1px solid transparent; background: #F1DAD3; cursor: pointer; font-family: inherit; }
 .home-pillar.done { background: #E4E9E0; }
 .home-pillar-icon { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
