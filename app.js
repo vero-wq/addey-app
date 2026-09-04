@@ -961,11 +961,19 @@ function sheetActiveToday(sheetId, today) {
   }
   if (sheetId === "sleep") {
     // Sleep protected is an outcome, not just a logged action — logging a
-    // rough, short night shouldn't count the same as a real one. "Today"
-    // reads on last night specifically, since that's what a morning log
-    // is actually reporting on.
-    const nightEntry = state.sleepLogs.find((e) => e.date === addDays(today, -1));
-    return sleepNightProtected(nightEntry);
+    // rough, short night shouldn't count the same as a real one. And per
+    // Veronika's call, a morning report alone isn't "today, done" either
+    // — Sleep is two separate actions on any given day (see renderSleep):
+    // reporting on last night (the AM half of yesterday's night entry)
+    // and winding down for tonight (the PM half of today's own night
+    // entry, not yet started when you're logging first thing in the
+    // morning). Both need to be in before the Home tile checks off —
+    // otherwise a same-day morning log reads as "done for the whole
+    // day" while tonight's plan hasn't happened yet.
+    const lastNight = state.sleepLogs.find((e) => e.date === addDays(today, -1));
+    if (!sleepNightProtected(lastNight)) return false;
+    const tonight = state.sleepLogs.find((e) => e.date === today);
+    return tonight?.pm?.completedDate === today;
   }
   const cs = state.customSheets[sheetId];
   if (cs && cs.templateKey === "books") {
