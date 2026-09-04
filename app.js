@@ -10927,20 +10927,22 @@ function cyclePhaseForDay(day, avgCycleLen, avgPeriodLen) {
   return { key: "luteal", label: "Late luteal", color: "var(--cyc-luteal)" };
 }
 
-// Same ovulation-day math as cyclePhaseForDay, translated into a
-// pregnancy-chance line instead of a phase name — sperm can survive a
-// few days, and the egg about a day past ovulation, so "high" spans a
-// window around ovulation rather than just that one day. Veronika
-// asked for this directly: the phase name alone ("Ovulatory") doesn't
-// tell you what it means for fertility unless you already know.
-function cycleFertilityForDay(day, avgCycleLen, avgPeriodLen) {
-  const ovulationCenter = Math.max(avgPeriodLen + 2, avgCycleLen - 14);
-  const highStart = ovulationCenter - 5;
-  const highEnd = ovulationCenter + 1;
-  const medStart = highStart - 2;
-  if (day >= highStart && day <= highEnd) return { level: "high", label: "High chance of pregnancy" };
-  if (day >= medStart && day < highStart) return { level: "medium", label: "Rising chance of pregnancy" };
-  return { level: "low", label: "Low chance of pregnancy" };
+// Translates the phase cyclePhaseForDay just computed into a
+// pregnancy-chance line, instead of a phase name — Veronika asked for
+// this directly, since the phase name alone ("Ovulatory") doesn't tell
+// you what it means for fertility unless you already know. This used
+// to run its own separate 5-days-before/1-day-after ovulation window,
+// with its own boundary math — which could (and for a short-cycle
+// account like Veronika's, did) disagree with cyclePhaseForDay's own
+// boundaries, showing "Follicular" and "High chance of pregnancy" on
+// the very same day. Deriving straight off the phase instead means the
+// two can never contradict each other again — same convention Flo
+// uses, where the fertility line follows the phase rather than running
+// its own independent window.
+function cycleFertilityForPhase(phaseKey) {
+  if (phaseKey === "ovulatory") return { level: "high", label: "High chance of pregnancy" };
+  if (phaseKey === "follicular") return { level: "medium", label: "Rising chance of pregnancy" };
+  return { level: "low", label: "Low chance of pregnancy" }; // menstrual, luteal, late luteal
 }
 
 // The one function everything else reads from. Null means no periods
@@ -10953,7 +10955,7 @@ function cycleTodayInfo(today) {
   const avgPeriodLen = cycleAvgPeriodLength();
   const day = daysBetween(new Date(current.startDate + "T00:00:00"), new Date(today + "T00:00:00")) + 1;
   const phase = cyclePhaseForDay(day, avgCycleLen, avgPeriodLen);
-  const fertility = cycleFertilityForDay(day, avgCycleLen, avgPeriodLen);
+  const fertility = cycleFertilityForPhase(phase.key);
   const predictedNextStart = addDays(current.startDate, avgCycleLen);
   const daysToNext = daysBetween(new Date(today + "T00:00:00"), new Date(predictedNextStart + "T00:00:00"));
   return { current, day, avgCycleLen, avgPeriodLen, phase, fertility, predictedNextStart, daysToNext, isOpen: !current.endDate };
