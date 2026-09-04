@@ -687,12 +687,23 @@ td input:hover { border-color: var(--border); }
   display: flex; align-items: center; justify-content: center; padding: 18px;
 }
 .onboarding-box {
-  width: 100%; max-width: 400px; max-height: 88vh; overflow-y: auto; background: var(--bg);
+  position: relative; width: 100%; max-width: 400px; max-height: 88vh; overflow-y: auto; background: var(--bg);
   border-radius: 20px; padding: 26px 22px 22px; box-shadow: 0 20px 60px rgba(0,0,0,.35);
 }
 .onboarding-dots { display: flex; gap: 5px; justify-content: center; margin-bottom: 18px; }
 .onboarding-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
 .onboarding-dot.active { background: var(--accent-dark); width: 16px; border-radius: 3px; }
+/* Back arrow — every step but the first, so changing your mind on
+   Extras or a reward question doesn't mean starting the whole flow
+   over. Floats over the top-left corner rather than competing with the
+   centered dots. */
+.onboarding-back-btn {
+  position: absolute; top: 18px; left: 16px; width: 28px; height: 28px; border-radius: 50%;
+  border: none; background: transparent; color: var(--muted); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; padding: 0;
+}
+.onboarding-back-btn:hover { background: var(--border); color: var(--text); }
+.onboarding-back-btn svg { width: 16px; height: 16px; }
 .onboarding-eyebrow { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: center; margin-bottom: 4px; }
 .onboarding-headline { font-family: "Source Serif 4", Georgia, serif; font-size: 22px; font-weight: 600; text-align: center; margin: 0 0 8px; line-height: 1.25; }
 .onboarding-subline { font-size: 12.5px; color: var(--muted); text-align: center; margin-bottom: 20px; line-height: 1.5; }
@@ -713,6 +724,11 @@ td input:hover { border-color: var(--border); }
 .onboarding-pillar-card.selectable.sel .onboarding-pillar-check { background: var(--accent-dark); border-color: var(--accent-dark); }
 .onboarding-pillar-check svg { width: 10px; height: 10px; opacity: 0; }
 .onboarding-pillar-card.selectable.sel .onboarding-pillar-check svg { opacity: 1; }
+/* "Bonus" tag on the extras step (Sobriety/Cycle) — makes it visually
+   obvious these are optional add-ons she still has to pick, not
+   something switched on for her, while flagging that they're free
+   regardless of plan. */
+.onboarding-bonus-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--accent-dark); background: rgba(169,128,79,0.16); border-radius: 999px; padding: 2px 7px; vertical-align: middle; white-space: nowrap; }
 .onboarding-headline-icon { display: inline-flex; vertical-align: -5px; color: var(--accent); }
 .onboarding-headline-icon svg { width: 22px; height: 22px; }
 .onboarding-choice-row { display: flex; flex-direction: column; gap: 8px; }
