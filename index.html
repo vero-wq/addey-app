@@ -24,6 +24,8 @@
   --danger: #B3543E;
   --good: #55694A;
   --text-inverse: #FFFFFF;
+  --intimacy: #9B5F6B;
+  --intimacy-bg: #F5E7EA;
 }
 /* Color themes — swap the root variables only. Type stays the same
    everywhere (Source Serif 4 / Work Sans) except Dark Mode, where body
@@ -53,6 +55,7 @@ html[data-app-theme="dark"] {
   --bg: #1B1B1D; --surface: #242426; --border: #38383B; --text: #EDEAE4;
   --muted: #9A968E; --accent: #C9A36A; --accent-dark: #E0B980; --danger: #E0897A; --good: #7FA06E;
   --text-inverse: #1B1B1D;
+  --intimacy: #D89AA6; --intimacy-bg: #3A2A2E;
 }
 html[data-app-theme="dark"] body { font-weight: 500; }
 * { box-sizing: border-box; }
@@ -1787,6 +1790,85 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cyc-toggle-row { display: flex; gap: 8px; }
 .cyc-toggle { flex: 1; text-align: center; padding: 10px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--surface); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .cyc-toggle.sel { border-color: var(--cyc-menstrual); background: #F6E2DC; color: #8A3D2B; }
+
+/* ---- Cycle daily log — "How today's going" card + Recent logs ----
+   Mockup-approved 2026-09. Reuses .card/.book-summary/.wardrobe-chevron
+   (already shared by Trends/History elsewhere) for Recent Logs, and
+   defines its own scoped classes for the log form itself, following
+   this codebase's convention of not sharing chip/mood styling too
+   aggressively across features (checkin-mood vs. this stay separate). */
+.cyc-today-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; margin-top: 16px; }
+.cyc-today-title { font-weight: 700; font-size: 14.5px; margin-bottom: 2px; }
+.cyc-today-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+.cyc-today-summary { }
+.cyc-summary-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.cyc-summary-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 100px; background: var(--bg); border: 1px solid var(--border); color: var(--text); animation: cycChipIn .35s ease-out both; }
+.cyc-summary-chip.mood { background: #F1EBDD; border-color: var(--accent); color: var(--accent-dark); }
+.cyc-summary-chip.intimacy { background: var(--intimacy-bg); border-color: var(--intimacy); color: var(--intimacy); }
+.cyc-summary-empty-note { font-size: 12px; color: var(--muted); font-style: italic; margin-bottom: 10px; }
+.cyc-summary-cta { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--accent-dark); background: none; border: none; padding: 0; font-family: inherit; cursor: pointer; }
+.cyc-summary-cta svg { width: 15px; height: 15px; }
+
+.cyc-log-form { margin-top: 4px; }
+.cyc-log-field-label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 8px; }
+
+.cyc-mood-row { display: flex; gap: 6px; }
+.cyc-mood-chip { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--bg); cursor: pointer; }
+.cyc-mood-chip .emoji { font-size: 19px; }
+.cyc-mood-chip .lbl { font-size: 9px; color: var(--muted); font-weight: 600; }
+.cyc-mood-chip.sel { border-color: var(--accent); background: #F1EBDD; animation: cycChipPop .4s cubic-bezier(.34,1.56,.64,1); }
+.cyc-mood-chip.sel .emoji { animation: cycEmojiBounce .5s cubic-bezier(.34,1.56,.64,1) .05s; }
+
+.cyc-toggle.sel { border-color: var(--accent-dark); background: var(--accent-dark); color: #fff; animation: cycChipPop .4s cubic-bezier(.34,1.56,.64,1); }
+
+.cyc-symptom-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.cyc-symptom-chip { font-size: 12px; font-weight: 600; padding: 8px 12px; border-radius: 100px; border: 1.5px solid var(--border); background: var(--bg); cursor: pointer; color: var(--text); }
+.cyc-symptom-chip.sel { border-color: var(--cyc-menstrual); background: #F6E2DC; color: #8A3D2B; animation: cycChipPop .4s cubic-bezier(.34,1.56,.64,1); }
+
+.cyc-intimacy-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--bg); cursor: pointer; margin-top: 16px; }
+.cyc-intimacy-row-label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+.cyc-intimacy-heart-wrap { position: relative; display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; }
+.cyc-intimacy-heart-icon { width: 16px; height: 16px; color: var(--muted); transform-origin: center; }
+.cyc-intimacy-row.sel .cyc-intimacy-heart-icon { color: var(--intimacy); animation: cycHeartBeat .55s cubic-bezier(.34,1.56,.64,1); }
+.cyc-intimacy-row.sel .heart-fill { animation: cycHeartFill .3s ease-out .12s both; }
+.cyc-spark { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--intimacy); opacity: 0; pointer-events: none; }
+.cyc-intimacy-row.sel .spark-1 { animation: cycSparkBurst .7s ease-out .08s; --dx: -14px; --dy: -12px; }
+.cyc-intimacy-row.sel .spark-2 { animation: cycSparkBurst .7s ease-out .14s; --dx: 14px; --dy: -13px; }
+.cyc-intimacy-row.sel .spark-3 { animation: cycSparkBurst .7s ease-out .2s; --dx: -12px; --dy: 12px; }
+.cyc-intimacy-row.sel .spark-4 { animation: cycSparkBurst .7s ease-out .1s; --dx: 15px; --dy: 10px; }
+.cyc-intimacy-switch { width: 38px; height: 22px; border-radius: 100px; background: var(--border); position: relative; flex-shrink: 0; transition: background .25s cubic-bezier(.34,1.56,.64,1); }
+.cyc-intimacy-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: left .25s cubic-bezier(.34,1.56,.64,1); }
+.cyc-intimacy-row.sel .cyc-intimacy-switch { background: var(--intimacy); }
+.cyc-intimacy-row.sel .cyc-intimacy-switch::after { left: 18px; }
+.cyc-intimacy-note { font-size: 10.5px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+
+.cyc-log-note { width: 100%; box-sizing: border-box; border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; font-family: inherit; background: var(--bg); color: var(--text); resize: vertical; min-height: 48px; margin-top: 4px; }
+.cyc-log-save-btn { display: block; width: 100%; text-align: center; margin-top: 18px; padding: 12px; border-radius: 10px; border: none; background: var(--accent-dark); color: #fff; font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; }
+
+.cyc-recent-details[open] .wardrobe-chevron { transform: rotate(180deg); }
+.recent-row { display: flex; align-items: center; gap: 10px; padding: 11px 4px; border-bottom: 1px solid var(--border); }
+.recent-row:last-child { border-bottom: none; }
+.recent-date { width: 64px; flex-shrink: 0; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.recent-chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+.recent-chip { font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 100px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
+.recent-chip.mood { color: var(--accent-dark); border-color: var(--accent); }
+.recent-chip.intimacy { color: var(--intimacy); border-color: var(--intimacy); background: var(--intimacy-bg); }
+
+@keyframes cycChipPop { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes cycEmojiBounce { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-3px) scale(1.25); } 65% { transform: translateY(.5px) scale(.95); } 100% { transform: translateY(0) scale(1); } }
+@keyframes cycHeartBeat { 0% { transform: scale(1); } 14% { transform: scale(1.3); } 28% { transform: scale(1); } 42% { transform: scale(1.45); } 60% { transform: scale(1); } 100% { transform: scale(1); } }
+@keyframes cycHeartFill { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cycSparkBurst { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 35% { opacity: 1; transform: translate(-50%,-50%) scale(1.1); } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.6); } }
+@keyframes cycChipIn { from { opacity: 0; transform: translateY(4px) scale(.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .cyc-mood-chip, .cyc-mood-chip .emoji, .cyc-toggle, .cyc-symptom-chip,
+  .cyc-intimacy-heart-icon, .heart-fill, .cyc-spark, .cyc-summary-chip,
+  .cyc-intimacy-switch, .cyc-intimacy-switch::after {
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+}
 
 /* Sobriety — a day count with a daily check-in behind it, milestones
    that clear and re-earn on a reset (a permanent all-time record sits
