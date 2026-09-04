@@ -242,6 +242,10 @@ let saveRetryDelay = 2000;
 let currentUserId = null;
 let currentUserEmail = null;
 let currentUserFirstName = "";
+// Set once per boot by reconcileGraceDays; consumed (and cleared) the
+// first time renderHome runs after that, as a toast — see boot() and
+// renderHome().
+let pendingGraceToastCount = 0;
 
 // ------------------------------------------------------------------
 // Supabase — the real backend. The app's data now lives in the
@@ -1087,8 +1091,17 @@ function appCurrentStreak(appId, today) {
 // already been credited — replaces the old pillar-flips-to-Yes trigger.
 // state.practiceDeposits is a permanent {"<appId>|<date>": true} ledger so
 // re-rendering Home never double-credits the same day's log.
+//
+// justCreditedAppIds is transient (never saved) — it's only "which app
+// ids got their very first credit of the day on this exact render",
+// which is the one moment the various Home animations (checkmark pop,
+// reward figure/bar count-up) should play instead of just snapping to
+// the new state. It's reset at the top of every call, so revisiting
+// Home later with nothing new logged always comes back empty.
+let justCreditedAppIds = [];
 function applyPracticeDepositsForToday(today) {
   state.practiceDeposits ||= {};
+  justCreditedAppIds = [];
   let changed = false;
   currentPracticeAppIds().forEach((id) => {
     const ledgerKey = `${id}|${today}`;
@@ -1096,6 +1109,7 @@ function applyPracticeDepositsForToday(today) {
     if (isAppLoggedToday(id, today)) {
       state.practiceDeposits[ledgerKey] = true;
       awardRewardForPracticeLog();
+      justCreditedAppIds.push(id);
       changed = true;
     }
   });
@@ -9673,11 +9687,44 @@ function renderTrackingGrid(tones, caption) {
   `);
 }
 
+// Shared tween helper — animates a numeric value over `duration`ms with
+// an ease-out curve, calling onFrame(value) every frame and onDone()
+// once at the end. Used anywhere a plain re-render would otherwise just
+// snap straight to a new number: the reward dollar figure/bar, and the
+// progress ring right below. Not used for anything persisted — it only
+// ever drives what's on screen for the duration of the animation, so a
+// dropped frame or an interrupted render can't leave state stale.
+function tweenValue(from, to, duration, onFrame, onDone) {
+  if (from === to || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    onFrame(to);
+    onDone?.();
+    return;
+  }
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    onFrame(from + (to - from) * eased);
+    if (t < 1) requestAnimationFrame(step);
+    else onDone?.();
+  }
+  requestAnimationFrame(step);
+}
+
 // The ring-plus-grid card shape shared by Wellness Progress and Workout
 // Progress. `onOpen` is a click handler for an "Open →" link (used on the
 // Home tab, where the card is a teaser for another page); pass null when
 // the card is rendered at the top of that page itself, since there's
 // nowhere left to open it to.
+//
+// The ring sweeps from its last-seen percentage to the new one instead
+// of snapping — "closing the ring" the way it actually closes, rather
+// than just reporting the number. ringPctCache is keyed by title since
+// Wellness Progress and Workout Progress each need their own last-seen
+// value; a percentage that hasn't actually changed (revisiting the tab,
+// switching between the Home teaser and the full page) skips the tween
+// entirely rather than replaying it for no reason.
+const ringPctCache = {};
 function buildProgressCard(title, pct, ringCaptionHtml, tones, gridCaption, onOpen) {
   const card = el(`<div class="card"></div>`);
   const header = el(`
@@ -9688,14 +9735,25 @@ function buildProgressCard(title, pct, ringCaptionHtml, tones, gridCaption, onOp
   `);
   if (onOpen) header.querySelector(".mini-link").addEventListener("click", onOpen);
   card.appendChild(header);
-  card.appendChild(el(`
+  const prevPct = ringPctCache[title] != null ? ringPctCache[title] : pct;
+  const ringRow = el(`
     <div class="home-streak-row">
-      <div class="home-streak-ring" style="background:conic-gradient(var(--accent) ${pct}%, var(--border) ${pct}% 100%);">
-        <div class="home-streak-ring-inner">${pct}%</div>
+      <div class="home-streak-ring" style="background:conic-gradient(var(--accent) ${prevPct}%, var(--border) ${prevPct}% 100%);">
+        <div class="home-streak-ring-inner">${Math.round(prevPct)}%</div>
       </div>
       <div class="home-streak-caption">${ringCaptionHtml}</div>
     </div>
-  `));
+  `);
+  card.appendChild(ringRow);
+  if (prevPct !== pct) {
+    const ringEl = ringRow.querySelector(".home-streak-ring");
+    const innerEl = ringRow.querySelector(".home-streak-ring-inner");
+    tweenValue(prevPct, pct, 700, (v) => {
+      ringEl.style.background = `conic-gradient(var(--accent) ${v}%, var(--border) ${v}% 100%)`;
+      innerEl.textContent = `${Math.round(v)}%`;
+    });
+  }
+  ringPctCache[title] = pct;
   card.appendChild(renderTrackingGrid(tones, gridCaption));
   return card;
 }
@@ -9857,15 +9915,21 @@ function reconcileGraceDays(today) {
 
   // Bonus tokens per Practice, off that Practice's own streak — every
   // current Practice runs its own independent set of checkpoints.
+  // Returns how many were actually banked this call (capped by
+  // GRACE_BANK_CAP, so a bonus can be "earned" here without a token
+  // actually landing) — boot() uses this to surface a toast the first
+  // time Home renders after this reconciliation.
+  let bonusesAwarded = 0;
   appIds.forEach((id) => {
     const streak = appCurrentStreak(id, today);
     GRACE_BONUS_MILESTONES.forEach((day) => {
       if (streak >= day && (g.bonusAwardedAt[id] || 0) < day) {
         g.bonusAwardedAt[id] = day;
-        if (g.banked < GRACE_BANK_CAP) g.banked += 1;
+        if (g.banked < GRACE_BANK_CAP) { g.banked += 1; bonusesAwarded++; }
       }
     });
   });
+  return bonusesAwarded;
 }
 
 // Same shape as graceStreakRunEndingAt, but for an app id under the new
@@ -9899,6 +9963,22 @@ function graceFeatherSvg() {
   return iconSvg('<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line>');
 }
 
+// A brief slide-up-and-away toast for a grace token landing in the
+// bank — the one moment that was previously totally silent (you'd only
+// notice next time you opened Settings → Grace Days and saw one more
+// filled feather than you remembered). Self-removes once its animation
+// finishes; see the "pop-graceToast" keyframes in index.html.
+function showGraceTokenToast(count) {
+  const toast = el(`
+    <div class="grace-earn-toast">
+      <span class="grace-earn-toast-icon">${graceFeatherSvg()}</span>
+      <span>${count > 1 ? `${count} grace tokens earned` : "Grace token earned"} — ${state.grace.banked} of ${GRACE_BANK_CAP} banked now.</span>
+    </div>
+  `);
+  document.body.appendChild(toast);
+  toast.addEventListener("animationend", () => toast.remove());
+}
+
 // ------------------------------------------------------------------
 // Home — a quiet, read-only summary that lives dead center in the nav
 // on mobile (a fixed circle, never scrolled away) and first in the
@@ -9916,6 +9996,15 @@ function renderHome() {
   panel.appendChild(
     el(`<div class="home-greeting">Good ${homeGreetingTime()}${currentUserFirstName ? `, ${escapeHtml(currentUserFirstName)}` : ""}</div>`)
   );
+
+  // A grace bonus can only ever be granted during boot's once-per-open
+  // reconciliation (see reconcileGraceDays/pendingGraceToastCount) — so
+  // the very first Home render after boot is the one moment to surface
+  // it. Cleared immediately so it never replays on a later re-render.
+  if (pendingGraceToastCount > 0) {
+    showGraceTokenToast(pendingGraceToastCount);
+    pendingGraceToastCount = 0;
+  }
 
   // One page now, not two — Wellness's unique content (today's
   // pillars/reflection, trends, history) lives here. The reward — if one's
@@ -10097,17 +10186,39 @@ function renderHomeRewardBanner(today) {
 
   const wrap = el(`<div></div>`);
   wrap.appendChild(banner);
-  wrap.appendChild(el(`
+
+  // Counts up from the last-seen figure/bar instead of snapping, but
+  // only on the render where a deposit just landed (justCreditedAppIds
+  // non-empty) — otherwise just paint the real numbers straight away so
+  // switching tabs and coming back never replays it for nothing.
+  const fromEarned = justCreditedAppIds.length && prevRewardEarned != null ? prevRewardEarned : stats.earned;
+  const fromPct = justCreditedAppIds.length && prevRewardPct != null ? prevRewardPct : stats.pct;
+  const figureFmt = (v) => `$${v.toFixed(2).replace(/\.00$/, "")} of $${stats.goal}`;
+
+  const progress = el(`
     <div class="home-reward-progress">
       <div class="home-reward-progress-row">
         <span class="home-reward-progress-label">Earned so far</span>
-        <span class="home-reward-progress-figure">$${stats.earned.toFixed(2).replace(/\.00$/, "")} of $${stats.goal}</span>
+        <span class="home-reward-progress-figure">${figureFmt(fromEarned)}</span>
       </div>
-      <div class="home-reward-bar"><div class="home-reward-fill${stats.reached ? " reached" : ""}" style="width:${stats.pct}%;"></div></div>
+      <div class="home-reward-bar"><div class="home-reward-fill${stats.reached ? " reached" : ""}" style="width:${fromPct}%;"></div></div>
     </div>
-  `));
+  `);
+  wrap.appendChild(progress);
+
+  if (fromEarned !== stats.earned || fromPct !== stats.pct) {
+    const figureEl = progress.querySelector(".home-reward-progress-figure");
+    const fillEl = progress.querySelector(".home-reward-fill");
+    tweenValue(fromEarned, stats.earned, 900, (v) => { figureEl.textContent = figureFmt(v); });
+    tweenValue(fromPct, stats.pct, 900, (v) => { fillEl.style.width = `${v}%`; });
+  }
+  prevRewardEarned = stats.earned;
+  prevRewardPct = stats.pct;
+
   return wrap;
 }
+let prevRewardEarned = null;
+let prevRewardPct = null;
 
 // The small dashed "not linked yet" nudge that lives on Home once a
 // reward is set up and progress is earning normally — deliberately not a
@@ -10188,6 +10299,47 @@ function renderHomeHero(today) {
   return hero.children.length ? hero : null;
 }
 
+// A simple one-at-a-time queue for celebration popups — without it, two
+// Practices crossing a milestone on the same render (or a Practice
+// crossing right as Sobriety does) would stack two overlays on top of
+// each other. Each opener gets a `done` callback to call once its own
+// overlay is dismissed, which is what lets the next one in line open.
+let celebrationQueue = [];
+let celebrationShowing = false;
+function queueCelebration(openFn) {
+  celebrationQueue.push(openFn);
+  runCelebrationQueue();
+}
+function runCelebrationQueue() {
+  if (celebrationShowing || !celebrationQueue.length) return;
+  celebrationShowing = true;
+  const openFn = celebrationQueue.shift();
+  openFn(() => {
+    celebrationShowing = false;
+    runCelebrationQueue();
+  });
+}
+
+// Generalizes Sobriety's per-tier celebration to every other Practice,
+// off the same HOME_STREAK_MILESTONES ladder Trends already displays
+// (silently, "just to say you hit this") — this is what actually fires
+// something. state.appMilestonesCelebrated persists the highest day
+// celebrated per app, so nothing re-celebrates a day it's already
+// passed; after a reset it can celebrate again, but only once the
+// streak climbs past whatever was celebrated last time, same "no
+// re-celebrating a lap you've already lapped" rule Sobriety's all-time
+// tiers already use. Sobriety itself is excluded here — it keeps its
+// own tier ladder and copy via openSobrietyCelebration above.
+function practiceRecomputeMilestone(appId, today) {
+  state.appMilestonesCelebrated ||= {};
+  const streak = appCurrentStreak(appId, today);
+  const already = state.appMilestonesCelebrated[appId] || 0;
+  const reached = HOME_STREAK_MILESTONES.filter((m) => m > already && streak >= m).pop();
+  if (!reached) return null;
+  state.appMilestonesCelebrated[appId] = reached;
+  return reached;
+}
+
 // ------------------------------------------------------------------
 // Home's unified apps grid (2026-09 rearchitecture) — replaces the old
 // six-pillar tap grid entirely. One grid, every added Practice + Tracker
@@ -10204,9 +10356,21 @@ function renderHomeAppsGrid(today) {
     const newTier = sobrietyRecomputeMilestones(today);
     if (newTier) {
       scheduleSave();
-      setTimeout(() => openSobrietyCelebration(newTier), 0);
+      queueCelebration((done) => openSobrietyCelebration(newTier, done));
     }
   }
+
+  // Same moment, generalized to every other Practice — see
+  // practiceRecomputeMilestone above for why Sobriety is skipped here.
+  currentAppEntries()
+    .filter((a) => a.type === "practice" && a.id !== "sobriety")
+    .forEach((app) => {
+      const reachedDay = practiceRecomputeMilestone(app.id, today);
+      if (reachedDay) {
+        scheduleSave();
+        queueCelebration((done) => openMilestoneCelebration(app.label, reachedDay, done));
+      }
+    });
 
   const card = el(`<div class="card"></div>`);
   card.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
@@ -10238,9 +10402,9 @@ function renderHomeAppsGrid(today) {
   apps.forEach((app) => {
     const loggedToday = isAppLoggedToday(app.id, today);
     const tile = el(`
-      <button type="button" class="home-yourspaces-tile home-app-tile${app.type === "tracker" ? " is-tracker" : ""}">
+      <button type="button" class="home-yourspaces-tile home-app-tile${app.type === "tracker" ? " is-tracker" : ""}${app.type === "practice" && !loggedToday ? " home-app-tile-nudge" : ""}">
         <span class="home-yourspaces-tile-icon ${appIconWellClass(app.type)}">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}${
-      loggedToday ? `<span class="home-app-tile-check">${checkSvg}</span>` : ""
+      loggedToday ? `<span class="home-app-tile-check${justCreditedAppIds.includes(app.id) ? " pop" : ""}">${checkSvg}</span>` : ""
     }</span>
         <span class="home-yourspaces-tile-label">${escapeHtml(app.label)}</span>
       </button>
@@ -11250,7 +11414,13 @@ function renderCyclePanel() {
       </div>
     `));
     box.querySelector(".cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(render); });
-    history.forEach((p, i) => {
+
+    // A cycle length is only computable against the NEXT-newer period's
+    // start date, so lenLabel has to be worked out against the full
+    // list's own neighbors before splitting it into "recent" vs
+    // "older" — an older row can't just recompute its length against
+    // whatever happens to be the last item still visible above it.
+    const buildRow = (p, i) => {
       const next = history[i - 1]; // one newer than p, since the list is newest-first
       const lenLabel = next ? `${daysBetween(new Date(p.startDate + "T00:00:00"), new Date(next.startDate + "T00:00:00"))}-day cycle` : "&mdash;";
       const row = el(`
@@ -11260,8 +11430,31 @@ function renderCyclePanel() {
         </div>
       `);
       row.addEventListener("click", () => openCycleEditPeriodSheet(p, render));
-      box.appendChild(row);
-    });
+      return row;
+    };
+
+    // Recent 3 always visible; years of history (Veronika's coming from
+    // Flo, which keeps everything) collapses behind a toggle instead of
+    // just scrolling the whole Cycle tab forever. Once expanded, the
+    // older rows get their own scrolling box (.cyc-hist-older) rather
+    // than growing the page, so opening it doesn't shove History,
+    // "See all phases" etc. even further down.
+    const RECENT_COUNT = 3;
+    history.slice(0, RECENT_COUNT).forEach((p, i) => box.appendChild(buildRow(p, i)));
+
+    const older = history.slice(RECENT_COUNT);
+    if (older.length) {
+      const olderBox = el(`<div class="cyc-hist-older" style="display:none;"></div>`);
+      older.forEach((p, i) => olderBox.appendChild(buildRow(p, i + RECENT_COUNT)));
+      const toggle = el(`<button type="button" class="cyc-hist-toggle">Show all ${history.length} cycles &darr;</button>`);
+      toggle.addEventListener("click", () => {
+        const expanded = olderBox.style.display !== "none";
+        olderBox.style.display = expanded ? "none" : "block";
+        toggle.textContent = expanded ? `Show all ${history.length} cycles ↓` : "Show fewer ↑";
+      });
+      box.appendChild(toggle);
+      box.appendChild(olderBox);
+    }
   }
 
   render();
@@ -11646,7 +11839,7 @@ function buildSobrietyCheckInCard(today, existing, onDone) {
     const newTier = sobrietyRecomputeMilestones(today);
     scheduleSave();
     onDone();
-    if (newTier) openSobrietyCelebration(newTier);
+    if (newTier) queueCelebration((done) => openSobrietyCelebration(newTier, done));
   });
   card.appendChild(btn);
   return card;
@@ -11706,8 +11899,11 @@ function openSobrietySupportPicker(onDone) {
 
 // A quiet celebration, colored to the tier just earned — no confetti,
 // no repeat-count callout ("you've hit this 3 times" was explicitly
-// ruled out), just a beat of acknowledgment before "Keep going".
-function openSobrietyCelebration(tier) {
+// ruled out), just a beat of acknowledgment before "Keep going". `done`
+// is optional so any existing direct call sites keep working; pass it
+// via queueCelebration wherever another celebration could plausibly
+// stack on top of this one.
+function openSobrietyCelebration(tier, done) {
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box info-modal-box" style="width:340px;text-align:center;">
@@ -11722,8 +11918,49 @@ function openSobrietyCelebration(tier) {
       </div>
     </div>
   `);
-  overlay.querySelector(".sob-celebrate-btn").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  const close = () => { overlay.remove(); done?.(); };
+  overlay.querySelector(".sob-celebrate-btn").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
+// The generalized version of the celebration above — any Practice
+// crossing one of HOME_STREAK_MILESTONES gets this instead of the quiet
+// checkmark-only treatment Sobriety uses, per Veronika's call that this
+// was "probably the highest-value" gap once she saw the animation
+// mockups: a confetti burst plus the same streak-flame glyph/color ramp
+// used everywhere else a streak shows color (buildStreakCard, Trends'
+// milestone chips), so the celebration reads as "the app's own flame,
+// just bigger" rather than a new visual language.
+function openMilestoneCelebration(appLabel, days, done) {
+  const flame = homeStreakFlameSvg(days);
+  const confettiColors = ["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F"];
+  const confettiHtml = Array.from({ length: 10 })
+    .map((_, i) => {
+      const angle = (Math.PI * 2 * i) / 10 + (i % 2 ? 0.2 : -0.2);
+      const dist = 70 + (i % 3) * 20;
+      const dx = Math.round(Math.cos(angle) * dist);
+      const dy = Math.round(Math.sin(angle) * dist) - 20;
+      const color = confettiColors[i % confettiColors.length];
+      return `<span class="milestone-confetti" style="--dx:${dx}px;--dy:${dy}px;background:${color};border-radius:${i % 2 ? "50%" : "2px"};animation-delay:${(i % 4) * 0.03}s;"></span>`;
+    })
+    .join("");
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box" style="width:340px;text-align:center;">
+        <div class="milestone-celebrate-card">
+          ${confettiHtml}
+          <div class="milestone-celebrate-flame">${flame}</div>
+          <div class="celebrate-title">${days} Day Streak!</div>
+          <div class="celebrate-sub">${escapeHtml(appLabel)} — nice work staying with it.</div>
+        </div>
+        <button type="button" class="sheet-primary-btn milestone-celebrate-btn">Keep going</button>
+      </div>
+    </div>
+  `);
+  const close = () => { overlay.remove(); done?.(); };
+  overlay.querySelector(".milestone-celebrate-btn").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
   document.body.appendChild(overlay);
 }
 
@@ -12887,8 +13124,11 @@ async function boot() {
 
   // Grace Days — grant this month's tokens and cover any real gap from
   // the last couple weeks before anything renders, so streaks and the
-  // Home banner already reflect it on first paint.
-  reconcileGraceDays(todayISO());
+  // Home banner already reflect it on first paint. This is the only
+  // place a bonus token gets awarded (runs once per boot), so a bonus
+  // earned overnight surfaces as a toast the first time Home renders
+  // after this — see pendingGraceToastCount below and renderHome().
+  pendingGraceToastCount = reconcileGraceDays(todayISO());
 
   // Write straight back after any migrations above so the row reflects
   // the current shape immediately, rather than waiting for the first
