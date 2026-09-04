@@ -11159,10 +11159,16 @@ function cycleDailyLogSummaryChips(log) {
 // selections live in local closure variables and only land in
 // state.cycle.dailyLogs when Save is tapped, so navigating away
 // mid-edit can't half-save a day.
-function buildCycleDailyLogCard(today, onDone) {
+// `today` is really just "the date this card edits" — it works exactly
+// the same for a past day (see openCycleEditDailyLogSheet below, which
+// reuses this whole card so Recent logs rows don't need a second,
+// separately-maintained edit form). isToday only changes the copy so a
+// past day doesn't say "today" back at you.
+function buildCycleDailyLogCard(today, onDone, opts = {}) {
+  const isToday = opts.isToday ?? today === todayISO();
   const card = el(`<div class="cyc-today-card"></div>`);
-  card.appendChild(el(`<div class="cyc-today-title">How today's going</div>`));
-  card.appendChild(el(`<div class="cyc-today-sub">Mood, energy, symptoms, intimacy — whatever's true today. All optional, all on one entry.</div>`));
+  card.appendChild(el(`<div class="cyc-today-title">${isToday ? "How today's going" : `${escapeHtml(activityDateShort(today))}`}</div>`));
+  card.appendChild(el(`<div class="cyc-today-sub">Mood, energy, symptoms, intimacy — whatever's true${isToday ? " today" : " that day"}. All optional, all on one entry.</div>`));
 
   const existing = cycleDailyLogFor(today);
   let isOpen = cycleDailyLogIsEmpty(existing);
@@ -11179,7 +11185,7 @@ function buildCycleDailyLogCard(today, onDone) {
     const chips = log ? cycleDailyLogSummaryChips(log) : [];
     const box = el(`<div class="cyc-today-summary"></div>`);
     if (!chips.length) {
-      box.appendChild(el(`<div class="cyc-summary-empty-note">Nothing logged for today yet.</div>`));
+      box.appendChild(el(`<div class="cyc-summary-empty-note">Nothing logged for ${isToday ? "today" : "this day"} yet.</div>`));
     } else {
       const row = el(`<div class="cyc-summary-row"></div>`);
       chips.forEach((c) => row.appendChild(el(`<span class="cyc-summary-chip ${c.cls}">${escapeHtml(c.label)}</span>`)));
@@ -11192,7 +11198,7 @@ function buildCycleDailyLogCard(today, onDone) {
             ? iconSvg('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')
             : iconSvg('<path d="M12 5v14M5 12h14"></path>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')
         }
-        ${chips.length ? "Edit today's log" : "Log how you're feeling"}
+        ${chips.length ? (isToday ? "Edit today's log" : "Edit this log") : "Log how you're feeling"}
       </button>
     `);
     cta.addEventListener("click", () => { isOpen = true; renderBody(); });
@@ -11252,7 +11258,7 @@ function buildCycleDailyLogCard(today, onDone) {
             <span class="cyc-spark spark-1"></span><span class="cyc-spark spark-2"></span>
             <span class="cyc-spark spark-3"></span><span class="cyc-spark spark-4"></span>
           </span>
-          Log intimacy for today
+          Log intimacy${isToday ? " for today" : " for this day"}
         </span>
         <span class="cyc-intimacy-switch"></span>
       </div>
@@ -11278,7 +11284,7 @@ function buildCycleDailyLogCard(today, onDone) {
     wrap.appendChild(el(`<div class="cyc-intimacy-note">Kept with the rest of your Cycle data — private to you, same as your period history.</div>`));
 
     wrap.appendChild(el(`<span class="cyc-log-field-label" style="margin-top:16px;">Note <span style="text-transform:none;font-weight:500;">(optional)</span></span>`));
-    const noteInput = el(`<textarea class="cyc-log-note" placeholder="Anything else worth remembering about today?"></textarea>`);
+    const noteInput = el(`<textarea class="cyc-log-note" placeholder="Anything else worth remembering about ${isToday ? "today" : "this day"}?"></textarea>`);
     noteInput.value = existing?.note || "";
     wrap.appendChild(noteInput);
 
@@ -11309,32 +11315,107 @@ function buildCycleDailyLogCard(today, onDone) {
   return card;
 }
 
+// Opens a past day's log in the exact same card used for today, inside a
+// plain sheet overlay — one edit form for the whole Cycle tab instead of
+// a second copy of the mood/energy/symptom/intimacy UI maintained
+// separately for history rows. (Veronika noticed Recent logs rows
+// weren't clickable at all — this is the fix.)
+function openCycleEditDailyLogSheet(dateStr, onDone) {
+  const overlay = el(`
+    <div class="sheet-overlay">
+      <div class="sheet-box" style="max-width:400px;">
+        <button type="button" class="icon-btn sheet-close" aria-label="Close">${closeSvg}</button>
+      </div>
+    </div>
+  `);
+  const close = () => { overlay.remove(); onDone(); };
+  const box = overlay.querySelector(".sheet-box");
+  box.appendChild(buildCycleDailyLogCard(dateStr, close, { isToday: false }));
+  overlay.querySelector(".sheet-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
 // "Recent logs" — a collapsible <details>, same pattern already used
 // for Trends/History elsewhere (see renderHomeTrendsSection) rather
 // than a new interaction to learn. Hidden entirely until there's at
 // least one real entry — no empty collapsible for a feature nobody's
-// used yet.
-function renderCycleRecentLogsSection(box) {
-  const logs = cycleSortedDailyLogs();
-  if (!logs.length) return;
+// used yet. Each row opens that day's log for editing (see
+// openCycleEditDailyLogSheet) — these used to be read-only, which read
+// as a dead end once you noticed today's card WAS editable.
+// One combined, chronological History — a period start and a day's
+// mood/energy/symptom log are both "things that happened on the Cycle
+// tab," so they now live in a single collapsible list, newest first,
+// instead of two separate sections (Recent logs above, History further
+// down) that Veronika pointed out read as "two history logs" for what's
+// really one story. Each row still opens its own real edit sheet —
+// nothing about editing a period or a daily log changed, only where
+// they're listed.
+function renderCycleHistorySection(box, onDone) {
+  const periodsNewestFirst = cycleSortedPeriods().reverse();
+  const periodEntries = periodsNewestFirst.map((p, i) => {
+    const next = periodsNewestFirst[i - 1]; // one newer than p, since this array is newest-first
+    const lenLabel = next ? `${daysBetween(new Date(p.startDate + "T00:00:00"), new Date(next.startDate + "T00:00:00"))}-day cycle` : null;
+    return { date: p.startDate, kind: "period", period: p, lenLabel };
+  });
+  const logEntries = cycleSortedDailyLogs().map((log) => ({ date: log.date, kind: "log", log }));
+  const combined = [...periodEntries, ...logEntries].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    return a.kind === "period" ? -1 : 1; // a period start leads its own day's log, not the other way round
+  });
+  if (!combined.length) return;
+
   const details = el(`
     <details class="card cyc-recent-details" open>
       <summary class="book-summary">
-        <span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">Recent logs</span></span>
+        <span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">History</span></span>
         <span class="wardrobe-chevron">${iconSvg('<polyline points="6 9 12 15 18 9"></polyline>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')}</span>
       </summary>
     </details>
   `);
-  const RECENT_COUNT = 10;
-  logs.slice(0, RECENT_COUNT).forEach((log) => {
-    const chips = cycleDailyLogSummaryChips(log);
-    details.appendChild(el(`
-      <div class="recent-row">
-        <div class="recent-date">${escapeHtml(activityDateShort(log.date))}</div>
+
+  const buildRow = (entry) => {
+    if (entry.kind === "period") {
+      const row = el(`
+        <div class="cyc-hist-row" role="button" tabindex="0">
+          <div class="cyc-hist-dates">&#x1FA78; Period started ${escapeHtml(activityDateShort(entry.date))}</div>
+          <div class="cyc-hist-len">${entry.lenLabel || "&mdash;"}</div>
+        </div>
+      `);
+      row.addEventListener("click", () => openCycleEditPeriodSheet(entry.period, onDone));
+      return row;
+    }
+    const chips = cycleDailyLogSummaryChips(entry.log);
+    const row = el(`
+      <div class="recent-row" role="button" tabindex="0">
+        <div class="recent-date">${escapeHtml(activityDateShort(entry.date))}</div>
         <div class="recent-chips">${chips.map((c) => `<span class="recent-chip ${c.cls}">${escapeHtml(c.label)}</span>`).join("")}</div>
       </div>
-    `));
-  });
+    `);
+    row.addEventListener("click", () => openCycleEditDailyLogSheet(entry.date, onDone));
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); } });
+    return row;
+  };
+
+  // Same "recent few visible, the rest behind a scrolling expand" shape
+  // the old separate sections each used on their own — now covering the
+  // one merged list instead of two smaller ones.
+  const VISIBLE_COUNT = 8;
+  combined.slice(0, VISIBLE_COUNT).forEach((entry) => details.appendChild(buildRow(entry)));
+
+  const older = combined.slice(VISIBLE_COUNT);
+  if (older.length) {
+    const olderBox = el(`<div class="cyc-hist-older" style="display:none;"></div>`);
+    older.forEach((entry) => olderBox.appendChild(buildRow(entry)));
+    const toggle = el(`<button type="button" class="cyc-hist-toggle">Show ${older.length} more &darr;</button>`);
+    toggle.addEventListener("click", () => {
+      const expanded = olderBox.style.display !== "none";
+      olderBox.style.display = expanded ? "none" : "block";
+      toggle.textContent = expanded ? `Show ${older.length} more ↓` : "Show fewer ↑";
+    });
+    details.appendChild(toggle);
+    details.appendChild(olderBox);
+  }
   box.appendChild(details);
 }
 
@@ -11814,20 +11895,43 @@ function renderCyclePanel() {
 
     // The count-down alone ("3 days") makes you do the math yourself to
     // know whether that lands before a trip or a weekend — the actual
-    // calendar date underneath it is what Veronika asked for directly.
-    // Skipped once you're overdue: predictedNextStart is already in the
-    // past by then, so a date there would just restate "days past due"
-    // less usefully.
+    // calendar date is what Veronika asked for directly. It used to be
+    // its own bold line under the label, which made this cell visibly
+    // taller than its neighbors; folding it into the label itself, in
+    // the same small-caps muted style, keeps the date without giving it
+    // more visual weight than "Avg. cycle length" gets next to it — and
+    // every cell is back to one simple two-line shape, no placeholder
+    // line needed to keep the row even.
     const predictCell =
       info.daysToNext >= 0
-        ? `<div class="cyc-predict-cell"><div class="cyc-predict-num">${info.daysToNext}</div><div class="cyc-predict-label">Days to next period</div><div class="cyc-predict-date">${escapeHtml(activityDateShort(info.predictedNextStart))}</div></div>`
+        ? `<div class="cyc-predict-cell"><div class="cyc-predict-num">${info.daysToNext}</div><div class="cyc-predict-label">Days to next period (${escapeHtml(activityDateShort(info.predictedNextStart))})</div></div>`
         : `<div class="cyc-predict-cell"><div class="cyc-predict-num" style="color:var(--cyc-menstrual);">${info.daysToNext}</div><div class="cyc-predict-label">Days past due</div></div>`;
+    // 2026-09 consolidation: this used to be a 2-cell strip up here (days
+    // to next period, avg cycle length) plus a SEPARATE "Your average"
+    // section further down the page repeating avg cycle length a second
+    // time and adding avg period length — two stat blocks, one stat
+    // (avg cycle length) shown twice. Veronika flagged the split as
+    // confusing clutter. Now it's one 3-cell strip, once, right under the
+    // hero where the rest of "where you're at" already lives; the
+    // "based on your logged history" note that used to caption the old
+    // avg strip moves down here with it. Order is avg cycle length, then
+    // the days-to-next-period countdown in the middle, then avg period
+    // length — Veronika's own call, putting the one cell with extra
+    // detail (the date) in the center rather than leading with it.
     box.appendChild(el(`
       <div class="cyc-predict-strip">
-        ${predictCell}
         <div class="cyc-predict-cell"><div class="cyc-predict-num">${info.avgCycleLen}</div><div class="cyc-predict-label">Avg. cycle length</div></div>
+        ${predictCell}
+        <div class="cyc-predict-cell"><div class="cyc-predict-num">${info.avgPeriodLen}</div><div class="cyc-predict-label">Avg. period length</div></div>
       </div>
     `));
+    // "Edit manually" lives here now, not down by History — it edits the
+    // manual fallback numbers these same stats are built from, so it
+    // belongs right next to them rather than several sections away.
+    box.appendChild(el(`
+      <div class="cyc-predict-note">Based on your last ${Math.min(6, cycleSortedPeriods().length)} logged period${cycleSortedPeriods().length === 1 ? "" : "s"}. <a href="#" class="cyc-edit-avg-link">Edit manually</a></div>
+    `));
+    box.querySelector(".cyc-predict-note .cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(render); });
 
     if (info.isOpen) {
       const stillBtn = el(`<button type="button" class="cyc-log-ghost">It ended</button>`);
@@ -11858,19 +11962,7 @@ function renderCyclePanel() {
     box.appendChild(track);
 
     box.appendChild(buildCycleDailyLogCard(today, render));
-    renderCycleRecentLogsSection(box);
-
-    box.appendChild(el(`<div class="cyc-section-title">Your average</div>`));
-    const avgStrip = el(`
-      <div class="cyc-avg-strip">
-        <div class="cyc-avg"><div class="cyc-avg-num">${info.avgCycleLen}</div><div class="cyc-avg-label">days, cycle</div></div>
-        <div class="cyc-avg-divider"></div>
-        <div class="cyc-avg"><div class="cyc-avg-num">${info.avgPeriodLen}</div><div class="cyc-avg-label">days, period</div></div>
-        <div class="cyc-avg-divider"></div>
-        <div class="cyc-avg-note">Based on your last ${Math.min(6, cycleSortedPeriods().length)} logged period${cycleSortedPeriods().length === 1 ? "" : "s"}.</div>
-      </div>
-    `);
-    box.appendChild(avgStrip);
+    renderCycleHistorySection(box, render);
 
     // No repeat-the-current-phase card here anymore — the hero up top
     // already names the phase, gives its one-line description, AND the
@@ -11883,56 +11975,6 @@ function renderCyclePanel() {
       e.preventDefault();
       infoModal("Cycle phases", buildCyclePhaseInfoBody(info.phase.label.replace(/^Late /, "")));
     });
-
-    const history = cycleSortedPeriods().reverse();
-    box.appendChild(el(`
-      <div class="cyc-section-title" style="margin-top:26px;display:flex;align-items:baseline;justify-content:space-between;">
-        <span>History</span>
-        <a href="#" class="cyc-edit-avg-link" style="font-size:11px;font-weight:600;">Edit manually</a>
-      </div>
-    `));
-    box.querySelector(".cyc-edit-avg-link").addEventListener("click", (e) => { e.preventDefault(); openCycleEditAveragesSheet(render); });
-
-    // A cycle length is only computable against the NEXT-newer period's
-    // start date, so lenLabel has to be worked out against the full
-    // list's own neighbors before splitting it into "recent" vs
-    // "older" — an older row can't just recompute its length against
-    // whatever happens to be the last item still visible above it.
-    const buildRow = (p, i) => {
-      const next = history[i - 1]; // one newer than p, since the list is newest-first
-      const lenLabel = next ? `${daysBetween(new Date(p.startDate + "T00:00:00"), new Date(next.startDate + "T00:00:00"))}-day cycle` : "&mdash;";
-      const row = el(`
-        <div class="cyc-hist-row" role="button" tabindex="0">
-          <div class="cyc-hist-dates">Started ${escapeHtml(activityDateShort(p.startDate))}</div>
-          <div class="cyc-hist-len">${lenLabel}</div>
-        </div>
-      `);
-      row.addEventListener("click", () => openCycleEditPeriodSheet(p, render));
-      return row;
-    };
-
-    // Recent 3 always visible; years of history (Veronika's coming from
-    // Flo, which keeps everything) collapses behind a toggle instead of
-    // just scrolling the whole Cycle tab forever. Once expanded, the
-    // older rows get their own scrolling box (.cyc-hist-older) rather
-    // than growing the page, so opening it doesn't shove History,
-    // "See all phases" etc. even further down.
-    const RECENT_COUNT = 3;
-    history.slice(0, RECENT_COUNT).forEach((p, i) => box.appendChild(buildRow(p, i)));
-
-    const older = history.slice(RECENT_COUNT);
-    if (older.length) {
-      const olderBox = el(`<div class="cyc-hist-older" style="display:none;"></div>`);
-      older.forEach((p, i) => olderBox.appendChild(buildRow(p, i + RECENT_COUNT)));
-      const toggle = el(`<button type="button" class="cyc-hist-toggle">Show all ${history.length} cycles &darr;</button>`);
-      toggle.addEventListener("click", () => {
-        const expanded = olderBox.style.display !== "none";
-        olderBox.style.display = expanded ? "none" : "block";
-        toggle.textContent = expanded ? `Show all ${history.length} cycles ↓` : "Show fewer ↑";
-      });
-      box.appendChild(toggle);
-      box.appendChild(olderBox);
-    }
   }
 
   render();
