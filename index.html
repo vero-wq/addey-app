@@ -932,6 +932,18 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .trend-pattern-card + .trend-pattern-card { margin-top: 8px; }
 .trend-pattern-note { font-size: 10.5px; color: var(--muted); margin-top: 8px; font-style: italic; }
 
+/* Completion rate by cycle phase — a small bar chart, one bar per phase
+   with real logged history, tied to whichever app currently shows the
+   widest spread (renderCyclePhaseCompletionCard). */
+.trend-phase-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.trend-phase-sub { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+.trend-phase-bars { display: flex; align-items: flex-end; gap: 10px; height: 86px; }
+.trend-phase-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
+.trend-phase-bar-pct { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.trend-phase-bar-track { flex: 1; width: 100%; max-width: 34px; display: flex; align-items: flex-end; }
+.trend-phase-bar-fill { width: 100%; border-radius: 5px 5px 2px 2px; min-height: 3px; }
+.trend-phase-bar-label { font-size: 10px; color: var(--muted); margin-top: 6px; text-align: center; }
+
 .field-info-btn {
   width: 15px; height: 15px; border-radius: 50%; border: none; background: none; padding: 0;
   display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex-shrink: 0; cursor: pointer;
@@ -1892,6 +1904,45 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 }
 @media (prefers-reduced-motion: reduce) {
   .grace-earn-toast { animation: none; bottom: 92px; opacity: 1; }
+}
+
+/* App-open ("cold open") animations — plays once, only on the very first
+   Home render after boot (see pendingColdOpen in app.js), never on a
+   plain tab switch back to Home. Greeting and hero fade in first, apps
+   grid tiles stagger in just after. The reward bar's own draw-in is a JS
+   width tween (renderHomeRewardBanner), not CSS, so it isn't here. */
+.home-greeting-cold, .home-hero-cold, .home-app-tile-cold {
+  opacity: 0; transform: translateY(8px); animation: home-cold-in .5s ease-out forwards;
+}
+.home-greeting-cold { animation-delay: .05s; }
+.home-hero-cold { animation-delay: .15s; }
+@keyframes home-cold-in { to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .home-greeting-cold, .home-hero-cold, .home-app-tile-cold {
+    animation: none !important; opacity: 1 !important; transform: none !important;
+  }
+}
+
+/* The sparkle riding the tip of the reward bar (rewardTwinkleSvg in
+   app.js) — lives INSIDE .home-reward-fill itself (left:100% of its own
+   growing width), not positioned off a value shared with a sibling, so
+   it always ends up wherever the bar actually finishes, however far
+   that is. Only plays once the JS width tween calls tweenValue's onDone
+   and adds .twinkle-play — a bar that doesn't move never gets one. */
+.home-reward-fill { position: relative; overflow: visible; }
+.home-reward-twinkle {
+  position: absolute; top: 50%; left: 100%; width: 13px; height: 13px;
+  transform: translate(-50%, -50%) scale(0); pointer-events: none;
+}
+.home-reward-twinkle svg { width: 100%; height: 100%; fill: #F0C674; }
+.home-reward-twinkle.twinkle-play { animation: home-reward-twinkle-appear .7s ease-out forwards; }
+@keyframes home-reward-twinkle-appear {
+  0% { transform: translate(-50%, -50%) scale(0) rotate(0deg); opacity: 0; }
+  40% { transform: translate(-50%, -50%) scale(1.3) rotate(45deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0) rotate(90deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-reward-twinkle.twinkle-play { animation: none; opacity: 0; }
 }
 
 .sob-reset-link { display: block; width: 100%; text-align: center; margin-top: 20px; font-size: 12px; color: var(--muted); text-decoration: underline; background: none; border: none; cursor: pointer; font-family: inherit; padding: 4px; }
