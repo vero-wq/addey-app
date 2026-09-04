@@ -12656,7 +12656,14 @@ function renderWellnessHistory(panel, today) {
 // everywhere else in the app. Sleep is the one practice that's still
 // automatic — it's a built-in, not a template to choose.
 function showOnboardingFlow() {
-  const STEPS = ["welcome", "practices", "extras", "review", "rewardAsk", "rewardDetails", "rewardPhoto", "rewardLink"];
+  // Reward questions come BEFORE the "starting kit" review now (2026-09
+  // correction, per Veronika: the old order showed "here's your kit,
+  // Day one starts now" and then immediately asked "want to save toward
+  // something?" — which reads as a second kit tacked on after the count
+  // has already started. Asking about the reward earlier means the
+  // review screen can be the one true final summary, reward included,
+  // right before Day one actually starts.
+  const STEPS = ["welcome", "practices", "extras", "rewardAsk", "rewardDetails", "rewardPhoto", "rewardLink", "review"];
   let stepIdx = 0;
   const freeCap = spaceCapForAccount();
   let selectedPracticeKeys = [];
@@ -12835,16 +12842,21 @@ function showOnboardingFlow() {
         <div class="onboarding-review-card">
           <div class="onboarding-extra-row" id="reviewZone"></div>
         </div>
+        ${wantsReward && rewardName ? `
+        <div class="onboarding-lock-note"><span style="flex-shrink:0;">${rewardPiggyBankSvg()}</span><div><strong>Saving toward ${escapeHtml(rewardName)}.</strong> $${rewardGoalDollars.toLocaleString()} by ${activityDateShort(addDays(todayISO(), rewardTargetDays))} — every log chips in.</div></div>
+        ` : ""}
         <div class="onboarding-lock-note">🔓 <div><strong>${freeCap} active practices, always free.</strong> Sobriety and Cycle are always free too, whatever plan you're on. Want more practices later? The Marketplace has the rest — upgrading unlocks up to 15 active at once.</div></div>
         <div class="onboarding-lock-note"><span style="flex-shrink:0;">${graceFeatherSvg()}</span><div><strong>A missed day doesn't have to break a streak.</strong> You earn a grace day every month, plus another every time a streak hits a 30-day milestone — bank up to ${GRACE_BANK_CAP}, and one quietly covers you the next time you miss.</div></div>
-        <div class="closing-beat">You're set up. <b>Day one starts now.</b></div>
+        <div class="closing-beat">You're all set. <b>Day one starts now.</b></div>
         <button type="button" class="sheet-primary-btn" id="onbFinish">Continue</button>
       `);
       const reviewZone = box.querySelector("#reviewZone");
       pickedTiles.forEach((t) => {
         reviewZone.appendChild(el(`<div class="onboarding-extra-slot" style="cursor:default;"><span class="ic">${iconSvg(t.icon)}</span>${escapeHtml(t.label)}</div>`));
       });
-      box.querySelector("#onbFinish").addEventListener("click", () => { stepIdx++; renderStep(); });
+      // "review" is the true last step now — this is what actually commits
+      // everything to state, not just another stepIdx++.
+      box.querySelector("#onbFinish").addEventListener("click", finishOnboarding);
     }
 
     if (step === "rewardAsk") {
@@ -12876,7 +12888,7 @@ function showOnboardingFlow() {
       });
       box.querySelector("#rewardAskContinue").addEventListener("click", () => {
         if (wantsReward) { stepIdx++; renderStep(); }
-        else finishOnboarding();
+        else { stepIdx = STEPS.indexOf("review"); renderStep(); }
       });
     }
 
@@ -12962,11 +12974,11 @@ function showOnboardingFlow() {
         // its result right now — stash it locally and finishOnboarding
         // will fold it into the real prize object it creates.
         startPlaidLink(
-          () => finishOnboarding(),
+          () => { stepIdx = STEPS.indexOf("review"); renderStep(); },
           () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; }
         );
       });
-      box.querySelector("#rewardLinkSkip").addEventListener("click", finishOnboarding);
+      box.querySelector("#rewardLinkSkip").addEventListener("click", () => { stepIdx = STEPS.indexOf("review"); renderStep(); });
     }
   }
 
