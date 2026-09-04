@@ -52,7 +52,7 @@ const SHEET_GALLERY = [
     key: "quran",
     label: "Quran Plan",
     icon: `<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h8M9 11h8M9 15h5"></path>`,
-    desc: "31 reading segments with the same pace tracker as your Bible plan.",
+    desc: "31 paced readings through the Qur'an, Surah by Surah, from Al-Fatiha to An-Nas.",
     starterItems: [],
     type: "practice",
   },
@@ -1711,14 +1711,18 @@ function spaceCapForAccount() {
   // EXTRA_TRACKERS_GALLERY below, neither counts against this cap at all.
   return 4;
 }
-// Wellness, Budget, and Investments sit outside the pillar/practice system
-// entirely — they're not one of the six pillars' practices, so they don't
-// count against the free/paid practice cap, the same way Wellness already
-// didn't. Bible is excluded too: it's a legacy extra on top of Spiritual's
-// real starter choices (Prayer/Qur'an/Breathe), not one of the six.
+// The cap counts every visible Practice, full stop — no hand-maintained
+// exclusion list (2026-09 correction; the old list quietly let Sleep and
+// Bible sit outside the cap for no principled reason, which is how a free
+// account could end up with 5 active practices against a "4" cap). Budget,
+// Investments, and Wellness were never Practices to begin with — they
+// return null from appTypeForSheet — so they fall out of this count
+// naturally, not because they're special-cased. Sobriety isn't a real
+// sheet at all (it's an `extraTrackers` flag, synthesized into a virtual
+// app for display), so it can never reach this filter either. Cycle is a
+// Tracker. Both stay free/uncapped by construction, not by exception.
 function countedSpaces() {
-  const EXCLUDED = new Set(["wellness", "budget", "investments", "bible"]);
-  return state.sheets.filter((s) => s.visible && !EXCLUDED.has(s.id)).length;
+  return state.sheets.filter((s) => s.visible && appTypeForSheet(s) === "practice").length;
 }
 
 // A small, reusable "you're at your limit" modal — never a silent block.
@@ -12426,8 +12430,19 @@ function showOnboardingFlow() {
     return `<div class="onboarding-dots">${STEPS.map((_, i) => `<span class="onboarding-dot${i === stepIdx ? " active" : ""}"></span>`).join("")}</div>`;
   }
 
+  const backChevronSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
+
   function renderStep() {
     box.innerHTML = dotsHtml();
+    // Every step but the very first gets a Back arrow — changing your
+    // mind on Extras or the reward questions shouldn't mean starting the
+    // whole thing over. Always decrements by one; there's no branch in
+    // STEPS itself to worry about since a reward skip jumps straight to
+    // finishOnboarding rather than hopping over array entries.
+    if (stepIdx > 0) {
+      box.insertAdjacentHTML("afterbegin", `<button type="button" class="onboarding-back-btn" aria-label="Back">${backChevronSvg}</button>`);
+      box.querySelector(".onboarding-back-btn").addEventListener("click", () => { stepIdx--; renderStep(); });
+    }
     const step = STEPS[stepIdx];
 
     if (step === "welcome") {
@@ -12441,11 +12456,22 @@ function showOnboardingFlow() {
     }
 
     if (step === "practices") {
-      const practiceTemplates = SHEET_GALLERY.filter((t) => t.type === "practice");
+      // Nothing here is automatic — Sleep and Bible are real built-in
+      // sheets under the hood, but she gets no free pass into anyone's
+      // active practices just for existing as a built-in. They're plain
+      // entries in this same list, competing for the same freeCap slots
+      // as every gallery template, unchecked by default like everything
+      // else (2026-09 correction — they used to be forced on before the
+      // user ever saw this screen).
+      const builtinPracticeOptions = [
+        { key: "sleep", label: BUILTIN_SHEET_META.sleep.label, icon: BUILTIN_SHEET_META.sleep.icon, desc: "Log bedtime and wake time, and see how consistent sleep tracks against everything else.", isBuiltin: true },
+        { key: "bible", label: BUILTIN_SHEET_META.bible.label, icon: BUILTIN_SHEET_META.bible.icon, desc: "A guided read-through with daily passages and a pace tracker.", isBuiltin: true },
+      ];
+      const practiceTemplates = [...builtinPracticeOptions, ...SHEET_GALLERY.filter((t) => t.type === "practice")];
       box.insertAdjacentHTML("beforeend", `
         <div class="onboarding-eyebrow">Your practices</div>
         <div class="onboarding-headline">What do you want to track?</div>
-        <div class="onboarding-subline">Pick up to ${freeCap} to start — the free tier's limit. Sleep's already built in, no need to pick it. <span id="onbPracticeCount"></span></div>
+        <div class="onboarding-subline">Pick up to ${freeCap} to start — the free tier's limit. <span id="onbPracticeCount"></span></div>
         <div class="onboarding-pillar-list" id="onbPracticeList"></div>
         <button type="button" class="sheet-primary-btn" id="onbPracticesNext">Continue</button>
       `);
@@ -12503,7 +12529,7 @@ function showOnboardingFlow() {
               <div class="onboarding-pillar-card selectable${sel ? " sel" : ""}" data-key="${key}">
                 <div class="onboarding-pillar-icon">${iconSvg(tpl.icon)}</div>
                 <div>
-                  <div class="onboarding-pillar-name">${escapeHtml(tpl.label)}</div>
+                  <div class="onboarding-pillar-name">${escapeHtml(tpl.label)} <span class="onboarding-bonus-tag">Bonus</span></div>
                   <div class="onboarding-pillar-desc">${escapeHtml(tpl.desc)}</div>
                 </div>
                 <span class="onboarding-pillar-check">${checkSvg}</span>
@@ -12524,10 +12550,17 @@ function showOnboardingFlow() {
     }
 
     if (step === "review") {
+      // Nothing is assumed here — every tile traces back to an actual pick
+      // on "practices" or "extras". Sleep/Bible get looked up in
+      // BUILTIN_SHEET_META since they're not gallery templates; everything
+      // else comes straight off SHEET_GALLERY.
       const allTpls = SHEET_GALLERY.filter((t) => t.type === "practice");
       const pickedTiles = [
-        { icon: BUILTIN_SHEET_META.sleep?.icon || `<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>`, label: "Sleep" },
         ...selectedPracticeKeys.map((key) => {
+          if (key === "sleep" || key === "bible") {
+            const meta = BUILTIN_SHEET_META[key];
+            return meta ? { icon: meta.icon, label: meta.label } : null;
+          }
           const tpl = allTpls.find((t) => t.key === key);
           return tpl ? { icon: tpl.icon, label: tpl.label } : null;
         }).filter(Boolean),
@@ -12546,6 +12579,7 @@ function showOnboardingFlow() {
           <div class="onboarding-extra-row" id="reviewZone"></div>
         </div>
         <div class="onboarding-lock-note">🔓 <div><strong>${freeCap} active practices, always free.</strong> Sobriety and Cycle are always free too, whatever plan you're on. Want more practices later? The Marketplace has the rest — upgrading unlocks up to 15 active at once.</div></div>
+        <div class="onboarding-lock-note"><span style="flex-shrink:0;">${graceFeatherSvg()}</span><div><strong>A missed day doesn't have to break a streak.</strong> You earn a grace day every month, plus another every time a streak hits a 30-day milestone — bank up to ${GRACE_BANK_CAP}, and one quietly covers you the next time you miss.</div></div>
         <div class="closing-beat">You're set up. <b>Day one starts now.</b></div>
         <button type="button" class="sheet-primary-btn" id="onbFinish">Continue</button>
       `);
@@ -12680,22 +12714,28 @@ function showOnboardingFlow() {
   }
 
   function finishOnboarding() {
-    // Sleep's practice is the built-in "sleep" sheet — just make sure it's
-    // visible and mapped, no template to add.
-    const sleepSheet = state.sheets.find((s) => s.id === "sleep");
-    if (sleepSheet) sleepSheet.visible = true;
-    state.pillarSourceMap ||= {};
-    state.pillarSourceMap.sleepProtected ||= [];
-    if (!state.pillarSourceMap.sleepProtected.includes("sleep")) state.pillarSourceMap.sleepProtected.push("sleep");
-
-    // Real practices, in the order she picked them on the "practices"
-    // step — createSheetFromTemplateUnchecked (not addSheetFromTemplate)
-    // since this is establishing the free tier's starter set, not
-    // spending down an already-set quota; it always pushes exactly one
-    // new entry onto the end of state.sheets, so grabbing the last id
-    // right after each call is enough to track which sheet is which.
+    // Every practice here — Sleep and Bible included — only turns on if she
+    // actually picked it on the "practices" step (2026-09 correction: Sleep
+    // used to be forced visible here regardless of choice, which is exactly
+    // the "automatic" behavior she doesn't want. Sleep/Bible aren't gallery
+    // templates, so they're not created — they already exist as built-in
+    // sheet rows from boot, just hidden; picking one here only flips
+    // `visible` on the row that's already there).
     const createdIds = [];
     selectedPracticeKeys.forEach((key) => {
+      if (key === "sleep" || key === "bible") {
+        const sheet = state.sheets.find((s) => s.id === key);
+        if (sheet) {
+          sheet.visible = true;
+          createdIds.push(sheet.id);
+          if (key === "sleep") {
+            state.pillarSourceMap ||= {};
+            state.pillarSourceMap.sleepProtected ||= [];
+            if (!state.pillarSourceMap.sleepProtected.includes("sleep")) state.pillarSourceMap.sleepProtected.push("sleep");
+          }
+        }
+        return;
+      }
       const already = Object.entries(state.customSheets).find(([, cs]) => cs.templateKey === key);
       if (already) {
         createdIds.push(already[0]);
@@ -12939,10 +12979,13 @@ async function boot() {
   // defaults to false in the brand-new-account branch above.
   state.onboardingComplete ??= true;
   if (isBrandNewAccount) {
-    // Bible sits off to the side as an extra, not part of the six-pillar
-    // starter kit — onboarding hands a new account Prayer/Qur'an/Breathe
-    // as its Spiritual choice instead. Still there in the Gallery-style
-    // list whenever it's wanted; just not pinned or counted on day one.
+    // Sleep and Bible are both just entries in onboarding's "practices"
+    // list now (2026-09) — nothing is on by default until she actually
+    // picks it there. Both still exist as built-in sheet rows from the
+    // block above; this just starts them hidden so finishOnboarding's
+    // selection is the only thing that ever turns them on.
+    const sleepSheet = state.sheets.find((s) => s.id === "sleep");
+    if (sleepSheet) sleepSheet.visible = false;
     const bibleSheet = state.sheets.find((s) => s.id === "bible");
     if (bibleSheet) bibleSheet.visible = false;
   }
