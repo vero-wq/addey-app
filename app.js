@@ -1705,7 +1705,11 @@ function spaceCapForAccount() {
   const acct = state.account || {};
   if (acct.isFounder) return 30;
   if (acct.plan === "paid") return 15;
-  return 6;
+  // 4, not 6 (2026-09) — matches the mobile bar's own 4-slot size exactly,
+  // so a free account's whole practice set fits the bar with nothing left
+  // over in "Additional." Sobriety and Cycle are untouched by this — see
+  // EXTRA_TRACKERS_GALLERY below, neither counts against this cap at all.
+  return 4;
 }
 // Wellness, Budget, and Investments sit outside the pillar/practice system
 // entirely — they're not one of the six pillars' practices, so they don't
@@ -12383,60 +12387,19 @@ function renderWellnessHistory(panel, today) {
 // ------------------------------------------------------------------
 // Boot
 // ------------------------------------------------------------------
-// First-run setup: six pillars, one practice each, arranged into a
-// four-slot Home toolbar and a two-item Additional Practices group. Sleep,
-// Social, Learning, and Food each have exactly one built-in practice today,
-// so those fill in with no tap required — only Spiritual and Movement have
-// more than one option, so those are the only real choices made here.
-const ONBOARDING_SPIRITUAL_OPTIONS = [
-  { key: "prayer", label: "Prayer log" },
-  { key: "quran", label: "Qur'an reading" },
-  { key: "breathe", label: "Breathe / meditation" },
-];
-const ONBOARDING_MOVEMENT_OPTIONS = [
-  { key: "workout", label: "Workout log" },
-  { key: "activity", label: "Daily activity" },
-];
-// Same stroke-icon style as the rest of the app (iconSvg/sheetIcon), not
-// emoji — emoji render inconsistently across platforms and read younger/
-// more novelty than the rest of Addley's visual language.
-const ONBOARDING_PILLAR_META = {
-  movement: {
-    name: "Movement",
-    icon: `<rect x="1.5" y="9" width="3" height="6" rx="1"></rect><rect x="19.5" y="9" width="3" height="6" rx="1"></rect><rect x="5.5" y="7" width="2.5" height="10" rx="1"></rect><rect x="16" y="7" width="2.5" height="10" rx="1"></rect><line x1="8" y1="12" x2="16" y2="12"></line>`,
-  },
-  spiritualAnchor: {
-    name: "Spiritual",
-    icon: `<path d="M12 2v6"></path><path d="M8.5 8c0 2 1 3.5 3.5 3.5S15.5 10 15.5 8"></path><rect x="9.5" y="11" width="5" height="10" rx="1"></rect>`,
-  },
-  sleepProtected: {
-    name: "Sleep",
-    icon: `<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>`,
-  },
-  socialConnection: {
-    name: "Social",
-    icon: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>`,
-  },
-  learning: {
-    name: "Learning",
-    icon: `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h7"></path>`,
-  },
-  food: {
-    name: "Food",
-    icon: `<path d="M11 2a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3v8"></path><path d="M18 2v9a3 3 0 0 1-3 3"></path><path d="M18 2v20"></path>`,
-  },
-};
-function onboardingPillarIconSvg(key) {
-  return iconSvg(ONBOARDING_PILLAR_META[key].icon);
-}
-
+// First-run setup (rebuilt 2026-09 — no more six pillars; Settings/
+// Marketplace dropped that model already, onboarding is what's catching
+// up). Pick real practices straight from the same gallery Marketplace
+// uses, up to the free tier's cap; Sobriety and Cycle are offered
+// separately since neither counts against that cap at all, same as
+// everywhere else in the app. Sleep is the one practice that's still
+// automatic — it's a built-in, not a template to choose.
 function showOnboardingFlow() {
-  const STEPS = ["welcome", "spiritual", "movement", "toolbar", "review", "rewardAsk", "rewardDetails", "rewardPhoto", "rewardLink"];
+  const STEPS = ["welcome", "practices", "extras", "review", "rewardAsk", "rewardDetails", "rewardPhoto", "rewardLink"];
   let stepIdx = 0;
-  let spiritualChoice = null;
-  let movementChoice = null;
-  let toolbarOrder = ["movement", "spiritualAnchor", "sleepProtected", "food"];
-  let extraOrder = ["socialConnection", "learning"];
+  const freeCap = spaceCapForAccount();
+  let selectedPracticeKeys = [];
+  let selectedExtras = { sobriety: false, cycle: false };
 
   // The reward ask is the one branch point in onboarding: "rewardDetails",
   // "rewardPhoto", and "rewardLink" only get visited if she opts in on
@@ -12470,94 +12433,109 @@ function showOnboardingFlow() {
     if (step === "welcome") {
       box.insertAdjacentHTML("beforeend", `
         <div class="onboarding-eyebrow">Welcome to Addley</div>
-        <div class="onboarding-headline">Let's set up your six pillars</div>
-        <div class="onboarding-subline">Movement, Spiritual, Sleep, Social, Learning, Food. Pick one practice for each to start — you can always add more later.</div>
-        <div class="onboarding-pillar-list">
-          ${Object.keys(ONBOARDING_PILLAR_META).map((key) => {
-            const meta = ONBOARDING_PILLAR_META[key];
-            return `<div class="onboarding-pillar-card"><div class="onboarding-pillar-icon">${onboardingPillarIconSvg(key)}</div><div class="onboarding-pillar-name">${escapeHtml(meta.name)}</div></div>`;
-          }).join("")}
-        </div>
+        <div class="onboarding-headline">Let's set up what you're tracking</div>
+        <div class="onboarding-subline">Pick a few real practices to start — workouts, reading, prayer, whatever fits your life. You can always add or change these later from Settings.</div>
         <button type="button" class="sheet-primary-btn">Get started</button>
       `);
       box.querySelector(".sheet-primary-btn").addEventListener("click", () => { stepIdx++; renderStep(); });
     }
 
-    if (step === "spiritual" || step === "movement") {
-      const isSpiritual = step === "spiritual";
-      const options = isSpiritual ? ONBOARDING_SPIRITUAL_OPTIONS : ONBOARDING_MOVEMENT_OPTIONS;
-      const pillarKeyForStep = isSpiritual ? "spiritualAnchor" : "movement";
-      const meta = ONBOARDING_PILLAR_META[pillarKeyForStep];
-      const current = isSpiritual ? spiritualChoice : movementChoice;
+    if (step === "practices") {
+      const practiceTemplates = SHEET_GALLERY.filter((t) => t.type === "practice");
       box.insertAdjacentHTML("beforeend", `
-        <div class="onboarding-eyebrow">Pillar ${isSpiritual ? "1" : "2"} of 2</div>
-        <div class="onboarding-headline"><span class="onboarding-headline-icon">${onboardingPillarIconSvg(pillarKeyForStep)}</span> ${escapeHtml(meta.name)}</div>
-        <div class="onboarding-subline">Which practice do you want to start with?</div>
-        <div class="onboarding-choice-row">
-          ${options.map((o) => `<div class="onboarding-choice-opt${current === o.key ? " sel" : ""}" data-key="${o.key}">${escapeHtml(o.label)}</div>`).join("")}
-        </div>
+        <div class="onboarding-eyebrow">Your practices</div>
+        <div class="onboarding-headline">What do you want to track?</div>
+        <div class="onboarding-subline">Pick up to ${freeCap} to start — the free tier's limit. Sleep's already built in, no need to pick it. <span id="onbPracticeCount"></span></div>
+        <div class="onboarding-pillar-list" id="onbPracticeList"></div>
+        <button type="button" class="sheet-primary-btn" id="onbPracticesNext">Continue</button>
       `);
-      box.querySelectorAll(".onboarding-choice-opt").forEach((opt) => {
-        opt.addEventListener("click", () => {
-          if (isSpiritual) spiritualChoice = opt.dataset.key;
-          else movementChoice = opt.dataset.key;
-          stepIdx++;
-          renderStep();
-        });
-      });
-    }
-
-    if (step === "toolbar") {
-      box.insertAdjacentHTML("beforeend", `
-        <div class="onboarding-eyebrow">Almost done</div>
-        <div class="onboarding-headline">Arrange your toolbar</div>
-        <div class="onboarding-subline">Drag to choose 4 for one-tap logging on Home. The other 2 live in Additional Practices.</div>
-        <div class="onboarding-extra-label">Home toolbar</div>
-        <div class="onboarding-toolbar-target" id="onbToolbarZone"></div>
-        <div class="onboarding-extra-label">Additional practices</div>
-        <div class="onboarding-extra-row" id="onbExtraZone"></div>
-        <button type="button" class="sheet-primary-btn" id="onbToolbarNext">Looks good</button>
-      `);
-      const toolbarZone = box.querySelector("#onbToolbarZone");
-      const extraZone = box.querySelector("#onbExtraZone");
-      let dragKey = null;
-
-      function tileHtml(key, isToolbar) {
-        const meta = ONBOARDING_PILLAR_META[key];
-        const cls = isToolbar ? "onboarding-toolbar-slot" : "onboarding-extra-slot";
-        return `<div class="${cls}" draggable="true" data-key="${key}"><span class="ic">${onboardingPillarIconSvg(key)}</span>${escapeHtml(meta.name)}</div>`;
+      const countEl = box.querySelector("#onbPracticeCount");
+      const list = box.querySelector("#onbPracticeList");
+      function renderCount() {
+        countEl.textContent = `(${selectedPracticeKeys.length} of ${freeCap} selected)`;
       }
-      function renderZones() {
-        toolbarZone.innerHTML = toolbarOrder.map((k) => tileHtml(k, true)).join("");
-        extraZone.innerHTML = extraOrder.map((k) => tileHtml(k, false)).join("");
-        [...toolbarZone.children, ...extraZone.children].forEach((tile) => {
-          tile.addEventListener("dragstart", () => { dragKey = tile.dataset.key; tile.classList.add("dragging"); });
-          tile.addEventListener("dragend", () => tile.classList.remove("dragging"));
-          tile.addEventListener("dragover", (e) => e.preventDefault());
-          tile.addEventListener("drop", (e) => {
-            e.preventDefault();
-            if (!dragKey || dragKey === tile.dataset.key) return;
-            const destIsToolbar = toolbarZone.contains(tile);
-            toolbarOrder = toolbarOrder.filter((k) => k !== dragKey);
-            extraOrder = extraOrder.filter((k) => k !== dragKey);
-            const destList = destIsToolbar ? toolbarOrder : extraOrder;
-            const destIdx = destList.indexOf(tile.dataset.key);
-            if (destIsToolbar && destList.length >= 4) {
-              const bumped = destList.splice(destIdx, 1, dragKey)[0];
-              extraOrder.unshift(bumped);
+      function renderList() {
+        list.innerHTML = practiceTemplates.map((tpl) => {
+          const sel = selectedPracticeKeys.includes(tpl.key);
+          const atCapAndUnselected = !sel && selectedPracticeKeys.length >= freeCap;
+          return `
+            <div class="onboarding-pillar-card selectable${sel ? " sel" : ""}${atCapAndUnselected ? " disabled" : ""}" data-key="${tpl.key}">
+              <div class="onboarding-pillar-icon">${iconSvg(tpl.icon)}</div>
+              <div>
+                <div class="onboarding-pillar-name">${escapeHtml(tpl.label)}</div>
+                <div class="onboarding-pillar-desc">${escapeHtml(tpl.desc)}</div>
+              </div>
+              <span class="onboarding-pillar-check">${checkSvg}</span>
+            </div>
+          `;
+        }).join("");
+        list.querySelectorAll(".onboarding-pillar-card").forEach((card) => {
+          card.addEventListener("click", () => {
+            const key = card.dataset.key;
+            if (selectedPracticeKeys.includes(key)) {
+              selectedPracticeKeys = selectedPracticeKeys.filter((k) => k !== key);
             } else {
-              destList.splice(destIdx, 0, dragKey);
+              if (selectedPracticeKeys.length >= freeCap) return;
+              selectedPracticeKeys.push(key);
             }
-            dragKey = null;
-            renderZones();
+            renderCount();
+            renderList();
           });
         });
       }
-      renderZones();
-      box.querySelector("#onbToolbarNext").addEventListener("click", () => { stepIdx++; renderStep(); });
+      renderCount();
+      renderList();
+      box.querySelector("#onbPracticesNext").addEventListener("click", () => { stepIdx++; renderStep(); });
+    }
+
+    if (step === "extras") {
+      const extraTpls = { sobriety: EXTRA_TRACKERS_GALLERY.find((t) => t.key === "sobriety"), cycle: EXTRA_TRACKERS_GALLERY.find((t) => t.key === "cycle") };
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Always free</div>
+        <div class="onboarding-headline">Anything else?</div>
+        <div class="onboarding-subline">These don't count against your practice limit at all — add either, both, or neither.</div>
+        <div class="onboarding-pillar-list">
+          ${["sobriety", "cycle"].map((key) => {
+            const tpl = extraTpls[key];
+            if (!tpl) return "";
+            const sel = selectedExtras[key];
+            return `
+              <div class="onboarding-pillar-card selectable${sel ? " sel" : ""}" data-key="${key}">
+                <div class="onboarding-pillar-icon">${iconSvg(tpl.icon)}</div>
+                <div>
+                  <div class="onboarding-pillar-name">${escapeHtml(tpl.label)}</div>
+                  <div class="onboarding-pillar-desc">${escapeHtml(tpl.desc)}</div>
+                </div>
+                <span class="onboarding-pillar-check">${checkSvg}</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        <button type="button" class="sheet-primary-btn" id="onbExtrasNext">Continue</button>
+      `);
+      box.querySelectorAll(".onboarding-pillar-card").forEach((card) => {
+        card.addEventListener("click", () => {
+          const key = card.dataset.key;
+          selectedExtras[key] = !selectedExtras[key];
+          card.classList.toggle("sel", selectedExtras[key]);
+        });
+      });
+      box.querySelector("#onbExtrasNext").addEventListener("click", () => { stepIdx++; renderStep(); });
     }
 
     if (step === "review") {
+      const allTpls = SHEET_GALLERY.filter((t) => t.type === "practice");
+      const pickedTiles = [
+        { icon: BUILTIN_SHEET_META.sleep?.icon || `<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>`, label: "Sleep" },
+        ...selectedPracticeKeys.map((key) => {
+          const tpl = allTpls.find((t) => t.key === key);
+          return tpl ? { icon: tpl.icon, label: tpl.label } : null;
+        }).filter(Boolean),
+        ...["sobriety", "cycle"].filter((key) => selectedExtras[key]).map((key) => {
+          const tpl = EXTRA_TRACKERS_GALLERY.find((t) => t.key === key);
+          return tpl ? { icon: tpl.icon, label: tpl.label } : null;
+        }).filter(Boolean),
+      ];
       box.insertAdjacentHTML("beforeend", `
         <div class="completion-badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
@@ -12565,53 +12543,16 @@ function showOnboardingFlow() {
         <div class="onboarding-eyebrow">You're set up</div>
         <div class="onboarding-headline">Here's your starting kit</div>
         <div class="onboarding-review-card">
-          <div class="onboarding-review-title">Home toolbar · 4 <span class="drag-hint">drag to reorder</span></div>
-          <div class="onboarding-extra-row" id="reviewToolbarZone"></div>
+          <div class="onboarding-extra-row" id="reviewZone"></div>
         </div>
-        <div class="onboarding-review-card">
-          <div class="onboarding-review-title">Additional practices · 2 <span class="drag-hint">drag to reorder</span></div>
-          <div class="onboarding-extra-row" id="reviewExtraZone"></div>
-        </div>
-        <div class="onboarding-lock-note">🔓 <div><strong>6 active practices, always free.</strong> Want more later? The Marketplace has extra practices — upgrading unlocks up to 15 active at once.</div></div>
-        <div class="closing-beat">Your six practices are set. <b>Day one starts now.</b></div>
+        <div class="onboarding-lock-note">🔓 <div><strong>${freeCap} active practices, always free.</strong> Sobriety and Cycle are always free too, whatever plan you're on. Want more practices later? The Marketplace has the rest — upgrading unlocks up to 15 active at once.</div></div>
+        <div class="closing-beat">You're set up. <b>Day one starts now.</b></div>
         <button type="button" class="sheet-primary-btn" id="onbFinish">Continue</button>
       `);
-      const reviewToolbarZone = box.querySelector("#reviewToolbarZone");
-      const reviewExtraZone = box.querySelector("#reviewExtraZone");
-      let reviewDragKey = null;
-      function reviewTileHtml(key) {
-        const meta = ONBOARDING_PILLAR_META[key];
-        return `<div class="onboarding-extra-slot" draggable="true" data-key="${key}"><span class="ic">${onboardingPillarIconSvg(key)}</span>${escapeHtml(meta.name)}</div>`;
-      }
-      function renderReviewZones() {
-        reviewToolbarZone.innerHTML = toolbarOrder.map(reviewTileHtml).join("");
-        reviewExtraZone.innerHTML = extraOrder.map(reviewTileHtml).join("");
-        [...reviewToolbarZone.children, ...reviewExtraZone.children].forEach((tile) => {
-          tile.addEventListener("dragstart", () => { reviewDragKey = tile.dataset.key; tile.classList.add("dragging"); });
-          tile.addEventListener("dragend", () => tile.classList.remove("dragging"));
-          tile.addEventListener("dragover", (e) => { e.preventDefault(); tile.classList.add("drag-over"); });
-          tile.addEventListener("dragleave", () => tile.classList.remove("drag-over"));
-          tile.addEventListener("drop", (e) => {
-            e.preventDefault();
-            tile.classList.remove("drag-over");
-            if (!reviewDragKey || reviewDragKey === tile.dataset.key) return;
-            const destIsToolbar = reviewToolbarZone.contains(tile);
-            toolbarOrder = toolbarOrder.filter((k) => k !== reviewDragKey);
-            extraOrder = extraOrder.filter((k) => k !== reviewDragKey);
-            const destList = destIsToolbar ? toolbarOrder : extraOrder;
-            const destIdx = destList.indexOf(tile.dataset.key);
-            if (destIsToolbar && destList.length >= 4) {
-              const bumped = destList.splice(destIdx, 1, reviewDragKey)[0];
-              extraOrder.unshift(bumped);
-            } else {
-              destList.splice(destIdx, 0, reviewDragKey);
-            }
-            reviewDragKey = null;
-            renderReviewZones();
-          });
-        });
-      }
-      renderReviewZones();
+      const reviewZone = box.querySelector("#reviewZone");
+      pickedTiles.forEach((t) => {
+        reviewZone.appendChild(el(`<div class="onboarding-extra-slot" style="cursor:default;"><span class="ic">${iconSvg(t.icon)}</span>${escapeHtml(t.label)}</div>`));
+      });
       box.querySelector("#onbFinish").addEventListener("click", () => { stepIdx++; renderStep(); });
     }
 
@@ -12747,46 +12688,37 @@ function showOnboardingFlow() {
     state.pillarSourceMap.sleepProtected ||= [];
     if (!state.pillarSourceMap.sleepProtected.includes("sleep")) state.pillarSourceMap.sleepProtected.push("sleep");
 
-    // Social, Learning, and Food each have exactly one template — add it
-    // if it isn't already there for some reason.
-    [
-      ["social"],
-      ["books"],
-      ["mealLog"],
-    ].forEach(([tplKey]) => {
-      const already = Object.values(state.customSheets).some((cs) => cs.templateKey === tplKey);
-      if (!already) {
-        const tpl = SHEET_GALLERY.find((t) => t.key === tplKey);
-        if (tpl) createSheetFromTemplateUnchecked(tpl);
+    // Real practices, in the order she picked them on the "practices"
+    // step — createSheetFromTemplateUnchecked (not addSheetFromTemplate)
+    // since this is establishing the free tier's starter set, not
+    // spending down an already-set quota; it always pushes exactly one
+    // new entry onto the end of state.sheets, so grabbing the last id
+    // right after each call is enough to track which sheet is which.
+    const createdIds = [];
+    selectedPracticeKeys.forEach((key) => {
+      const already = Object.entries(state.customSheets).find(([, cs]) => cs.templateKey === key);
+      if (already) {
+        createdIds.push(already[0]);
+        return;
       }
+      const tpl = SHEET_GALLERY.find((t) => t.key === key);
+      if (!tpl) return;
+      createSheetFromTemplateUnchecked(tpl);
+      createdIds.push(state.sheets[state.sheets.length - 1].id);
     });
-
-    // Spiritual and Movement use whichever option was tapped.
-    [spiritualChoice, movementChoice].forEach((tplKey) => {
-      if (!tplKey) return;
-      const already = Object.values(state.customSheets).some((cs) => cs.templateKey === tplKey);
-      if (!already) {
-        const tpl = SHEET_GALLERY.find((t) => t.key === tplKey);
-        if (tpl) createSheetFromTemplateUnchecked(tpl);
-      }
-    });
-
-    // Resolve each pillar key to the id of the sheet that now represents
-    // it, so the toolbar/additional order can be written back as a real
-    // sheet order.
-    function sheetIdForPillar(pillarKey) {
-      if (pillarKey === "sleepProtected") return "sleep";
-      const candidates = pillarCandidateSheets(pillarKey);
-      return candidates.length ? candidates[candidates.length - 1].id : null;
-    }
-    const orderedIds = [...toolbarOrder, ...extraOrder].map(sheetIdForPillar).filter(Boolean);
-    const rest = state.sheets.filter((s) => !orderedIds.includes(s.id));
+    const rest = state.sheets.filter((s) => !createdIds.includes(s.id));
     const reordered = [];
-    orderedIds.forEach((id) => {
+    createdIds.forEach((id) => {
       const found = state.sheets.find((s) => s.id === id);
       if (found) reordered.push(found);
     });
     state.sheets = [...reordered, ...rest];
+
+    // Sobriety and Cycle — always free, no space-cap gate, same as adding
+    // either one from the Marketplace after onboarding.
+    state.extraTrackers ||= {};
+    if (selectedExtras.sobriety) state.extraTrackers.sobriety = true;
+    if (selectedExtras.cycle) state.extraTrackers.cycle = true;
 
     // The reward — only written if she actually opted in on "rewardAsk".
     // A skip leaves state.veronikasPrize exactly as boot() defaulted it,
