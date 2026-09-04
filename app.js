@@ -11084,6 +11084,260 @@ function renderCyclePhaseCompletionCard(panel, today) {
 const cycleDropSvgPath = `<path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"></path>`;
 const CYCLE_FLOW_OPTIONS = ["Light", "Medium", "Heavy"];
 
+// ------------------------------------------------------------------
+// Cycle daily log — mood, energy, symptoms, intimacy, all on one entry
+// per calendar date. Mockup-approved 2026-09 (Veronika: "one daily
+// entry" means everything lives together, not that only one field can
+// be set — energy included too). Deliberately NOT a Practice: no
+// streak, no space-cap accounting, never gatekept — Cycle stays a
+// Tracker (see appTypeForSheet), same as it's always been. This data
+// is entirely separate from state.cycle.periods/History above, which
+// is about period start/end dates, not how a given day felt.
+// ------------------------------------------------------------------
+const CYCLE_MOODS = [
+  { key: "great", emoji: "😊", label: "Great" },
+  { key: "calm", emoji: "😌", label: "Calm" },
+  { key: "emotional", emoji: "🥺", label: "Emotional" },
+  { key: "irritable", emoji: "😤", label: "Irritable" },
+  { key: "anxious", emoji: "😟", label: "Anxious" },
+  { key: "low", emoji: "😔", label: "Low" },
+];
+const CYCLE_ENERGY_OPTIONS = [
+  { key: "low", label: "Low" },
+  { key: "medium", label: "Medium" },
+  { key: "high", label: "High" },
+];
+const CYCLE_SYMPTOMS = [
+  { key: "cramps", label: "Cramps" },
+  { key: "headache", label: "Headache" },
+  { key: "bloating", label: "Bloating" },
+  { key: "fatigue", label: "Fatigue" },
+  { key: "tender", label: "Tender breasts" },
+  { key: "backache", label: "Backache" },
+  { key: "cravings", label: "Cravings" },
+  { key: "insomnia", label: "Insomnia" },
+];
+const cycleHeartSvgPath = `<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>`;
+
+function cycleDailyLogFor(dateStr) {
+  return state.cycle.dailyLogs[dateStr] || null;
+}
+// Empty on every field means it's not a real entry — used both to skip
+// rendering it in Recent Logs and to decide whether Save should just
+// delete the day's row instead of storing a blank one.
+function cycleDailyLogIsEmpty(log) {
+  if (!log) return true;
+  return !log.mood && !log.energy && !(log.symptoms && log.symptoms.length) && !log.intimacy && !(log.note && log.note.trim());
+}
+function cycleSortedDailyLogs() {
+  return Object.entries(state.cycle.dailyLogs)
+    .filter(([, log]) => !cycleDailyLogIsEmpty(log))
+    .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+    .map(([date, log]) => ({ date, ...log }));
+}
+function cycleDailyLogSummaryChips(log) {
+  const chips = [];
+  if (log.mood) {
+    const m = CYCLE_MOODS.find((x) => x.key === log.mood);
+    if (m) chips.push({ cls: "mood", label: `${m.emoji} ${m.label}` });
+  }
+  if (log.energy) {
+    const e = CYCLE_ENERGY_OPTIONS.find((x) => x.key === log.energy);
+    if (e) chips.push({ cls: "", label: `⚡ ${e.label} energy` });
+  }
+  (log.symptoms || []).forEach((key) => {
+    const s = CYCLE_SYMPTOMS.find((x) => x.key === key);
+    if (s) chips.push({ cls: "", label: s.label });
+  });
+  if (log.intimacy) chips.push({ cls: "intimacy", label: "♥ Intimacy" });
+  return chips;
+}
+
+// The "How today's going" card: a closed summary (chips + a single CTA
+// that reads differently once something's logged) that opens into the
+// log form. Same stage-then-commit shape as buildSobrietyCheckInCard —
+// selections live in local closure variables and only land in
+// state.cycle.dailyLogs when Save is tapped, so navigating away
+// mid-edit can't half-save a day.
+function buildCycleDailyLogCard(today, onDone) {
+  const card = el(`<div class="cyc-today-card"></div>`);
+  card.appendChild(el(`<div class="cyc-today-title">How today's going</div>`));
+  card.appendChild(el(`<div class="cyc-today-sub">Mood, energy, symptoms, intimacy — whatever's true today. All optional, all on one entry.</div>`));
+
+  const existing = cycleDailyLogFor(today);
+  let isOpen = cycleDailyLogIsEmpty(existing);
+  let selectedMood = existing?.mood || null;
+  let selectedEnergy = existing?.energy || null;
+  const selectedSymptoms = new Set(existing?.symptoms || []);
+  let intimacyOn = !!existing?.intimacy;
+
+  const body = el(`<div></div>`);
+  card.appendChild(body);
+
+  function renderSummary() {
+    const log = cycleDailyLogFor(today);
+    const chips = log ? cycleDailyLogSummaryChips(log) : [];
+    const box = el(`<div class="cyc-today-summary"></div>`);
+    if (!chips.length) {
+      box.appendChild(el(`<div class="cyc-summary-empty-note">Nothing logged for today yet.</div>`));
+    } else {
+      const row = el(`<div class="cyc-summary-row"></div>`);
+      chips.forEach((c) => row.appendChild(el(`<span class="cyc-summary-chip ${c.cls}">${escapeHtml(c.label)}</span>`)));
+      box.appendChild(row);
+    }
+    const cta = el(`
+      <button type="button" class="cyc-summary-cta">
+        ${
+          chips.length
+            ? iconSvg('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')
+            : iconSvg('<path d="M12 5v14M5 12h14"></path>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')
+        }
+        ${chips.length ? "Edit today's log" : "Log how you're feeling"}
+      </button>
+    `);
+    cta.addEventListener("click", () => { isOpen = true; renderBody(); });
+    box.appendChild(cta);
+    return box;
+  }
+
+  function renderForm() {
+    const wrap = el(`<div class="cyc-log-form"></div>`);
+
+    wrap.appendChild(el(`<span class="cyc-log-field-label">Mood</span>`));
+    const moodRow = el(`<div class="cyc-mood-row"></div>`);
+    CYCLE_MOODS.forEach((m) => {
+      const chip = el(`<div class="cyc-mood-chip${selectedMood === m.key ? " sel" : ""}"><span class="emoji">${m.emoji}</span><span class="lbl">${escapeHtml(m.label)}</span></div>`);
+      chip.addEventListener("click", () => {
+        selectedMood = selectedMood === m.key ? null : m.key;
+        [...moodRow.children].forEach((c, i) => c.classList.toggle("sel", CYCLE_MOODS[i].key === selectedMood));
+      });
+      moodRow.appendChild(chip);
+    });
+    wrap.appendChild(moodRow);
+
+    wrap.appendChild(el(`<span class="cyc-log-field-label" style="margin-top:16px;">Energy</span>`));
+    const energyRow = el(`<div class="cyc-toggle-row"></div>`);
+    CYCLE_ENERGY_OPTIONS.forEach((eOpt) => {
+      const chip = el(`<div class="cyc-toggle${selectedEnergy === eOpt.key ? " sel" : ""}">${escapeHtml(eOpt.label)}</div>`);
+      chip.addEventListener("click", () => {
+        selectedEnergy = selectedEnergy === eOpt.key ? null : eOpt.key;
+        [...energyRow.children].forEach((c, i) => c.classList.toggle("sel", CYCLE_ENERGY_OPTIONS[i].key === selectedEnergy));
+      });
+      energyRow.appendChild(chip);
+    });
+    wrap.appendChild(energyRow);
+
+    wrap.appendChild(el(`<span class="cyc-log-field-label" style="margin-top:16px;">Symptoms</span>`));
+    const symptomGrid = el(`<div class="cyc-symptom-grid"></div>`);
+    CYCLE_SYMPTOMS.forEach((s) => {
+      const chip = el(`<div class="cyc-symptom-chip${selectedSymptoms.has(s.key) ? " sel" : ""}">${escapeHtml(s.label)}</div>`);
+      chip.addEventListener("click", () => {
+        if (selectedSymptoms.has(s.key)) selectedSymptoms.delete(s.key);
+        else selectedSymptoms.add(s.key);
+        chip.classList.toggle("sel", selectedSymptoms.has(s.key));
+      });
+      symptomGrid.appendChild(chip);
+    });
+    wrap.appendChild(symptomGrid);
+
+    wrap.appendChild(el(`<span class="cyc-log-field-label" style="margin-top:16px;">Intimacy</span>`));
+    const intimacyRow = el(`
+      <div class="cyc-intimacy-row${intimacyOn ? " sel" : ""}">
+        <span class="cyc-intimacy-row-label">
+          <span class="cyc-intimacy-heart-wrap">
+            <svg class="cyc-intimacy-heart-icon" viewBox="0 0 24 24">
+              <path class="heart-outline" d="${cycleHeartSvgPath.match(/d="([^"]+)"/)[1]}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path class="heart-fill" d="${cycleHeartSvgPath.match(/d="([^"]+)"/)[1]}" fill="var(--intimacy)" opacity="${intimacyOn ? 1 : 0}"></path>
+            </svg>
+            <span class="cyc-spark spark-1"></span><span class="cyc-spark spark-2"></span>
+            <span class="cyc-spark spark-3"></span><span class="cyc-spark spark-4"></span>
+          </span>
+          Log intimacy for today
+        </span>
+        <span class="cyc-intimacy-switch"></span>
+      </div>
+    `);
+    intimacyRow.addEventListener("click", () => {
+      intimacyOn = !intimacyOn;
+      intimacyRow.classList.toggle("sel", intimacyOn);
+      const fillPath = intimacyRow.querySelector(".heart-fill");
+      const heartIcon = intimacyRow.querySelector(".cyc-intimacy-heart-icon");
+      const sparks = intimacyRow.querySelectorAll(".cyc-spark");
+      if (intimacyOn) {
+        // Force the CSS keyframes to restart every time this is turned
+        // on (not just the first time), same trick as the mockup.
+        [fillPath, heartIcon, ...sparks].forEach((n) => (n.style.animation = "none"));
+        void intimacyRow.offsetWidth;
+        [fillPath, heartIcon, ...sparks].forEach((n) => (n.style.animation = ""));
+        fillPath.setAttribute("opacity", "1");
+      } else {
+        fillPath.setAttribute("opacity", "0");
+      }
+    });
+    wrap.appendChild(intimacyRow);
+    wrap.appendChild(el(`<div class="cyc-intimacy-note">Kept with the rest of your Cycle data — private to you, same as your period history.</div>`));
+
+    wrap.appendChild(el(`<span class="cyc-log-field-label" style="margin-top:16px;">Note <span style="text-transform:none;font-weight:500;">(optional)</span></span>`));
+    const noteInput = el(`<textarea class="cyc-log-note" placeholder="Anything else worth remembering about today?"></textarea>`);
+    noteInput.value = existing?.note || "";
+    wrap.appendChild(noteInput);
+
+    const saveBtn = el(`<button type="button" class="cyc-log-save-btn">Save</button>`);
+    saveBtn.addEventListener("click", () => {
+      const log = cycleDailyLogFor(today) || {};
+      log.mood = selectedMood;
+      log.energy = selectedEnergy;
+      log.symptoms = [...selectedSymptoms];
+      log.intimacy = intimacyOn;
+      log.note = noteInput.value.trim();
+      if (cycleDailyLogIsEmpty(log)) delete state.cycle.dailyLogs[today];
+      else state.cycle.dailyLogs[today] = log;
+      scheduleSave();
+      onDone();
+    });
+    wrap.appendChild(saveBtn);
+
+    return wrap;
+  }
+
+  function renderBody() {
+    body.innerHTML = "";
+    body.appendChild(isOpen ? renderForm() : renderSummary());
+  }
+  renderBody();
+
+  return card;
+}
+
+// "Recent logs" — a collapsible <details>, same pattern already used
+// for Trends/History elsewhere (see renderHomeTrendsSection) rather
+// than a new interaction to learn. Hidden entirely until there's at
+// least one real entry — no empty collapsible for a feature nobody's
+// used yet.
+function renderCycleRecentLogsSection(box) {
+  const logs = cycleSortedDailyLogs();
+  if (!logs.length) return;
+  const details = el(`
+    <details class="card cyc-recent-details" open>
+      <summary class="book-summary">
+        <span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">Recent logs</span></span>
+        <span class="wardrobe-chevron">${iconSvg('<polyline points="6 9 12 15 18 9"></polyline>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')}</span>
+      </summary>
+    </details>
+  `);
+  const RECENT_COUNT = 10;
+  logs.slice(0, RECENT_COUNT).forEach((log) => {
+    const chips = cycleDailyLogSummaryChips(log);
+    details.appendChild(el(`
+      <div class="recent-row">
+        <div class="recent-date">${escapeHtml(activityDateShort(log.date))}</div>
+        <div class="recent-chips">${chips.map((c) => `<span class="recent-chip ${c.cls}">${escapeHtml(c.label)}</span>`).join("")}</div>
+      </div>
+    `));
+  });
+  box.appendChild(details);
+}
+
 function cycleSortedPeriods() {
   return [...state.cycle.periods].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0));
 }
@@ -11602,6 +11856,9 @@ function renderCyclePanel() {
     });
     track.appendChild(el(`<div class="cyc-track-marker" style="left:${Math.round(frac * 100)}%;"></div>`));
     box.appendChild(track);
+
+    box.appendChild(buildCycleDailyLogCard(today, render));
+    renderCycleRecentLogsSection(box);
 
     box.appendChild(el(`<div class="cyc-section-title">Your average</div>`));
     const avgStrip = el(`
@@ -13289,6 +13546,7 @@ async function boot() {
   // enough of it.
   state.cycle ||= { periods: [], manualCycleLengthDays: null, manualPeriodLengthDays: null };
   state.cycle.periods ||= [];
+  state.cycle.dailyLogs ||= {};
 
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
