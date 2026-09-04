@@ -246,6 +246,14 @@ let currentUserFirstName = "";
 // first time renderHome runs after that, as a toast — see boot() and
 // renderHome().
 let pendingGraceToastCount = 0;
+// True only for the very first Home render after boot (a "cold open") —
+// flipped false the instant it's captured, so it never replays on later
+// re-renders within the same session (switching tabs back to Home, a
+// background refresh, etc.). renderHome() captures it into a local at the
+// top of its own pass and threads that captured value into the
+// sub-renderers below it, since they need to know cold-open status too
+// but pendingColdOpen itself is already cleared by the time they run.
+let pendingColdOpen = true;
 
 // ------------------------------------------------------------------
 // Supabase — the real backend. The app's data now lives in the
@@ -9441,21 +9449,23 @@ function renderPillarStreakList(panel, today) {
   panel.appendChild(list);
 }
 
-// Plain conditional frequency between two pillars over a longer window —
+// Plain conditional frequency between two apps over a longer window —
 // deliberately not a claim about causation, since the data here can't
 // tell "movement improves sleep" from "good sleep makes movement more
 // likely." Returns null when either bucket is too small to be more than
-// noise.
-function pillarCooccurrence(keyA, keyB, today) {
+// noise. Generalized off real per-app ids (2026-09) — the old version of
+// this compared the six retired pillar yes/no fields; we don't have
+// pillars anymore, so this reads currentPracticeAppIds()/isAppLoggedToday
+// instead, same as everywhere else that used to lean on the pillar model.
+function appCooccurrence(appIdA, appIdB, today) {
   let withA = 0,
     withABothB = 0,
     withoutA = 0,
     withoutABothB = 0;
   for (let i = 0; i < COOCCUR_WINDOW_DAYS; i++) {
-    const entry = state.wellness.find((w) => w.logDate === addDays(today, -i));
-    if (!entry) continue;
-    const aYes = entry[keyA] === "Yes";
-    const bYes = entry[keyB] === "Yes";
+    const date = addDays(today, -i);
+    const aYes = isAppLoggedToday(appIdA, date);
+    const bYes = isAppLoggedToday(appIdB, date);
     if (aYes) {
       withA++;
       if (bYes) withABothB++;
@@ -9467,29 +9477,91 @@ function pillarCooccurrence(keyA, keyB, today) {
   if (withA < COOCCUR_MIN_DAYS || withoutA < COOCCUR_MIN_DAYS) return null;
   const rateWith = withABothB / withA;
   const rateWithout = withoutABothB / withoutA;
-  return { keyA, keyB, withA, withoutA, rateWith, rateWithout, diff: rateWith - rateWithout };
+  return { appIdA, appIdB, withA, withoutA, rateWith, rateWithout, diff: rateWith - rateWithout };
 }
 
-// Checks every ordered pair, keeps only the stronger direction of each
-// unordered pair, and surfaces at most two — enough to be interesting,
-// not so many it reads as the app fishing for patterns.
-function computeNotableCooccurrences(today) {
-  const keys = WELLNESS_YESNO_FIELDS.map(([k]) => k);
+// Checks every ordered pair of current Practice apps, keeps only the
+// stronger direction of each unordered pair, and surfaces at most two —
+// enough to be interesting, not so many it reads as the app fishing for
+// patterns. Same guardrails (COOCCUR_MIN_DAYS/MIN_DIFF) as the retired
+// pillar version.
+function computeNotableAppCooccurrences(today) {
+  const ids = currentPracticeAppIds();
   const results = [];
-  keys.forEach((a) => {
-    keys.forEach((b) => {
+  ids.forEach((a) => {
+    ids.forEach((b) => {
       if (a === b) return;
-      const r = pillarCooccurrence(a, b, today);
+      const r = appCooccurrence(a, b, today);
       if (r && Math.abs(r.diff) >= COOCCUR_MIN_DIFF) results.push(r);
     });
   });
   const byPair = new Map();
   results.forEach((r) => {
-    const pairKey = [r.keyA, r.keyB].sort().join("|");
+    const pairKey = [r.appIdA, r.appIdB].sort().join("|");
     const existing = byPair.get(pairKey);
     if (!existing || Math.abs(r.diff) > Math.abs(existing.diff)) byPair.set(pairKey, r);
   });
   return [...byPair.values()].sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 2);
+}
+
+// Same idea as appCooccurrence, but lagged one day: does logging app A on
+// one day predict app B the NEXT day? This is directional by nature (A on
+// day N vs. B on day N+1 is not the same comparison as B on day N vs. A on
+// day N+1), so unlike the same-day version there's no "stronger direction
+// of the pair" to collapse to — both directions are kept as genuinely
+// different patterns.
+function appNextDayCooccurrence(appIdA, appIdB, today) {
+  let withA = 0,
+    withABothB = 0,
+    withoutA = 0,
+    withoutABothB = 0;
+  // i is "yesterday relative to the earlier day" — dayN is the day app A
+  // might have been logged, dayN1 is the very next calendar day, where we
+  // check for app B.
+  for (let i = 1; i <= COOCCUR_WINDOW_DAYS; i++) {
+    const dayN = addDays(today, -i);
+    const dayN1 = addDays(today, -i + 1);
+    const aYes = isAppLoggedToday(appIdA, dayN);
+    const bYes = isAppLoggedToday(appIdB, dayN1);
+    if (aYes) {
+      withA++;
+      if (bYes) withABothB++;
+    } else {
+      withoutA++;
+      if (bYes) withoutABothB++;
+    }
+  }
+  if (withA < COOCCUR_MIN_DAYS || withoutA < COOCCUR_MIN_DAYS) return null;
+  const rateWith = withABothB / withA;
+  const rateWithout = withoutABothB / withoutA;
+  return { appIdA, appIdB, withA, withoutA, rateWith, rateWithout, diff: rateWith - rateWithout };
+}
+
+// Every ordered pair is a genuinely distinct claim here (see above), so no
+// pair-collapsing step — just filter to real patterns and keep the two
+// strongest.
+function computeNextDayAppPatterns(today) {
+  const ids = currentPracticeAppIds();
+  const results = [];
+  ids.forEach((a) => {
+    ids.forEach((b) => {
+      if (a === b) return;
+      const r = appNextDayCooccurrence(a, b, today);
+      if (r && Math.abs(r.diff) >= COOCCUR_MIN_DIFF) results.push(r);
+    });
+  });
+  return results.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 2);
+}
+
+// Labels for whichever apps computeNotableAppCooccurrences/
+// computeNextDayAppPatterns turned up — built fresh each call since the
+// app list can change.
+function appLabelLookup() {
+  const map = {};
+  currentAppEntries().forEach((a) => {
+    map[a.id] = a.label;
+  });
+  return map;
 }
 
 // Promoted to hero placement (right under the streak banner) per
@@ -9498,26 +9570,40 @@ function computeNotableCooccurrences(today) {
 // rather than the plain dashed cards it used to sit in further down the
 // page. Quietly renders nothing when there's not enough data yet, same as
 // the streak banner does, since a "not enough data" hero card would read
-// as an error in this prominent a spot.
-function wellnessPillarLabel(k) {
-  return WELLNESS_YESNO_FIELDS.find(([key]) => key === k)?.[1] || k;
-}
-
+// as an error in this prominent a spot. Now two flavors — same-day and
+// next-day — both off real per-app data (2026-09, no more pillars).
 function renderCooccurrenceCard(panel, today) {
-  const labelFor = wellnessPillarLabel;
-  const notable = computeNotableCooccurrences(today);
-  if (!notable.length) return;
-  notable.forEach((r) => {
+  const labels = appLabelLookup();
+  const labelFor = (id) => labels[id] || id;
+
+  const sameDay = computeNotableAppCooccurrences(today);
+  const nextDay = computeNextDayAppPatterns(today);
+  if (!sameDay.length && !nextDay.length) return;
+
+  sameDay.forEach((r) => {
     panel.appendChild(el(`
       <div class="trend-insight-banner">
         <div class="trend-insight-icon">🔗</div>
         <div class="trend-insight-text">
           <div class="insight-hero-eyebrow">Pattern spotted</div>
-          On days you logged <b>${escapeHtml(labelFor(r.keyA))}</b>, <b>${escapeHtml(labelFor(r.keyB))}</b> was also true <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
+          On days you log <b>${escapeHtml(labelFor(r.appIdA))}</b>, you also log <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
         </div>
       </div>
     `));
   });
+
+  nextDay.forEach((r) => {
+    panel.appendChild(el(`
+      <div class="trend-insight-banner">
+        <div class="trend-insight-icon">&rarr;</div>
+        <div class="trend-insight-text">
+          <div class="insight-hero-eyebrow">Next-day pattern</div>
+          The day after you log <b>${escapeHtml(labelFor(r.appIdA))}</b>, you log <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
+        </div>
+      </div>
+    `));
+  });
+
   panel.appendChild(el(`<div class="trend-pattern-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
 }
 
@@ -10001,8 +10087,14 @@ function renderHome() {
 
   const today = todayISO();
 
+  // Captured once, right at the top of this pass, then immediately reset —
+  // see pendingColdOpen above for why. Everything below that cares whether
+  // this is a cold open reads isColdOpen, never the module flag directly.
+  const isColdOpen = pendingColdOpen;
+  pendingColdOpen = false;
+
   panel.appendChild(
-    el(`<div class="home-greeting">Good ${homeGreetingTime()}${currentUserFirstName ? `, ${escapeHtml(currentUserFirstName)}` : ""}</div>`)
+    el(`<div class="home-greeting${isColdOpen ? " home-greeting-cold" : ""}">Good ${homeGreetingTime()}${currentUserFirstName ? `, ${escapeHtml(currentUserFirstName)}` : ""}</div>`)
   );
 
   // A grace bonus can only ever be granted during boot's once-per-open
@@ -10021,9 +10113,9 @@ function renderHome() {
   // real-dollar goal with the habit surface. All it gets here is the slim
   // pill inside renderHomeHero; the photo, quote, and full progress live
   // in Settings → Your Reward.
-  const hero = renderHomeHero(today);
+  const hero = renderHomeHero(today, isColdOpen);
   if (hero) panel.appendChild(hero);
-  panel.appendChild(renderHomeAppsGrid(today));
+  panel.appendChild(renderHomeAppsGrid(today, isColdOpen));
 
   // Trends comes right after the apps grid now — per Veronika's call,
   // it's one of the more important sections and shouldn't sit below the
@@ -10145,6 +10237,12 @@ function rewardCupcakeBadgeSvg() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${rewardCupcakeSvg()}</svg>`;
 }
 
+// The little sparkle that rides the tip of the reward bar once it's done
+// growing — see renderHomeRewardBanner's twinkle-play class.
+function rewardTwinkleSvg() {
+  return `<svg viewBox="0 0 24 24"><path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z"></path></svg>`;
+}
+
 // Small piggy-bank badge for anything nudging toward linking a bank
 // account — deliberately not the cupcake, which stays the reward's own
 // identity icon everywhere it already appears.
@@ -10165,7 +10263,7 @@ function rewardPiggyBankSvg() {
 // Progress is earned-dollars vs. goal (logging habits moves this, always,
 // whether or not a bank is linked) — never gated on Plaid. Tapping the
 // banner opens Settings → Your Reward, same as the old pill did.
-function renderHomeRewardBanner(today) {
+function renderHomeRewardBanner(today, isColdOpen) {
   const prize = state.veronikasPrize;
   // The reward pill is hidden entirely once there are zero Practice
   // apps — nothing can deposit toward it, so showing an empty/stuck
@@ -10195,12 +10293,20 @@ function renderHomeRewardBanner(today) {
   const wrap = el(`<div></div>`);
   wrap.appendChild(banner);
 
-  // Counts up from the last-seen figure/bar instead of snapping, but
-  // only on the render where a deposit just landed (justCreditedAppIds
-  // non-empty) — otherwise just paint the real numbers straight away so
-  // switching tabs and coming back never replays it for nothing.
-  const fromEarned = justCreditedAppIds.length && prevRewardEarned != null ? prevRewardEarned : stats.earned;
-  const fromPct = justCreditedAppIds.length && prevRewardPct != null ? prevRewardPct : stats.pct;
+  // Counts up from the last-seen figure/bar instead of snapping. Two
+  // separate reasons to animate: a deposit just landed this render
+  // (justCreditedAppIds non-empty), or this is the very first Home render
+  // after opening the app (isColdOpen) — Veronika specifically asked for
+  // the bar to "reload with a twinkle" on app open, distinct from the
+  // per-deposit count-up. A cold open draws in from zero even if nothing
+  // was freshly deposited; otherwise (a plain tab switch back to Home)
+  // paint the real numbers straight away so nothing replays for nothing.
+  const fromEarned = justCreditedAppIds.length && prevRewardEarned != null
+    ? prevRewardEarned
+    : isColdOpen ? 0 : stats.earned;
+  const fromPct = justCreditedAppIds.length && prevRewardPct != null
+    ? prevRewardPct
+    : isColdOpen ? 0 : stats.pct;
   const figureFmt = (v) => `$${v.toFixed(2).replace(/\.00$/, "")} of $${stats.goal}`;
 
   const progress = el(`
@@ -10209,7 +10315,9 @@ function renderHomeRewardBanner(today) {
         <span class="home-reward-progress-label">Earned so far</span>
         <span class="home-reward-progress-figure">${figureFmt(fromEarned)}</span>
       </div>
-      <div class="home-reward-bar"><div class="home-reward-fill${stats.reached ? " reached" : ""}" style="width:${fromPct}%;"></div></div>
+      <div class="home-reward-bar"><div class="home-reward-fill${stats.reached ? " reached" : ""}" style="width:${fromPct}%;">
+        <span class="home-reward-twinkle">${rewardTwinkleSvg()}</span>
+      </div></div>
     </div>
   `);
   wrap.appendChild(progress);
@@ -10217,8 +10325,15 @@ function renderHomeRewardBanner(today) {
   if (fromEarned !== stats.earned || fromPct !== stats.pct) {
     const figureEl = progress.querySelector(".home-reward-progress-figure");
     const fillEl = progress.querySelector(".home-reward-fill");
+    const twinkleEl = progress.querySelector(".home-reward-twinkle");
     tweenValue(fromEarned, stats.earned, 900, (v) => { figureEl.textContent = figureFmt(v); });
-    tweenValue(fromPct, stats.pct, 900, (v) => { fillEl.style.width = `${v}%`; });
+    // The twinkle lives INSIDE .home-reward-fill (not a sibling positioned
+    // off a shared percentage) so it always rides the fill's own right
+    // edge, however far the bar actually grows — no custom-property
+    // sharing needed. It only plays once the bar has finished growing.
+    tweenValue(fromPct, stats.pct, 900, (v) => { fillEl.style.width = `${v}%`; }, () => {
+      twinkleEl.classList.add("twinkle-play");
+    });
   }
   prevRewardEarned = stats.earned;
   prevRewardPct = stats.pct;
@@ -10280,11 +10395,11 @@ function openLinkBankAccountSheet() {
 // combined streak flame, since there's no single combined streak once
 // every Practice runs its own). Hidden entirely when there are zero
 // Practice apps — see renderHomeRewardBanner/renderHomeRewardLinkLine.
-function renderHomeHero(today) {
+function renderHomeHero(today, isColdOpen) {
   ensureTodaysWellnessEntry(today);
   applyPracticeDepositsForToday(today);
 
-  const hero = el(`<div class="card"></div>`);
+  const hero = el(`<div class="card${isColdOpen ? " home-hero-cold" : ""}"></div>`);
 
   const graceCovered = mostRecentGraceCoverage(today);
   if (graceCovered) {
@@ -10299,7 +10414,7 @@ function renderHomeHero(today) {
     `));
   }
 
-  const rewardBanner = renderHomeRewardBanner(today);
+  const rewardBanner = renderHomeRewardBanner(today, isColdOpen);
   if (rewardBanner) hero.appendChild(rewardBanner);
   const linkLine = renderHomeRewardLinkLine();
   if (linkLine) hero.appendChild(linkLine);
@@ -10356,7 +10471,7 @@ function practiceRecomputeMilestone(appId, today) {
 // Marketplace. Empty state (zero Practices) shows a plain prompt instead
 // — Trackers/Tools still show normally even then.
 // ------------------------------------------------------------------
-function renderHomeAppsGrid(today) {
+function renderHomeAppsGrid(today, isColdOpen) {
   // Sobriety's milestone check runs here now that its own Home row is
   // gone — this is still the first place a new day's crossing gets
   // noticed, same as before.
@@ -10407,16 +10522,19 @@ function renderHomeAppsGrid(today) {
   }
 
   const grid = el(`<div class="home-yourspaces-grid home-apps-grid"></div>`);
-  apps.forEach((app) => {
+  apps.forEach((app, i) => {
     const loggedToday = isAppLoggedToday(app.id, today);
     const tile = el(`
-      <button type="button" class="home-yourspaces-tile home-app-tile${app.type === "tracker" ? " is-tracker" : ""}${app.type === "practice" && !loggedToday ? " home-app-tile-nudge" : ""}">
+      <button type="button" class="home-yourspaces-tile home-app-tile${app.type === "tracker" ? " is-tracker" : ""}${app.type === "practice" && !loggedToday ? " home-app-tile-nudge" : ""}${isColdOpen ? " home-app-tile-cold" : ""}">
         <span class="home-yourspaces-tile-icon ${appIconWellClass(app.type)}">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}${
       loggedToday ? `<span class="home-app-tile-check${justCreditedAppIds.includes(app.id) ? " pop" : ""}">${checkSvg}</span>` : ""
     }</span>
         <span class="home-yourspaces-tile-label">${escapeHtml(app.label)}</span>
       </button>
     `);
+    // Staggered fade-in on cold open only, capped so a big apps list
+    // doesn't leave the last tiles waiting a visibly long time.
+    if (isColdOpen) tile.style.animationDelay = `${0.05 + Math.min(i, 8) * 0.045}s`;
     tile.addEventListener("click", () => {
       // Sobriety and Cycle are real tabs now, same as everything else on
       // this grid — no more modal popup for just these two.
@@ -10849,9 +10967,94 @@ function renderHomeTrendsSection(panel, today) {
   // this section's own data, so it reads as this section's own data.
   renderTrendInsightBanner(section, today);
   renderPulseChart(section, today);
+  renderCyclePhaseCompletionCard(section, today);
   renderTrendMilestonesRow(section, today);
   section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
   renderPillarStreakList(section, today);
+}
+
+// Completion rate by cycle phase — "not just seeing your streaks, but the
+// relation between things," per Veronika's own framing of why Trends
+// matters. Only shown when Cycle is actually tracked and there's enough
+// period history to have a real average length (cycleAvgCycleLength/
+// cycleAvgPeriodLength already fall back to manual numbers before that,
+// but a phase-completion claim built on an unconfirmed guess isn't worth
+// surfacing). Picks a single Practice app — whichever shows the widest
+// spread across phases — rather than a chart per app, matching the same
+// "surface the strongest thing, don't fish" restraint as the co-occurrence
+// cards above. The reasoning is necessarily approximate: it applies
+// TODAY's rolling average cycle/period length to every historical date in
+// the window, on the assumption her cycle has been reasonably stable
+// (same simplification cycleTodayInfo already makes for "today").
+const CYCLE_PHASE_COMPLETION_WINDOW_DAYS = 90;
+const CYCLE_PHASE_COMPLETION_MIN_DAYS = 6; // per-phase bucket floor — phases are naturally short (esp. ovulatory), so this sits below COOCCUR_MIN_DAYS on purpose
+const CYCLE_PHASE_ORDER = ["menstrual", "follicular", "ovulatory", "luteal"];
+
+// Which phase a past date fell in, using today's rolling averages —
+// cycleCurrentPeriod(dateStr) is generic over any date, not just literal
+// "today", so this reuses it directly rather than duplicating the lookup.
+function cyclePhaseForHistoricalDate(dateStr, avgCycleLen, avgPeriodLen) {
+  const period = cycleCurrentPeriod(dateStr);
+  if (!period) return null;
+  const day = daysBetween(new Date(period.startDate + "T00:00:00"), new Date(dateStr + "T00:00:00")) + 1;
+  return cyclePhaseForDay(day, avgCycleLen, avgPeriodLen);
+}
+
+function computeAppCompletionByCyclePhase(appId, today) {
+  const avgCycleLen = cycleAvgCycleLength();
+  const avgPeriodLen = cycleAvgPeriodLength();
+  const buckets = { menstrual: { logged: 0, total: 0 }, follicular: { logged: 0, total: 0 }, ovulatory: { logged: 0, total: 0 }, luteal: { logged: 0, total: 0 } };
+  for (let i = 0; i < CYCLE_PHASE_COMPLETION_WINDOW_DAYS; i++) {
+    const date = addDays(today, -i);
+    const phase = cyclePhaseForHistoricalDate(date, avgCycleLen, avgPeriodLen);
+    if (!phase || !buckets[phase.key]) continue;
+    buckets[phase.key].total++;
+    if (isAppLoggedToday(appId, date)) buckets[phase.key].logged++;
+  }
+  return buckets;
+}
+
+// Widest spread across phases wins — one card, not a wall of them.
+function pickCyclePhaseCompletionApp(today) {
+  let best = null;
+  currentPracticeAppIds().forEach((appId) => {
+    const buckets = computeAppCompletionByCyclePhase(appId, today);
+    const rates = CYCLE_PHASE_ORDER.map((key) => ({ key, ...buckets[key], rate: buckets[key].total ? buckets[key].logged / buckets[key].total : null })).filter(
+      (r) => r.total >= CYCLE_PHASE_COMPLETION_MIN_DAYS
+    );
+    if (rates.length < 2) return;
+    const spread = Math.max(...rates.map((r) => r.rate)) - Math.min(...rates.map((r) => r.rate));
+    if (spread >= COOCCUR_MIN_DIFF && (!best || spread > best.spread)) best = { appId, rates, spread };
+  });
+  return best;
+}
+
+function renderCyclePhaseCompletionCard(panel, today) {
+  if (!state.extraTrackers?.cycle) return;
+  if (cycleSortedPeriods().length < 2) return; // needs real logged history, not just the manual fallback numbers
+  const best = pickCyclePhaseCompletionApp(today);
+  if (!best) return;
+  const label = appLabelLookup()[best.appId] || best.appId;
+  const maxRate = Math.max(...best.rates.map((r) => r.rate), 0.01);
+
+  const card = el(`<div class="trend-phase-card" style="margin-top:10px;"></div>`);
+  card.appendChild(el(`<div class="insight-hero-eyebrow">Completion rate by cycle phase</div>`));
+  card.appendChild(el(`<div class="trend-phase-sub">${escapeHtml(label)}, last ${CYCLE_PHASE_COMPLETION_WINDOW_DAYS} days</div>`));
+  const bars = el(`<div class="trend-phase-bars"></div>`);
+  const phaseDisplayLabel = { menstrual: "Menstrual", follicular: "Follicular", ovulatory: "Ovulatory", luteal: "Luteal" };
+  best.rates.forEach((r) => {
+    const pct = Math.round(r.rate * 100);
+    const heightPct = Math.round((r.rate / maxRate) * 100);
+    bars.appendChild(el(`
+      <div class="trend-phase-bar-col">
+        <div class="trend-phase-bar-pct">${pct}%</div>
+        <div class="trend-phase-bar-track"><div class="trend-phase-bar-fill" style="height:${heightPct}%;background:var(--cyc-${r.key});"></div></div>
+        <div class="trend-phase-bar-label">${phaseDisplayLabel[r.key] || r.key}</div>
+      </div>
+    `));
+  });
+  card.appendChild(bars);
+  panel.appendChild(card);
 }
 
 // ------------------------------------------------------------------
