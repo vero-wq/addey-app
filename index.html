@@ -701,6 +701,18 @@ td input:hover { border-color: var(--border); }
 .onboarding-pillar-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--bg); display: flex; align-items: center; justify-content: center; color: var(--accent); flex-shrink: 0; }
 .onboarding-pillar-icon svg { width: 18px; height: 18px; }
 .onboarding-pillar-name { font-size: 13.5px; font-weight: 700; }
+.onboarding-pillar-desc { font-size: 11px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+/* Multi-select practice/extras cards (onboarding "practices"/"extras"
+   steps) — same base look as the plain pillar-card above, plus a
+   checkable state. */
+.onboarding-pillar-card.selectable { cursor: pointer; transition: border-color .15s, background .15s; }
+.onboarding-pillar-card.selectable > div { flex: 1; min-width: 0; }
+.onboarding-pillar-card.selectable.sel { border-color: var(--accent-dark); background: var(--bg); }
+.onboarding-pillar-card.selectable.disabled { opacity: .4; pointer-events: none; }
+.onboarding-pillar-check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--surface); }
+.onboarding-pillar-card.selectable.sel .onboarding-pillar-check { background: var(--accent-dark); border-color: var(--accent-dark); }
+.onboarding-pillar-check svg { width: 10px; height: 10px; opacity: 0; }
+.onboarding-pillar-card.selectable.sel .onboarding-pillar-check svg { opacity: 1; }
 .onboarding-headline-icon { display: inline-flex; vertical-align: -5px; color: var(--accent); }
 .onboarding-headline-icon svg { width: 22px; height: 22px; }
 .onboarding-choice-row { display: flex; flex-direction: column; gap: 8px; }
