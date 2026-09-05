@@ -1739,7 +1739,7 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cyc-predict-cell + .cyc-predict-cell { border-left: 1px solid var(--border); }
 .cyc-predict-num { font-family: "Source Serif 4", Georgia, serif; font-size: 20px; line-height: 1; color: var(--accent-dark); }
 .cyc-predict-label { font-size: 9.5px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .03em; }
-.cyc-predict-date { font-size: 11px; font-weight: 600; color: var(--text); margin-top: 2px; }
+.cyc-predict-note { font-size: 10.5px; color: var(--muted); text-align: center; margin-top: 6px; }
 
 .cyc-log-btn { display: block; width: 100%; margin-top: 16px; background: var(--accent-dark); color: #fff; border: none; border-radius: 12px; padding: 13px; font-size: 13.5px; font-weight: 700; font-family: inherit; cursor: pointer; text-align: center; }
 .cyc-log-btn.period-due { background: var(--cyc-menstrual); }
@@ -1758,8 +1758,13 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cyc-avg-note { font-size: 10.5px; color: var(--muted); line-height: 1.4; flex: 1; }
 .cyc-avg-note a { color: var(--accent-dark); font-weight: 600; }
 
-.cyc-hist-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-top: 1px solid var(--border); font-size: 12.5px; cursor: pointer; }
-.cyc-hist-row:first-child { border-top: none; }
+/* Border/hover convention matches .recent-row exactly on purpose — a
+   period-start row and a daily-log row now live in the same combined
+   History list (see renderCycleHistorySection), so they need to read as
+   one consistent list, not two different components stitched together. */
+.cyc-hist-row { display: flex; align-items: center; gap: 10px; padding: 11px 4px; border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; border-radius: 8px; transition: background .12s; }
+.cyc-hist-row:last-child { border-bottom: none; }
+.cyc-hist-row:hover, .cyc-hist-row:focus-visible { background: var(--bg); outline: none; }
 .cyc-hist-dates { flex: 1; font-weight: 600; }
 .cyc-hist-len { color: var(--muted); font-size: 11.5px; }
 .cyc-hist-toggle { display: block; width: 100%; text-align: center; background: none; border: none; padding: 10px 2px; margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--accent-dark); cursor: pointer; }
@@ -1768,7 +1773,7 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
    just keep growing would push "See all phases" and everything else on
    the Cycle tab further down every time it's opened. */
 .cyc-hist-older { max-height: 260px; overflow-y: auto; border-top: 1px solid var(--border); }
-.cyc-hist-older .cyc-hist-row:first-child { border-top: none; }
+.cyc-hist-older .recent-row:last-child, .cyc-hist-older .cyc-hist-row:last-child { border-bottom: none; }
 
 .cyc-empty-icon { width: 52px; height: 52px; border-radius: 50%; margin: 0 auto 14px; background: radial-gradient(circle at 35% 30%, #F0D9CE, #C9846A 70%); display: flex; align-items: center; justify-content: center; }
 
@@ -1847,8 +1852,9 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .cyc-log-save-btn { display: block; width: 100%; text-align: center; margin-top: 18px; padding: 12px; border-radius: 10px; border: none; background: var(--accent-dark); color: #fff; font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit; }
 
 .cyc-recent-details[open] .wardrobe-chevron { transform: rotate(180deg); }
-.recent-row { display: flex; align-items: center; gap: 10px; padding: 11px 4px; border-bottom: 1px solid var(--border); }
+.recent-row { display: flex; align-items: center; gap: 10px; padding: 11px 4px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 8px; transition: background .12s; }
 .recent-row:last-child { border-bottom: none; }
+.recent-row:hover, .recent-row:focus-visible { background: var(--bg); outline: none; }
 .recent-date { width: 64px; flex-shrink: 0; font-size: 11.5px; color: var(--muted); font-weight: 600; }
 .recent-chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
 .recent-chip { font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 100px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
