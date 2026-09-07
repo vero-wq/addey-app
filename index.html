@@ -987,6 +987,30 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .trends-empty { font-size: 12.5px; color: var(--muted); font-style: italic; }
 .trends-grid-item { font-size: 12.5px; line-height: 1.5; padding: 8px 0; border-bottom: 1px dashed var(--border); }
 .trends-grid-item:last-child { border-bottom: none; }
+
+/* Free + unlocked: a deliberate one-screen setup step (pick, then a
+   separate confirm) rather than a chip in a browsable row committing the
+   30-day lock on first tap. */
+.trends-setup-icon { width: 40px; height: 40px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--surface) 82%); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+.trends-setup-title { font-family: var(--serif, inherit); font-size: 18px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.trends-setup-copy { font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; }
+.trends-setup-copy b { color: var(--text); }
+.trends-setup-grid { display: flex; flex-direction: column; gap: 9px; margin-bottom: 16px; }
+.trends-setup-option { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; padding: 12px 14px; cursor: pointer; transition: border-color .12s, background .12s; }
+.trends-setup-option .oi { width: 32px; height: 32px; border-radius: 10px; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.trends-setup-option .ot { flex: 1; min-width: 0; }
+.trends-setup-option .ot .name { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.trends-setup-option .ot .streak { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.trends-setup-option .radio { width: 19px; height: 19px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; position: relative; }
+.trends-setup-option.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%); }
+.trends-setup-option.selected .oi { background: var(--surface); }
+.trends-setup-option.selected .radio { border-color: var(--accent-dark); background: var(--accent-dark); }
+.trends-setup-option.selected .radio::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--surface); }
+.trends-setup-fineprint { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-bottom: 14px; }
+.trends-setup-fineprint b { color: var(--accent-dark); }
+.trends-setup-confirm-btn { width: 100%; background: var(--accent-dark); color: #fff; border: none; border-radius: 12px; padding: 13px; font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.trends-setup-confirm-btn:disabled { opacity: 0.4; cursor: default; }
+.trends-setup-confirm-btn:not(:disabled):hover { background: var(--accent); }
 .trends-grid-item b { color: var(--accent-dark); }
 
 /* Completion rate by cycle phase — a small bar chart, one bar per phase
