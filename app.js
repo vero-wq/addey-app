@@ -9644,6 +9644,7 @@ let trendsUi = {
   loading: false,
   profile: null, // { plan, trends_locked_practice_id, trends_lock_expires_at } | null
   selectedAppId: null,
+  setupPick: null, // highlighted-but-not-yet-confirmed choice on the free+unlocked setup screen
 };
 
 function trendsIsFreePlan(profile) {
@@ -9815,27 +9816,40 @@ function trendsFullGridHtml(today) {
 }
 
 function trendsSelectPractice(appId) {
-  const profile = trendsUi.profile;
-  if (trendsIsFreePlan(profile) && trendsLockActive(profile) && profile.trends_locked_practice_id !== appId) {
-    // Just preview the locked-out practice's (blurred) card — nothing
-    // written, nothing persisted.
-    trendsUi.selectedAppId = appId;
-    renderTrends();
-    return;
-  }
-  if (trendsIsFreePlan(profile) && !trendsLockActive(profile)) {
-    trendsUi.selectedAppId = appId;
-    renderTrends(); // optimistic — show the pick immediately while the lock write goes out
-    trendsSetLock(appId)
-      .then((patch) => {
-        trendsUi.profile = { plan: trendsUi.profile?.plan || "free", ...trendsUi.profile, ...patch };
-        renderTrends();
-      })
-      .catch((err) => console.error("Trends lock write failed", err));
-    return;
-  }
+  // Used only once a lock already exists (free, browsing/previewing other
+  // practices) or on Plus (no lock, free switching). The free+unlocked
+  // first-pick case is handled by the dedicated setup screen below
+  // (trendsPickForSetup / trendsConfirmSetup) — tapping there never writes
+  // anything until the user explicitly confirms.
   trendsUi.selectedAppId = appId;
   renderTrends();
+}
+
+function trendsPickForSetup(appId) {
+  // Setup screen only: highlights a choice without saving it anywhere.
+  trendsUi.setupPick = appId;
+  renderTrends();
+}
+
+function trendsConfirmSetup() {
+  const appId = trendsUi.setupPick;
+  if (!appId) return;
+  trendsUi.selectedAppId = appId;
+  trendsUi.setupPick = null;
+  renderTrends(); // optimistic — show the locked view immediately while the write goes out
+  trendsSetLock(appId)
+    .then((patch) => {
+      trendsUi.profile = { plan: trendsUi.profile?.plan || "free", ...trendsUi.profile, ...patch };
+      renderTrends();
+    })
+    .catch((err) => {
+      console.error("Trends lock write failed", err);
+      // Roll back to the setup screen rather than leaving the UI claiming a
+      // lock that was never actually saved.
+      trendsUi.profile = trendsUi.profile ? { ...trendsUi.profile, trends_locked_practice_id: null, trends_lock_expires_at: null } : null;
+      trendsUi.setupPick = appId;
+      renderTrends();
+    });
 }
 
 function renderTrends() {
@@ -9896,14 +9910,49 @@ function renderTrends() {
   const labels = appLabelLookup();
   const locked = trendsLockActive(profile);
 
-  if (trendsIsFreePlan(profile)) {
-    const days = locked ? trendsDaysRemaining(profile.trends_lock_expires_at) : 0;
+  // Free + no active lock yet: this is a one-time (well, once-per-30-days)
+  // decision with a real consequence, so it gets its own deliberate setup
+  // screen rather than living as a caption line over a row of small chips —
+  // a single accidental tap on a picker chip used to commit the 30-day lock
+  // immediately, with no confirmation step. Nothing here writes anything
+  // until trendsConfirmSetup runs.
+  if (trendsIsFreePlan(profile) && !locked) {
     panel.appendChild(el(`
-      <div class="trends-sub">${
-        locked
-          ? `Locked to <b>${escapeHtml(labels[profile.trends_locked_practice_id] || profile.trends_locked_practice_id)}</b> for ${days} more day${days === 1 ? "" : "s"}.`
-          : `Pick a practice to see its full Trends detail &mdash; Free accounts lock to one practice at a time for ${TRENDS_LOCK_DAYS} days.`
-      }</div>
+      <div class="trends-setup-icon">${trendsLockIconSvg()}</div>
+      <div class="trends-setup-title">Choose your Practice</div>
+      <p class="trends-setup-copy">Pick one Practice below and Trends will track it closely for the next <b>${TRENDS_LOCK_DAYS} days</b> &mdash; its daily streak, and every pattern with your other Practices. Nothing is saved until you confirm.</p>
+    `));
+    const setupGrid = el(`<div class="trends-setup-grid"></div>`);
+    currentAppEntries()
+      .filter((e) => e.type === "practice")
+      .forEach((entry) => {
+        const streak = appCurrentStreak(entry.id, today);
+        const isPicked = entry.id === trendsUi.setupPick;
+        const option = el(`
+          <div class="trends-setup-option${isPicked ? " selected" : ""}">
+            <div class="oi">${iconSvg(entry.icon || '<circle cx="12" cy="12" r="9"></circle>')}</div>
+            <div class="ot"><div class="name">${escapeHtml(entry.label)}</div><div class="streak">${streak}-day streak</div></div>
+            <div class="radio"></div>
+          </div>
+        `);
+        option.addEventListener("click", () => trendsPickForSetup(entry.id));
+        setupGrid.appendChild(option);
+      });
+    panel.appendChild(setupGrid);
+    panel.appendChild(el(`<p class="trends-setup-fineprint">On the <b>Free</b> plan you can lock to one Practice at a time. <b>Addley Plus</b> tracks every Practice at once, any time, no lock.</p>`));
+    const confirmLabel = trendsUi.setupPick
+      ? `Lock in Trends for ${escapeHtml(labels[trendsUi.setupPick] || trendsUi.setupPick)} &mdash; ${TRENDS_LOCK_DAYS} days`
+      : "Choose a Practice above";
+    const confirmBtn = el(`<button type="button" class="trends-setup-confirm-btn" ${trendsUi.setupPick ? "" : "disabled"}>${confirmLabel}</button>`);
+    confirmBtn.addEventListener("click", () => trendsConfirmSetup());
+    panel.appendChild(confirmBtn);
+    return;
+  }
+
+  if (trendsIsFreePlan(profile)) {
+    const days = trendsDaysRemaining(profile.trends_lock_expires_at);
+    panel.appendChild(el(`
+      <div class="trends-sub">Locked to <b>${escapeHtml(labels[profile.trends_locked_practice_id] || profile.trends_locked_practice_id)}</b> for ${days} more day${days === 1 ? "" : "s"}.</div>
     `));
   } else {
     panel.appendChild(el(`<div class="trends-sub">Pick any practice to see its full Trends detail &mdash; Plus accounts can switch anytime.</div>`));
