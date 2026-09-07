@@ -963,6 +963,32 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .trend-pattern-card + .trend-pattern-card { margin-top: 8px; }
 .trend-pattern-note { font-size: 10.5px; color: var(--muted); margin-top: 8px; font-style: italic; }
 
+/* ---------- Trends screen (free/paid-gated per-practice + full grid) ---------- */
+.trends-sub { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+.trends-picker-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.trends-picker-chip { display: flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--text); cursor: pointer; }
+.trends-picker-chip .em { font-size: 15px; line-height: 1; }
+.trends-picker-chip .streak { font-size: 11px; font-weight: 700; color: var(--accent-dark); }
+.trends-picker-chip.active { border-color: var(--accent); background: #F3E9DA; }
+.trends-picker-chip.locked-target { opacity: 0.75; }
+.trends-picker-chip .lock-dot { width: 12px; height: 12px; color: var(--muted); flex-shrink: 0; }
+
+/* Blurred/locked preview — same visual language everywhere a Trends view
+   is gated: real content rendered underneath (so a Plus upgrade never
+   looks like it "unlocks" fabricated data), blurred, with a centered
+   message overlay. */
+.trends-locked-card { position: relative; overflow: hidden; padding: 0; }
+.trends-blur-content { filter: blur(7px); user-select: none; pointer-events: none; padding: 16px; }
+.trends-lock-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; background: rgba(255,255,255,0.62); }
+html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.68); }
+.trends-lock-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; }
+.trends-lock-msg { font-size: 12.5px; line-height: 1.5; color: var(--text); max-width: 320px; }
+.trends-lock-msg b { color: var(--accent-dark); }
+.trends-empty { font-size: 12.5px; color: var(--muted); font-style: italic; }
+.trends-grid-item { font-size: 12.5px; line-height: 1.5; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+.trends-grid-item:last-child { border-bottom: none; }
+.trends-grid-item b { color: var(--accent-dark); }
+
 /* Completion rate by cycle phase — a small bar chart, one bar per phase
    with real logged history, tied to whichever app currently shows the
    widest spread (renderCyclePhaseCompletionCard). */
@@ -2212,6 +2238,7 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
         <section id="panel-sleep" class="panel"></section>
         <section id="panel-sobriety" class="panel"></section>
         <section id="panel-cycle" class="panel"></section>
+        <section id="panel-trends" class="panel"></section>
         <section id="panel-appearance" class="panel"></section>
         <section id="panel-settings" class="panel"></section>
       </main>
