@@ -11348,22 +11348,175 @@ function openEditRewardModal(onSaved) {
 // Same milestone ladder the push notifications celebrate — used here just
 // to say "you've hit this" per practice, not to fire anything.
 const HOME_STREAK_MILESTONES = [3, 7, 10, 14, 21, 30, 60, 100, 150, 200, 365];
+// One color per tier (see the --ms-* tokens in index.html) so a 365-day
+// medal visibly outweighs a 3-day one instead of every tier sharing the
+// same flat gold — same idea as Sobriety's own tier ladder, and reuses
+// several of its exact hues on purpose so the two read as one system.
+const HOME_STREAK_MILESTONE_COLORS = {
+  3: "var(--ms-3)", 7: "var(--ms-7)", 10: "var(--ms-10)", 14: "var(--ms-14)",
+  21: "var(--ms-21)", 30: "var(--ms-30)", 60: "var(--ms-60)", 100: "var(--ms-100)",
+  150: "var(--ms-150)", 200: "var(--ms-200)", 365: "var(--ms-365)",
+};
+// ------------------------------------------------------------------
+// Bloom badges — replaces the flat gold checkmark medal with a small
+// growing plant/flower per Practice. Early tiers (3-30 days) are the
+// same generic seedling for everyone; the first time a Practice's
+// streak actually blooms (100 days), it's revealed to be one of a
+// few flower species in one of a few colors, deterministically picked
+// from the Practice's own id so it's stable across renders but a
+// surprise the first time you see it. Later tiers (150/200/365) fill
+// the same bloom out fuller rather than changing it.
+// ------------------------------------------------------------------
+// ------------------------------------------------------------------
+// Bloom badges v2 — back to the original "growing motif" silhouette
+// (a plain stem, layered leaves, then a soft round canopy) instead of
+// the bold flat flowers. Early tiers (3-60 days) are colored by tier,
+// same ladder as before. At first bloom (100 days) a Practice's medal
+// color is revealed from a small pool, picked deterministically from
+// the Practice's own id -- a surprise the first time you see it, then
+// held steady through 150/200/365 instead of changing with the tier.
+// ------------------------------------------------------------------
+const BLOOM_REVEAL_COLORS = ["#6B5B95", "#A9627C", "#2E6B6B", "#3E4C7A", "#4F6D7A", "#8A6A22"];
+function bloomHash(str) {
+  let h = 0;
+  for (let i = 0; i < String(str).length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h;
+}
+function bloomRevealColor(seedStr) {
+  return BLOOM_REVEAL_COLORS[bloomHash(seedStr) % BLOOM_REVEAL_COLORS.length];
+}
+function bloomScallopD(cx, cy, scallops, amp, rBase) {
+  let d = "";
+  const steps = scallops * 2;
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const r = rBase + (i % 2 === 0 ? amp : -amp * 0.3);
+    const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+    d += (i === 0 ? "M" : "L") + x.toFixed(2) + "," + y.toFixed(2) + " ";
+  }
+  return d + "Z";
+}
+function bloomDots(cx, cy, r, count, color) {
+  // scattered small dots inside the canopy -- the same simple "flowering"
+  // texture from the very first version, just with more of them at
+  // higher tiers instead of a literal flower shape.
+  const positions = [
+    [-5, -8], [5, -6], [0, 0], [-8, 2], [8, 3], [-3, 8], [4, 9], [0, -4], [-6, -3], [7, -2],
+  ];
+  let s = "";
+  for (let i = 0; i < Math.min(count, positions.length); i++) {
+    const [dx, dy] = positions[i];
+    const rr = 1.6 + (i % 3) * 0.3;
+    s += `<circle cx="${(cx + dx * (r / 15)).toFixed(2)}" cy="${(cy + dy * (r / 15)).toFixed(2)}" r="${rr.toFixed(2)}" fill="${color}"/>`;
+  }
+  return s;
+}
+function bloomStageMarkup(dayTier, revealColor) {
+  // Every stage's stem + leaves/canopy is pure white, unchanged by which
+  // Practice it belongs to -- only the medallion background (tier color
+  // pre-bloom, revealed color post-bloom) and the dot count/color inside
+  // the canopy vary.
+  if (dayTier === 3) {
+    return `<path d="M32 44 V34" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M32 34 C28 34 26 31 27 28 C30 29 32 31 32 34 Z" fill="#fff"/>
+      <path d="M32 34 C36 34 38 31 37 28 C34 29 32 31 32 34 Z" fill="#fff" opacity="0.85"/>`;
+  } else if (dayTier === 7) {
+    return `<path d="M32 46 V30" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M32 36 C26 36 23 31 25 27 C29 28 32 31 32 36 Z" fill="#fff"/>
+      <path d="M32 32 C38 32 41 27 39 23 C35 24 32 27 32 32 Z" fill="#fff" opacity="0.85"/>`;
+  } else if (dayTier === 10) {
+    return `<path d="M32 47 V29" stroke="#fff" stroke-width="2.7" stroke-linecap="round"/>
+      <path d="M32 38 C25 38 22 32 24 28 C28 29 32 32 32 38 Z" fill="#fff"/>
+      <path d="M32 34 C39 34 42 28 40 24 C36 25 32 28 32 34 Z" fill="#fff" opacity="0.88"/>
+      <path d="M32 29 C28 29 26 25 28 22 C30 24 32 26 32 29 Z" fill="#fff" opacity="0.7"/>`;
+  } else if (dayTier === 14) {
+    return `<path d="M32 48 V27" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/>
+      <path d="M32 39 C24 39 21 32 23 28 C28 29 32 32 32 39 Z" fill="#fff"/>
+      <path d="M32 35 C40 35 43 28 41 24 C36 25 32 28 32 35 Z" fill="#fff" opacity="0.9"/>
+      <path d="M32 29 C27 29 25 25 27 21 C30 23 32 26 32 29 Z" fill="#fff" opacity="0.78"/>`;
+  } else if (dayTier === 21) {
+    return `<path d="M32 49 V25" stroke="#fff" stroke-width="2.9" stroke-linecap="round"/>
+      <path d="M32 40 C23 40 20 32 22 27 C28 28 32 32 32 40 Z" fill="#fff"/>
+      <path d="M32 35 C41 35 44 27 42 23 C36 24 32 28 32 35 Z" fill="#fff" opacity="0.9"/>
+      <path d="M32 28 C27 28 25 24 27 20 C30 22 32 25 32 28 Z" fill="#fff" opacity="0.78"/>`;
+  } else if (dayTier === 30) {
+    return `<path d="M32 48 V26" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/>
+      <path d="M32 38 C24 38 20 31 23 25 C29 27 32 31 32 38 Z" fill="#fff"/>
+      <path d="M32 34 C40 34 44 27 41 21 C35 23 32 27 32 34 Z" fill="#fff" opacity="0.9"/>
+      <path d="M32 30 C27 30 25 26 27 22 C30 24 32 27 32 30 Z" fill="#fff" opacity="0.75"/>`;
+  } else if (dayTier === 60) {
+    return `<path d="M32 51 V32" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="31" cy="24" r="13" fill="#fff" opacity="0.93"/>
+      <circle cx="21" cy="29" r="7" fill="#fff" opacity="0.83"/>
+      <circle cx="41" cy="29" r="7" fill="#fff" opacity="0.83"/>`;
+  } else if (dayTier === 100) {
+    return `<path d="M32 50 V30" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="32" cy="22" r="12" fill="#fff" opacity="0.92"/>
+      <circle cx="23" cy="27" r="6" fill="#fff" opacity="0.8"/>
+      <circle cx="41" cy="27" r="6" fill="#fff" opacity="0.8"/>
+      ${bloomDots(32, 20, 15, 2, revealColor)}`;
+  } else if (dayTier === 150) {
+    return `<path d="M32 50 V30" stroke="#fff" stroke-width="3.1" stroke-linecap="round"/>
+      <circle cx="32" cy="22" r="12.5" fill="#fff" opacity="0.93"/>
+      <circle cx="22" cy="28" r="6.5" fill="#fff" opacity="0.82"/>
+      <circle cx="42" cy="28" r="6.5" fill="#fff" opacity="0.82"/>
+      ${bloomDots(32, 20, 15, 4, revealColor)}`;
+  } else if (dayTier === 200) {
+    return `<path d="M32 51 V31" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+      <circle cx="32" cy="22" r="13.5" fill="#fff" opacity="0.94"/>
+      <circle cx="21" cy="28" r="7" fill="#fff" opacity="0.84"/>
+      <circle cx="43" cy="28" r="7" fill="#fff" opacity="0.84"/>
+      ${bloomDots(32, 20, 15, 6, revealColor)}`;
+  } else if (dayTier === 365) {
+    return `<path d="M32 52 V36" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+      <circle cx="32" cy="24" r="15" fill="#fff" opacity="0.95"/>
+      <circle cx="20" cy="30" r="7.5" fill="#fff" opacity="0.85"/>
+      <circle cx="44" cy="30" r="7.5" fill="#fff" opacity="0.85"/>
+      ${bloomDots(32, 22, 15, 9, revealColor)}`;
+  }
+  return "";
+}
+function bloomBadgeMarkup(dayTier, seedStr) {
+  const tierColor = HOME_STREAK_MILESTONE_COLORS[dayTier] || "var(--accent)";
+  const isBloomed = dayTier >= 100;
+  const bg = isBloomed ? bloomRevealColor(seedStr) : tierColor;
+  const coinD = bloomScallopD(32, 32, 12, 2.6, 27);
+  const inner = bloomStageMarkup(dayTier, isBloomed ? bg : null);
+  return `<svg class="bloom-medal" width="56" height="56" viewBox="0 0 64 64" style="display:block;overflow:visible;"><path d="${coinD}" fill="${bg}"/>${inner}</svg>`;
+}
+
 function renderTrendMilestonesRow(panel, today) {
   const practiceApps = currentAppEntries().filter((e) => e.type === "practice");
   const hits = practiceApps
     .map((app) => {
       const streak = appCurrentStreak(app.id, today);
       const reached = HOME_STREAK_MILESTONES.filter((m) => streak >= m).pop();
-      return reached ? { label: app.label, reached } : null;
+      return reached ? { id: app.id, label: app.label, reached } : null;
     })
     .filter(Boolean);
   if (!hits.length) return;
   panel.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Milestones</div>`));
-  const row = el(`<div class="streak-chip-list"></div>`);
+  // Bloom badges: a small growing plant per Practice instead of a flat
+  // gold checkmark medal. Early tiers are the same generic seedling for
+  // every Practice; the first time a streak actually blooms (100 days)
+  // it's revealed to be one of a few flower species in one of a few
+  // colors, picked deterministically from the Practice's own id so it's
+  // stable across renders but a surprise the first time you see it —
+  // per Veronika's call, variety and "what will this one turn out to be"
+  // is a more interesting reward than a single fixed medal shape.
+  const grid = el(`<div class="pr-badge-grid"></div>`);
   hits.forEach((h) => {
-    row.appendChild(el(`<div class="streak-chip"><span class="sc-label">🎉 ${escapeHtml(h.label)}</span><span class="sc-streak">${h.reached}d</span></div>`));
+    grid.appendChild(el(`
+      <div class="pr-badge">
+        <div class="pr-badge-medal earned" style="background:none; box-shadow:none; border-radius:0; overflow:visible;">${bloomBadgeMarkup(h.reached, h.id)}</div>
+        <div class="pr-badge-text">
+          <div class="lbl">${escapeHtml(h.label)}</div>
+          <div class="sub earned-date">${h.reached}-day streak</div>
+        </div>
+      </div>
+    `));
   });
-  panel.appendChild(row);
+  panel.appendChild(grid);
 }
 
 // Trends — open by default (per Veronika's call, this is one of the more
