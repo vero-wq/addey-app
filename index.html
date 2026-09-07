@@ -977,9 +977,9 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
    is gated: real content rendered underneath (so a Plus upgrade never
    looks like it "unlocks" fabricated data), blurred, with a centered
    message overlay. */
-.trends-locked-card { position: relative; overflow: hidden; padding: 0; }
-.trends-blur-content { filter: blur(7px); user-select: none; pointer-events: none; padding: 16px; }
-.trends-lock-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; background: rgba(255,255,255,0.62); }
+.trends-locked-card { position: relative; display: grid; overflow: hidden; padding: 0; }
+.trends-blur-content { grid-area: 1 / 1; filter: blur(7px); user-select: none; pointer-events: none; padding: 16px; }
+.trends-lock-overlay { grid-area: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; background: rgba(255,255,255,0.62); }
 html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.68); }
 .trends-lock-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; }
 .trends-lock-msg { font-size: 12.5px; line-height: 1.5; color: var(--text); max-width: 320px; }
