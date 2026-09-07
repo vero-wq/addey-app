@@ -21,7 +21,13 @@ const BUILTIN_SHEET_META = {
 // Anyone who already has it (existing accounts, including Veronika's own)
 // keeps it untouched, since this only controls what gets seeded for a
 // brand-new account; nothing here ever removes an existing sheet.
-const BUILTIN_SHEET_ORDER = ["budget", "investments", "bible", "sleep", "wellness"];
+// Budget and Investments dropped from scope entirely (Veronika's call,
+// 2026-09) — no longer seeded for new accounts. Existing accounts get
+// them removed by the one-time migration further down (see
+// scopeCutBudgetInvestmentsWardrobeV1Applied), since neither ever had a
+// reachable "Remove" control of its own (both sit outside the Apps
+// model, so they never appeared in My Apps to begin with).
+const BUILTIN_SHEET_ORDER = ["bible", "sleep", "wellness"];
 
 const SHEET_GALLERY = [
   {
@@ -88,18 +94,14 @@ const SHEET_GALLERY = [
     starterItems: [],
     type: "practice",
   },
-  // Kept last, deliberately: a genuinely useful utility, but the one
-  // gallery space with no habit pillar behind it — same category as the
-  // built-in Lists space. Not being removed for anyone already using it,
-  // just no longer featured as a core habit-wellness offering.
-  {
-    key: "wardrobe",
-    label: "Wardrobe",
-    icon: `<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"></path>`,
-    desc: "Checklist for what's in rotation this season, by category — a general wardrobe utility, not a habit pillar.",
-    starterItems: ["Tops", "Bottoms", "Outerwear", "Shoes", "Accessories"],
-    type: "tool",
-  },
+  // Wardrobe dropped from scope entirely (Veronika's call, 2026-09) — no
+  // longer offered in the Marketplace gallery. Removed from the template
+  // list below; any existing instance is wiped by the one-time migration
+  // further down (see scopeCutBudgetInvestmentsWardrobeV1Applied). Its
+  // dedicated rendering/schema-migration functions (isWardrobe branches,
+  // wardrobeSchemaV, etc.) are left in place as inert dead code rather
+  // than torn out, since nothing references a "wardrobe" sheet once none
+  // can exist anymore.
 ];
 
 // Extra trackers — a different family from practices entirely: they
@@ -2289,7 +2291,7 @@ function renderSettings() {
   if (!list.children.length) list.appendChild(el(`<div class="row-empty">Add an app from the Marketplace to get started</div>`));
 
   minePanel.appendChild(
-    el(`<div class="settings-note">Wellness isn't an app you add or hide — it's built into Home now, not a separate page.</div>`)
+    el(`<div class="settings-note">Daily reflection and your history live on Home now — nothing to add or hide separately here.</div>`)
   );
 
   panel.appendChild(minePanel);
@@ -13721,6 +13723,35 @@ async function boot() {
     state.homeAbsorbsWellnessHideV1Applied = true;
   }
   state.homeAbsorbsWellnessV1Applied = true;
+  // One-time: Budget, Investments, and Wardrobe dropped from scope
+  // entirely (Veronika's call, 2026-09). Budget and Investments never had
+  // a reachable "Remove" control (both sit outside the Apps model, per
+  // appTypeForSheet, so they never appeared in My Apps), and Wardrobe's
+  // gallery template is gone too — so this is done here, once, rather
+  // than waiting on a UI action that doesn't exist for the first two.
+  // Mirrors what removeBuiltinSheet/removeCustomSheet already do to
+  // state directly, without their UI-refresh side effects (rebuildNav,
+  // renderSettings, DOM lookups) that don't make sense to run this early
+  // in boot.
+  if (!state.scopeCutBudgetInvestmentsWardrobeV1Applied) {
+    state.deletedBuiltinSheets ||= [];
+    ["budget", "investments"].forEach((id) => {
+      if (!state.deletedBuiltinSheets.includes(id)) state.deletedBuiltinSheets.push(id);
+      state.sheets = (state.sheets || []).filter((s) => s.id !== id);
+    });
+    state.budget = [];
+    state.goals = [];
+    state.investmentAccounts = [];
+
+    state.customSheets ||= {};
+    const wardrobeSheet = (state.sheets || []).find((s) => state.customSheets[s.id]?.templateKey === "wardrobe");
+    if (wardrobeSheet) {
+      state.sheets = state.sheets.filter((s) => s.id !== wardrobeSheet.id);
+      delete state.customSheets[wardrobeSheet.id];
+    }
+
+    state.scopeCutBudgetInvestmentsWardrobeV1Applied = true;
+  }
   state.customSheets ||= {};
   // One-time: shortened three gallery template labels ("Connections Log",
   // "Quran Reading Plan", "Capsule Wardrobe") so they stay well clear of
