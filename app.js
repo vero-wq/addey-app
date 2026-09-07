@@ -11936,7 +11936,7 @@ function renderCycleHistorySection(box, onDone) {
     if (entry.kind === "period") {
       const row = el(`
         <div class="cyc-hist-row" role="button" tabindex="0">
-          <div class="cyc-hist-dates">&#x1FA78; Period started ${escapeHtml(activityDateShort(entry.date))}</div>
+          <div class="cyc-hist-dates"><span class="cyc-hist-dot"></span> Period started ${escapeHtml(activityDateShort(entry.date))}</div>
           <div class="cyc-hist-len">${entry.lenLabel || "&mdash;"}</div>
         </div>
       `);
