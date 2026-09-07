@@ -1831,8 +1831,15 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
    familiar kind of card rather than a new kind of interruption. */
 .cyc-nudge-card { background: #FBF0EA; border: 1px solid #EAD3C4; border-radius: 12px; padding: 11px 12px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
 .cyc-nudge-icon { font-size: 16px; flex-shrink: 0; }
+/* A plain soft dot, not a drop — per Veronika's 2026-09 call, the
+   original blood-drop emoji read as too literal/explicit for a passive
+   Home nudge. Same gentle-halo pattern as .cycle-tracker-icon elsewhere,
+   just a dot instead of the drop glyph, so it reads as "a Cycle thing"
+   without the visual literalism. */
+.cyc-nudge-dot { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #F7E3E8; }
+.cyc-nudge-dot::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #D98CA0; }
 .cyc-nudge-text { font-size: 11.5px; line-height: 1.4; flex: 1; }
-.cyc-nudge-text strong { color: #8A3D2B; }
+.cyc-nudge-text strong { color: #9C5A6B; }
 .cyc-nudge-btn { flex-shrink: 0; font-size: 10.5px; font-weight: 700; color: var(--accent-dark); background: var(--surface); border: 1px solid var(--border); border-radius: 100px; padding: 6px 11px; font-family: inherit; cursor: pointer; }
 .cyc-nudge-row { display: flex; gap: 6px; flex-shrink: 0; }
 .cyc-nudge-btn.ghost { background: none; color: var(--muted); }
