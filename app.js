@@ -9348,48 +9348,55 @@ const PILLAR_TREND_COLOR = {
   learning: "#5F8F5B",
 };
 
-// One plain-language sentence about whichever pillar is doing best right
+// One plain-language sentence about whichever Practice is doing best right
 // now, instead of leading the section with raw grids. "Best" weighs both
-// how many days were active AND the current streak, so a pillar with a
+// how many days were active AND the current streak, so a Practice with a
 // long streak going right now can win out over one with slightly more
-// total days but no momentum.
-function computeStrongestPillarTrend(today) {
+// total days but no momentum. Rebuilt off real Practices (2026-09) — this
+// used to read the retired six-pillar model (WELLNESS_YESNO_FIELDS), which
+// is why it could say something like "Spiritual is your strongest habit"
+// long after pillars were gone from the rest of the app.
+function computeStrongestPracticeTrend(today) {
   let best = null;
-  WELLNESS_YESNO_FIELDS.forEach(([key, label]) => {
-    const trend = pillarTrendBreakdown(key, today);
-    const streak = pillarCurrentStreak(key, today);
-    const score = trend.activeCount + streak * 0.5;
-    if (!best || score > best.score) best = { key, label, score, activeCount: trend.activeCount, totalDays: trend.totalDays, streak };
+  const labels = appLabelLookup();
+  currentPracticeAppIds().forEach((appId) => {
+    let activeCount = 0;
+    for (let i = 0; i < TREND_WINDOW_DAYS; i++) {
+      if (isAppLoggedToday(appId, addDays(today, -i))) activeCount++;
+    }
+    const streak = appCurrentStreak(appId, today);
+    const score = activeCount + streak * 0.5;
+    if (!best || score > best.score) {
+      best = { appId, label: labels[appId] || appId, score, activeCount, totalDays: TREND_WINDOW_DAYS, streak };
+    }
   });
   return best;
 }
 
 function renderTrendInsightBanner(panel, today) {
-  const best = computeStrongestPillarTrend(today);
+  const best = computeStrongestPracticeTrend(today);
   if (!best || !best.activeCount) return; // nothing logged yet — nothing to say
   const streakClause = best.streak >= 2 ? `, including a ${best.streak}-day streak right now` : "";
   panel.appendChild(el(`
     <div class="trend-insight-banner">
       <div class="trend-insight-icon">🔥</div>
-      <div class="trend-insight-text"><strong>${escapeHtml(best.label)}</strong> is your strongest habit &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.</div>
+      <div class="trend-insight-text"><strong>${escapeHtml(best.label)}</strong> is your strongest Practice &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.</div>
     </div>
   `));
 }
 
-// One line instead of five rows of squares: for each of the last
-// TREND_WINDOW_DAYS days, how many of the 5 pillars were a "Yes" that
-// day. A smooth SVG line + soft fill under it, matching the app's other
-// hand-drawn (non-library) charts.
+// One line instead of a row of squares per Practice: for each of the last
+// TREND_WINDOW_DAYS days, how many of your current Practices were logged
+// that day. A smooth SVG line + soft fill under it, matching the app's
+// other hand-drawn (non-library) charts. Rebuilt off real Practices
+// (2026-09) — see computeStrongestPracticeTrend above for why.
 function renderPulseChart(panel, today) {
   const dates = [];
   for (let i = TREND_WINDOW_DAYS - 1; i >= 0; i--) dates.push(addDays(today, -i));
-  const totals = dates.map((d) => {
-    const entry = state.wellness.find((w) => w.logDate === d);
-    if (!entry) return 0;
-    return WELLNESS_YESNO_FIELDS.reduce((n, [key]) => n + (entry[key] === "Yes" ? 1 : 0), 0);
-  });
+  const practiceIds = currentPracticeAppIds();
+  const totals = dates.map((d) => practiceIds.reduce((n, appId) => n + (isAppLoggedToday(appId, d) ? 1 : 0), 0));
 
-  const W = 320, H = 100, PAD = 6, maxY = WELLNESS_YESNO_FIELDS.length;
+  const W = 320, H = 100, PAD = 6, maxY = Math.max(practiceIds.length, 1);
   const n = totals.length;
   const stepX = n > 1 ? (W - PAD * 2) / (n - 1) : 0;
   const pts = totals.map((t, i) => [PAD + i * stepX, H - PAD - (t / maxY) * (H - PAD * 2 - 12)]);
