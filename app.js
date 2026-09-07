@@ -866,6 +866,7 @@ function activateTab(tab) {
   if (tab === "home") renderHome();
   if (tab === "sobriety") renderSobrietyPanel();
   if (tab === "cycle") renderCyclePanel();
+  if (tab === "trends") renderTrends();
   state.activeTab = tab;
   scheduleSave();
   // Auto-growing textareas measure scrollHeight, which is 0 while their
@@ -1258,7 +1259,7 @@ function initTabs() {
   const validTabs = state.sheets
     .filter((s) => s.visible)
     .map((s) => s.id)
-    .concat(["settings", "appearance", "home"]);
+    .concat(["settings", "appearance", "home", "trends"]);
   if (state.extraTrackers?.sobriety) validTabs.push("sobriety");
   if (state.extraTrackers?.cycle) validTabs.push("cycle");
   let target = state.activeTab || "home";
@@ -1364,6 +1365,10 @@ function openAccountSheet() {
           ${iconSvg('<path d="M5 8l1.5-4h11L19 8"></path><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8z"></path><path d="M9 12a3 3 0 0 0 6 0"></path>')}
           <span>Marketplace</span>
         </button>
+        <button type="button" class="you-list-row" id="you-trends-row">
+          ${iconSvg('<path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M4 19h16"></path>')}
+          <span>Trends</span>
+        </button>
 
         <div class="you-list-group-title">Preferences</div>
         <button type="button" class="you-list-row" id="you-appearance-row">
@@ -1416,6 +1421,10 @@ function openAccountSheet() {
     close();
     settingsSubTab = "gallery";
     activateTab("settings");
+  });
+  overlay.querySelector("#you-trends-row").addEventListener("click", () => {
+    close();
+    activateTab("trends");
   });
   overlay.querySelector("#you-appearance-row").addEventListener("click", () => {
     close();
@@ -9613,6 +9622,344 @@ function renderCooccurrenceCard(panel, today) {
   });
 
   panel.appendChild(el(`<div class="trend-pattern-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
+}
+
+// ------------------------------------------------------------------
+// Trends screen (2026-09) — a dedicated, free/paid-gated screen for
+// deep-diving one practice's correlation patterns at a time, separate
+// from the always-on Home banner above (renderCooccurrenceCard, left
+// untouched). Free accounts pick one practice and lock to it for 30
+// days (profiles.trends_locked_practice_id / trends_lock_expires_at);
+// Plus accounts (profiles.plan !== "free") pick freely, no lock at
+// all. "Full pattern grid" surfaces every notable pairwise
+// relationship the same appCooccurrence/appNextDayCooccurrence
+// primitives already compute — just without the top-2 cap
+// computeNotableAppCooccurrences/computeNextDayAppPatterns impose for
+// the Home banner specifically.
+// ------------------------------------------------------------------
+const TRENDS_LOCK_DAYS = 30;
+
+let trendsUi = {
+  loaded: false,
+  loading: false,
+  profile: null, // { plan, trends_locked_practice_id, trends_lock_expires_at } | null
+  selectedAppId: null,
+};
+
+function trendsIsFreePlan(profile) {
+  return !profile || !profile.plan || profile.plan === "free";
+}
+
+function trendsLockActive(profile) {
+  if (!trendsIsFreePlan(profile)) return false;
+  if (!profile.trends_locked_practice_id || !profile.trends_lock_expires_at) return false;
+  return new Date(profile.trends_lock_expires_at).getTime() > Date.now();
+}
+
+function trendsDaysRemaining(expiresAt) {
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
+
+async function fetchTrendsProfile() {
+  const { data, error } = await sb
+    .from("profiles")
+    .select("plan, trends_locked_practice_id, trends_lock_expires_at")
+    .eq("id", currentUserId)
+    .single();
+  if (error) {
+    if (error.code === "PGRST116") return null; // no row yet — read as plain free/unlocked
+    throw error;
+  }
+  return data;
+}
+
+async function trendsSetLock(practiceId) {
+  const expiresAt = new Date(Date.now() + TRENDS_LOCK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await sb
+    .from("profiles")
+    .update({ trends_locked_practice_id: practiceId, trends_lock_expires_at: expiresAt })
+    .eq("id", currentUserId);
+  if (error) throw error;
+  return { trends_locked_practice_id: practiceId, trends_lock_expires_at: expiresAt };
+}
+
+async function trendsClearLock() {
+  const { error } = await sb
+    .from("profiles")
+    .update({ trends_locked_practice_id: null, trends_lock_expires_at: null })
+    .eq("id", currentUserId);
+  if (error) throw error;
+}
+
+// Every notable same-day pattern involving this one practice, either
+// direction collapsed to its stronger side (same rule as
+// computeNotableAppCooccurrences), no top-2 cap.
+function trendsSameDayPairsFor(appId, today) {
+  const others = currentPracticeAppIds().filter((id) => id !== appId);
+  const results = [];
+  others.forEach((other) => {
+    const forward = appCooccurrence(appId, other, today);
+    const backward = appCooccurrence(other, appId, today);
+    const strongest = [forward, backward].filter(Boolean).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff))[0];
+    if (strongest && Math.abs(strongest.diff) >= COOCCUR_MIN_DIFF) results.push(strongest);
+  });
+  return results.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+}
+
+// Next-day patterns are directional (see appNextDayCooccurrence), so
+// both directions are kept as genuinely different patterns, same as
+// computeNextDayAppPatterns — just uncapped.
+function trendsNextDayPairsFor(appId, today) {
+  const others = currentPracticeAppIds().filter((id) => id !== appId);
+  const results = [];
+  others.forEach((other) => {
+    const forward = appNextDayCooccurrence(appId, other, today);
+    const backward = appNextDayCooccurrence(other, appId, today);
+    if (forward && Math.abs(forward.diff) >= COOCCUR_MIN_DIFF) results.push(forward);
+    if (backward && Math.abs(backward.diff) >= COOCCUR_MIN_DIFF) results.push(backward);
+  });
+  return results.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+}
+
+// Uncapped siblings of computeNotableAppCooccurrences/
+// computeNextDayAppPatterns for the "Full pattern grid" — identical
+// primitives and thresholds, every current-practice pair rather than
+// just the strongest two picked for the Home banner.
+function computeAllNotableAppCooccurrences(today) {
+  const ids = currentPracticeAppIds();
+  const results = [];
+  ids.forEach((a) => {
+    ids.forEach((b) => {
+      if (a === b) return;
+      const r = appCooccurrence(a, b, today);
+      if (r && Math.abs(r.diff) >= COOCCUR_MIN_DIFF) results.push(r);
+    });
+  });
+  const byPair = new Map();
+  results.forEach((r) => {
+    const pairKey = [r.appIdA, r.appIdB].sort().join("|");
+    const existing = byPair.get(pairKey);
+    if (!existing || Math.abs(r.diff) > Math.abs(existing.diff)) byPair.set(pairKey, r);
+  });
+  return [...byPair.values()].sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+}
+
+function computeAllNextDayAppPatterns(today) {
+  const ids = currentPracticeAppIds();
+  const results = [];
+  ids.forEach((a) => {
+    ids.forEach((b) => {
+      if (a === b) return;
+      const r = appNextDayCooccurrence(a, b, today);
+      if (r && Math.abs(r.diff) >= COOCCUR_MIN_DIFF) results.push(r);
+    });
+  });
+  return results.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+}
+
+function trendsLockIconSvg() {
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>`;
+}
+
+function trendsPatternBannerHtml(r, labels, kind) {
+  const labelFor = (id) => labels[id] || id;
+  const icon = kind === "same" ? "🔗" : "&rarr;";
+  const lead = kind === "same" ? "On days you log" : "The day after you log";
+  return `
+    <div class="trend-insight-banner">
+      <div class="trend-insight-icon">${icon}</div>
+      <div class="trend-insight-text">
+        ${lead} <b>${escapeHtml(labelFor(r.appIdA))}</b>, you ${kind === "same" ? "also log" : "log"} <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
+      </div>
+    </div>`;
+}
+
+// Real per-practice detail markup — used both for the actually-selected
+// practice AND (blurred, underneath a locked overlay) for a practice the
+// free tier can't view yet. Keeping it the same real content either way
+// means a Plus upgrade never "reveals" data that wasn't genuine to begin
+// with — it's just already-real numbers, no longer blurred.
+function trendsPracticeDetailHtml(appId, today) {
+  const labels = appLabelLookup();
+  const streak = appCurrentStreak(appId, today);
+  const sameDay = trendsSameDayPairsFor(appId, today);
+  const nextDay = trendsNextDayPairsFor(appId, today);
+  let html = `<div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">day streak</span></div>`;
+  if (!sameDay.length && !nextDay.length) {
+    html += `<div class="trends-empty" style="margin-top:12px;">Not enough data yet for ${escapeHtml(labels[appId] || appId)} &mdash; keep logging and patterns will show up here.</div>`;
+  } else {
+    html += `<div style="margin-top:12px;">`;
+    sameDay.forEach((r) => (html += trendsPatternBannerHtml(r, labels, "same")));
+    nextDay.forEach((r) => (html += trendsPatternBannerHtml(r, labels, "next")));
+    html += `</div>`;
+  }
+  return html;
+}
+
+function trendsFullGridHtml(today) {
+  const labels = appLabelLookup();
+  const sameDay = computeAllNotableAppCooccurrences(today);
+  const nextDay = computeAllNextDayAppPatterns(today);
+  if (!sameDay.length && !nextDay.length) {
+    return `<div class="trends-empty">Not enough data yet across your practices &mdash; check back once you've logged a bit more.</div>`;
+  }
+  let html = "";
+  sameDay.forEach((r) => {
+    html += `<div class="trends-grid-item">On days you log <b>${escapeHtml(labels[r.appIdA] || r.appIdA)}</b>, you also log <b>${escapeHtml(labels[r.appIdB] || r.appIdB)}</b> ${Math.round(r.rateWith * 100)}% of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>`;
+  });
+  nextDay.forEach((r) => {
+    html += `<div class="trends-grid-item">The day after you log <b>${escapeHtml(labels[r.appIdA] || r.appIdA)}</b>, you log <b>${escapeHtml(labels[r.appIdB] || r.appIdB)}</b> ${Math.round(r.rateWith * 100)}% of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>`;
+  });
+  return html;
+}
+
+function trendsSelectPractice(appId) {
+  const profile = trendsUi.profile;
+  if (trendsIsFreePlan(profile) && trendsLockActive(profile) && profile.trends_locked_practice_id !== appId) {
+    // Just preview the locked-out practice's (blurred) card — nothing
+    // written, nothing persisted.
+    trendsUi.selectedAppId = appId;
+    renderTrends();
+    return;
+  }
+  if (trendsIsFreePlan(profile) && !trendsLockActive(profile)) {
+    trendsUi.selectedAppId = appId;
+    renderTrends(); // optimistic — show the pick immediately while the lock write goes out
+    trendsSetLock(appId)
+      .then((patch) => {
+        trendsUi.profile = { plan: trendsUi.profile?.plan || "free", ...trendsUi.profile, ...patch };
+        renderTrends();
+      })
+      .catch((err) => console.error("Trends lock write failed", err));
+    return;
+  }
+  trendsUi.selectedAppId = appId;
+  renderTrends();
+}
+
+function renderTrends() {
+  const panel = document.getElementById("panel-trends");
+  if (!panel) return;
+  panel.innerHTML = "";
+  panel.appendChild(el(`<h2 class="section-title serif">Trends</h2>`));
+
+  const today = todayISO();
+  const ids = currentPracticeAppIds();
+  if (!ids.length) {
+    panel.appendChild(el(`<div class="card">Add a Practice from the Marketplace to start seeing Trends here.</div>`));
+    return;
+  }
+
+  // Profile (plan + lock state) is fetched once per session and cached in
+  // trendsUi — re-fetching on every render would mean a network round
+  // trip every time this tab is revisited.
+  if (!trendsUi.loaded && !trendsUi.loading) {
+    trendsUi.loading = true;
+    panel.appendChild(el(`<div class="card trends-empty">Loading your Trends&hellip;</div>`));
+    fetchTrendsProfile()
+      .then((profile) => {
+        trendsUi.profile = profile;
+      })
+      .catch((err) => {
+        console.error("Trends profile load failed", err);
+        trendsUi.profile = null; // fall back to free-tier behavior rather than blocking the screen forever
+      })
+      .finally(() => {
+        trendsUi.loaded = true;
+        trendsUi.loading = false;
+        if (state.activeTab === "trends") renderTrends();
+      });
+    return;
+  }
+  if (trendsUi.loading) {
+    panel.appendChild(el(`<div class="card trends-empty">Loading your Trends&hellip;</div>`));
+    return;
+  }
+
+  const profile = trendsUi.profile;
+
+  // A lock pointing at a practice no longer in the Gallery is treated as
+  // expired immediately — clear it, client and server side, so a fresh
+  // pick is available right away instead of a phantom lock nothing can
+  // ever satisfy.
+  if (profile && profile.trends_locked_practice_id && !ids.includes(profile.trends_locked_practice_id)) {
+    profile.trends_locked_practice_id = null;
+    profile.trends_lock_expires_at = null;
+    trendsClearLock().catch((err) => console.error("Trends lock clear failed", err));
+  }
+
+  if (!trendsUi.selectedAppId || !ids.includes(trendsUi.selectedAppId)) {
+    trendsUi.selectedAppId = trendsLockActive(profile) ? profile.trends_locked_practice_id : ids[0];
+  }
+
+  const labels = appLabelLookup();
+  const locked = trendsLockActive(profile);
+
+  if (trendsIsFreePlan(profile)) {
+    const days = locked ? trendsDaysRemaining(profile.trends_lock_expires_at) : 0;
+    panel.appendChild(el(`
+      <div class="trends-sub">${
+        locked
+          ? `Locked to <b>${escapeHtml(labels[profile.trends_locked_practice_id] || profile.trends_locked_practice_id)}</b> for ${days} more day${days === 1 ? "" : "s"}.`
+          : `Pick a practice to see its full Trends detail &mdash; Free accounts lock to one practice at a time for ${TRENDS_LOCK_DAYS} days.`
+      }</div>
+    `));
+  } else {
+    panel.appendChild(el(`<div class="trends-sub">Pick any practice to see its full Trends detail &mdash; Plus accounts can switch anytime.</div>`));
+  }
+
+  const pickerRow = el(`<div class="trends-picker-row"></div>`);
+  currentAppEntries()
+    .filter((e) => e.type === "practice")
+    .forEach((entry) => {
+      const streak = appCurrentStreak(entry.id, today);
+      const isLockedOutTarget = trendsIsFreePlan(profile) && locked && profile.trends_locked_practice_id !== entry.id;
+      const chip = el(`
+        <button type="button" class="trends-picker-chip${entry.id === trendsUi.selectedAppId ? " active" : ""}${isLockedOutTarget ? " locked-target" : ""}">
+          <span class="em">${iconSvg(entry.icon || '<circle cx="12" cy="12" r="9"></circle>')}</span>
+          <span>${escapeHtml(entry.label)}</span>
+          <span class="streak">${streak}d</span>
+          ${isLockedOutTarget ? `<span class="lock-dot">${trendsLockIconSvg()}</span>` : ""}
+        </button>
+      `);
+      chip.addEventListener("click", () => trendsSelectPractice(entry.id));
+      pickerRow.appendChild(chip);
+    });
+  panel.appendChild(pickerRow);
+
+  const selectedId = trendsUi.selectedAppId;
+  const isLockedOut = trendsIsFreePlan(profile) && locked && profile.trends_locked_practice_id !== selectedId;
+  if (isLockedOut) {
+    const lockedLabel = labels[profile.trends_locked_practice_id] || profile.trends_locked_practice_id;
+    const days = trendsDaysRemaining(profile.trends_lock_expires_at);
+    panel.appendChild(el(`
+      <div class="card trends-locked-card">
+        <div class="trends-blur-content">${trendsPracticeDetailHtml(selectedId, today)}</div>
+        <div class="trends-lock-overlay">
+          <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
+          <div class="trends-lock-msg">Locked to <b>${escapeHtml(lockedLabel)}</b> for ${days} more day${days === 1 ? "" : "s"} &mdash; delete ${escapeHtml(lockedLabel)} from your Gallery to switch sooner, or wait it out.</div>
+        </div>
+      </div>
+    `));
+  } else {
+    panel.appendChild(el(`<div class="card">${trendsPracticeDetailHtml(selectedId, today)}</div>`));
+  }
+
+  panel.appendChild(el(`<div class="subsection-title">Full pattern grid</div>`));
+  if (trendsIsFreePlan(profile)) {
+    panel.appendChild(el(`
+      <div class="card trends-locked-card">
+        <div class="trends-blur-content">${trendsFullGridHtml(today)}</div>
+        <div class="trends-lock-overlay">
+          <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
+          <div class="trends-lock-msg">Upgrade to Plus to see every pattern across all your practices at once, instead of one locked practice at a time.</div>
+        </div>
+      </div>
+    `));
+  } else {
+    panel.appendChild(el(`<div class="card">${trendsFullGridHtml(today)}</div>`));
+  }
 }
 
 // Shared editor for a single day's wellness log, whether that's a day with
