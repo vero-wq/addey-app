@@ -12130,7 +12130,7 @@ function renderCycleNudges(today, onDone) {
         : `Your period was predicted <strong>${Math.abs(info.daysToNext)} day${Math.abs(info.daysToNext) === 1 ? "" : "s"} ago</strong>.`;
     const card = el(`
       <div class="cyc-nudge-card">
-        <span class="cyc-nudge-icon">🩸</span>
+        <span class="cyc-nudge-icon cyc-nudge-dot"></span>
         <span class="cyc-nudge-text">${text}</span>
         <button type="button" class="cyc-nudge-btn">Log it</button>
       </div>
@@ -12144,7 +12144,7 @@ function renderCycleNudges(today, onDone) {
     const over = info.day - info.avgPeriodLen;
     const card = el(`
       <div class="cyc-nudge-card">
-        <span class="cyc-nudge-icon">🩸</span>
+        <span class="cyc-nudge-icon cyc-nudge-dot"></span>
         <span class="cyc-nudge-text">Still on your period? Day <strong>${info.day}</strong> is ${over} day${over === 1 ? "" : "s"} longer than your usual ${info.avgPeriodLen}.</span>
         <div class="cyc-nudge-row">
           <button type="button" class="cyc-nudge-btn still-going">Still going</button>
