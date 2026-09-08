@@ -1833,7 +1833,7 @@ function createSheetFromTemplateUnchecked(tpl) {
     ...(isBooks ? { booksSchemaV: 1, openCategories: {}, activeStatus: "toread" } : {}),
     ...(isWorkout ? seedWorkoutSheetData() : {}),
     ...(isSocial ? { socialSchemaV: 2, people: [] } : {}),
-    ...(isActivity ? { activitySchemaV: 1, customTypes: [], weeklyGoalMinutes: ACTIVITY_WEEKLY_GOAL_DEFAULT } : {}),
+    ...(isActivity ? { activitySchemaV: 1, customTypes: [] } : {}),
     ...(isMealLog ? { mealLogSchemaV: 1 } : {}),
     ...(isPrayer ? { prayerSchemaV: 1, milestonesEarned: {} } : {}),
     ...(isBreathe ? { breatheSchemaV: 1, milestonesEarned: {}, soundVoice: "pad" } : {}),
@@ -3026,8 +3026,9 @@ function renderQuranPace(panel, sheet, doneCount, total) {
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
   const finishLabel = remaining <= 0 ? "Finished!" : projectedEnd ? fmt(projectedEnd) : "—";
 
-  // Mirrors the Bible sheet's ring treatment exactly — same reasoning:
-  // one shared visual language for "percent of something done."
+  // Ring only (2026-09 practice-header consistency pass) — mirrors the
+  // Bible sheet's fix exactly: drop the duplicate bar that repeated the
+  // same percentage the ring already shows.
   const card = el(`
     <div class="card bible-pace-card">
       <div class="bible-ring-row">
@@ -3035,9 +3036,6 @@ function renderQuranPace(panel, sheet, doneCount, total) {
           <div class="bible-ring-inner"><div class="bible-ring-pct">${pct}%</div></div>
         </div>
         <div class="bible-ring-caption"><strong>${doneCount} of ${total}</strong> readings done<br/>Projected finish: <strong>${finishLabel}</strong></div>
-      </div>
-      <div class="bible-pace-track" title="${doneCount} of ${total} readings (${pct}%)">
-        <div class="bible-pace-track-fill" style="width:${pct}%;"></div>
       </div>
       <div class="bible-pace-mini-row">
         <label class="muted">Start date</label>
@@ -3130,6 +3128,11 @@ function renderBookSheet(id) {
 
   // ---- Streak, at the top like the other practices ----
   panel.appendChild(buildStreakCard(computeReadingStreak(todayStr), "day reading streak"));
+  // 2026-09 practice-header consistency pass: Books is an open-ended
+  // reading habit with no fixed total to finish (the shelf itself grows
+  // as books get added), so it gets the same 7-day consistency strip as
+  // Workout/Activity/Journal instead of a percent-of-shelf indicator.
+  panel.appendChild(buildWeekStripCard(id, "read", todayStr));
 
   // Learning pillar check-in — a real log entry (which book, which
   // chapter), not just a same-day marker. Separate from any single
@@ -3765,7 +3768,6 @@ const ACTIVITY_CORE_TYPES = [
   { key: "climbing", label: "Climbing", icon: "🧗" },
 ];
 const ACTIVITY_ADD_ICON_SUGGESTIONS = ["🏈", "🏒", "⚽", "🎾", "🏓", "⛹️", "🤾", "🚣"];
-const ACTIVITY_WEEKLY_GOAL_DEFAULT = 150;
 // The grid only ever shows this many tiles, plus "Add new" as the
 // eighth — otherwise it would grow forever as custom types pile up.
 // Which seven make the cut is driven by actual use (see
@@ -3845,21 +3847,6 @@ function computeActivityStreak(sheet, today) {
   return current;
 }
 
-// Minutes logged in the rolling 7-day window ending today (not a
-// calendar week) — matches how the rest of the app measures windows
-// (deposit cycles, the sleep trend) as "last N days" rather than
-// resetting on a fixed weekday.
-function computeActivityWeeklyMinutes(sheet, today) {
-  let total = 0;
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(today, -i);
-    sheet.items.forEach((entry) => {
-      if (entry.date === d) total += entry.durationMin || 0;
-    });
-  }
-  return total;
-}
-
 // The mix pulls from every space actually mapped to Movement, not just
 // this one — so a week of strength training shows up here too, instead
 // of the chart implying nothing happened when Workout Log tells a
@@ -3919,6 +3906,38 @@ function buildStreakCard(streak, label, extraHtml) {
         </div>
       </div>
       ${extraHtml || ""}
+    </div>
+  `);
+}
+
+// Standardized weekly-consistency indicator (2026-09) for every open-ended
+// Practice that has no fixed total to finish — Workout, Activity, Daily
+// Journal, Books. These used to each show their own take on "percent of
+// something" (a ring, a bar, or nothing), which either duplicated the
+// streak card above it or collapsed the week into one number that hides
+// *which* days actually landed. Seven dots show that directly, the way
+// Bible/Quran's ring (a genuinely different question — how far into a
+// fixed, permanent total, not how consistent this week was) doesn't need
+// to. Reuses isAppLoggedToday so it's automatically correct for whatever
+// that Practice's own "was this actually logged" rule already is.
+function buildWeekStripCard(appId, verb, today) {
+  const dayLetters = ["S", "M", "T", "W", "T", "F", "S"];
+  let loggedCount = 0;
+  const dots = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = addDays(today, -i);
+    const dow = new Date(d + "T00:00:00Z").getUTCDay();
+    const logged = isAppLoggedToday(appId, d);
+    if (logged) loggedCount++;
+    const isToday = d === today;
+    dots.push(`<div class="week-dot${logged ? " logged" : ""}${isToday ? " today" : ""}">${dayLetters[dow]}</div>`);
+  }
+  return el(`
+    <div class="card">
+      <div class="week-block">
+        <div class="week-dots">${dots.join("")}</div>
+        <div class="week-caption"><strong>${loggedCount} of 7</strong> days ${escapeHtml(verb)} this week</div>
+      </div>
     </div>
   `);
 }
@@ -4019,7 +4038,6 @@ function renderActivitySheet(id) {
   if (!panel || !sheet) return;
   sheet.items ||= [];
   sheet.customTypes ||= [];
-  sheet.weeklyGoalMinutes ||= ACTIVITY_WEEKLY_GOAL_DEFAULT;
   sheet.milestonesEarned ||= {};
   const ui = activityUiState(id);
   const today = todayISO();
@@ -4027,36 +4045,18 @@ function renderActivitySheet(id) {
 
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
-  // ---- Summary: weekly minutes + streak ----
-  const weeklyMinutes = computeActivityWeeklyMinutes(sheet, today);
-  const goal = sheet.weeklyGoalMinutes;
-  const barPct = goal ? Math.min(100, Math.round((weeklyMinutes / goal) * 100)) : 0;
   // 2026-09 apps rearchitecture: Activity Log is its own Practice now,
   // with its own independent streak from its own logged days — it no
   // longer shares a combined "movement" streak with Workout Log.
   const streak = appCurrentStreak(id, today);
-  // Streak leads, standardized with every other Practice (buildStreakCard);
-  // the weekly-minutes bar is secondary info underneath it now, not above —
-  // it used to sit above the streak in its own separate summary row, which
-  // is exactly the inconsistency Veronika flagged across Practices.
-  const weeklyBarHtml = `
-    <div class="al-summary-row" style="margin-top:14px;">
-      <span class="al-summary-label">Active minutes this week</span>
-      <span class="al-summary-count">${weeklyMinutes} of <span class="al-goal-edit" title="Tap to change your weekly goal">${goal}</span></span>
-    </div>
-    <div class="al-bar"><div class="al-bar-fill" style="width:${barPct}%;"></div></div>
-  `;
-  const summaryCard = buildStreakCard(streak, "day movement streak", weeklyBarHtml);
-  summaryCard.querySelector(".al-goal-edit").addEventListener("click", () => {
-    const next = window.prompt("Weekly active-minutes goal:", String(goal));
-    if (next == null) return;
-    const n = parseInt(next, 10);
-    if (!Number.isFinite(n) || n <= 0) return;
-    sheet.weeklyGoalMinutes = n;
-    scheduleSave();
-    renderActivitySheet(id);
-  });
-  panel.appendChild(summaryCard);
+  panel.appendChild(buildStreakCard(streak, "day movement streak"));
+  // 2026-09 practice-header consistency pass: replaces the old weekly-
+  // minutes-vs-goal bar (which also lost the weekly-minutes-goal concept
+  // entirely, per Veronika's call — nothing else in the app read that
+  // goal, so nothing else needed to change to drop it). Activity Log now
+  // tracks consistency the same way every other weekly Practice does —
+  // which days, not a separate minutes quota.
+  panel.appendChild(buildWeekStripCard(id, "active", today));
 
   // ---- Log an activity ----
   const logCard = el(`<div class="card"></div>`);
@@ -5104,6 +5104,9 @@ function renderJournalSheet(id) {
 
   const streak = appCurrentStreak(id, today);
   panel.appendChild(buildStreakCard(streak, "day journal streak"));
+  // 2026-09 practice-header consistency pass: Daily Journal is a weekly
+  // habit like Workout/Activity/Books, not a fixed total to finish.
+  panel.appendChild(buildWeekStripCard(id, "journaled", today));
 
   const existing = journalEntryFor(sheet, today);
   let selectedCategory = existing?.category || null;
@@ -6550,19 +6553,11 @@ function renderWorkoutSheet(sheetId) {
   const workoutToday = todayISO();
   panel.appendChild(buildStreakCard(appCurrentStreak(sheetId, workoutToday), "day streak"));
 
-  const workoutStatsHere = computeWorkoutProgressStats(sheet);
-  if (workoutStatsHere) {
-    panel.appendChild(
-      buildProgressCard(
-        "Workout Progress",
-        workoutStatsHere.weekPct,
-        `<strong>${workoutStatsHere.weekDone} of ${workoutStatsHere.weekTotal}</strong> days worked out this week<br/>${workoutStatsHere.weekLabel}`,
-        workoutStatsHere.tones,
-        "Last 14 training days",
-        null
-      )
-    );
-  }
+  // 2026-09 practice-header consistency pass: Workout Log is an
+  // open-ended weekly habit, not a fixed total to finish, so it gets the
+  // same 7-day consistency strip as Activity/Journal/Books instead of its
+  // own ring — see buildWeekStripCard.
+  panel.appendChild(buildWeekStripCard(sheetId, "worked out", workoutToday));
 
   if (!sheet.weeks.some((w) => w.id === sheet.activeWeekId)) {
     sheet.activeWeekId = sheet.weeks[sheet.weeks.length - 1]?.id;
@@ -8226,10 +8221,11 @@ function renderBiblePace(panel, doneCount, total) {
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
   const finishLabel = remaining <= 0 ? "Finished!" : projectedEnd ? fmt(projectedEnd) : "—";
 
-  // Ring replaces the old plain "73%" text, matching the same
-  // conic-gradient ring used on Wellness and Home — one visual language
-  // for "percent of something done" across the app, per Veronika's
-  // walkthrough approval (mockup: bible_and_pattern_mockups.html).
+  // Ring only (2026-09 practice-header consistency pass) — this used to
+  // also show a duplicate bar underneath repeating the same percentage.
+  // Bible is a fixed, permanent total (unlike the weekly-habit Practices,
+  // which get a 7-day consistency strip instead — see buildWeekStripCard),
+  // so the ring + projected-finish caption is the whole story on its own.
   const card = el(`
     <div class="card bible-pace-card">
       <div class="bible-ring-row">
@@ -8237,9 +8233,6 @@ function renderBiblePace(panel, doneCount, total) {
           <div class="bible-ring-inner"><div class="bible-ring-pct">${pct}%</div></div>
         </div>
         <div class="bible-ring-caption"><strong>${doneCount} of ${total}</strong> chapters read<br/>Projected finish: <strong>${finishLabel}</strong></div>
-      </div>
-      <div class="bible-pace-track" title="${doneCount} of ${total} chapters (${pct}%)">
-        <div class="bible-pace-track-fill" style="width:${pct}%;"></div>
       </div>
       <div class="bible-pace-mini-row">
         <label class="muted">Start date</label>
