@@ -1145,6 +1145,27 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .book-summary-chip { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .book-summary-chip .num { font-size: 19px; font-weight: 700; }
 .book-summary-chip .lbl { font-size: 11px; color: var(--muted); margin-top: 1px; }
+/* 2026-09 Books redesign: the Currently Reading shelf surfaces whatever's
+   actively being read at the top of the screen (before search), capped at
+   two slots, so continuing what you're already in the middle of is one tap
+   instead of a search through a long shelf. Class names match the
+   books_logging_audit.html design doc. */
+.cr-shelf { margin: 4px 0 16px; }
+.cr-shelf-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-dark); margin-bottom: 10px; }
+.cr-card { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface)); border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 13px; margin-bottom: 10px; }
+.cr-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cr-card-top-text { min-width: 0; cursor: pointer; }
+.cr-title { font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-author { font-size: 11px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-progress-track { position: relative; height: 6px; background: var(--border); border-radius: 3px; margin: 9px 0 6px; overflow: hidden; }
+.cr-progress-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent); border-radius: 3px; }
+.cr-progress-label { font-size: 10.5px; color: var(--muted); }
+.cr-stepper { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.cr-step-btn { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid var(--accent); background: var(--surface); color: var(--accent-dark); font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.cr-step-btn:disabled { opacity: 0.4; cursor: default; }
+.cr-empty-note { font-size: 12px; color: var(--muted); padding: 2px 0 4px; }
+.app-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--text); color: var(--bg); font-size: 12.5px; font-weight: 600; padding: 10px 16px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.2); z-index: 1200; opacity: 0; transition: opacity 0.25s ease; pointer-events: none; max-width: 86%; text-align: center; }
+.app-toast.show { opacity: 1; }
 .bk-rating-badge { font-size: 10.5px; color: var(--muted); text-align: right; line-height: 1.5; white-space: nowrap; }
 .bk-rating-badge .stars { font-size: 11px; }
 .book-search-wrap { position: relative; margin-bottom: 14px; }
