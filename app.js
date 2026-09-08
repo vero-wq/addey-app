@@ -3329,22 +3329,26 @@ function renderBookSheet(id) {
   // chapter), not just a same-day marker. Separate from any single
   // book's finished status, since the habit is reading today, not
   // finishing a book today.
+  //
+  // Once today is logged, this used to turn into a green "Logged today —
+  // <title>, ch. N · tap to update" confirmation banner — but the
+  // Currently Reading shelf right below already shows that same book with
+  // "Ch. N of Total · logged today" (see renderCurrentlyReadingShelf), and
+  // tapping its card opens this exact same modal. Per Veronika's call
+  // (2026-09), that made the banner pure duplication, so it's only shown
+  // before today is logged, as the CTA to start — nothing replaces it once
+  // logged, since the shelf card already is the "logged today" state.
   const todaysLog = (state.learningLog || []).find((e) => e.date === todayStr);
-  const todaysBook = todaysLog?.bookId ? sheet.items.find((b) => b.id === todaysLog.bookId) : null;
-  const learningRow = el(`
-    <button type="button" class="learning-checkin-row${todaysLog ? " done" : ""}">
-      <span class="learning-checkin-check${todaysLog ? " on" : ""}">${todaysLog ? checkSvg : ""}</span>
-      <span class="learning-checkin-label">
-        ${
-          todaysLog
-            ? `Logged today${todaysBook ? ` — ${escapeHtml(todaysBook.title)}${todaysLog.chapter ? `, ch. ${todaysLog.chapter}` : ""}` : ""} · tap to update`
-            : "Log today's reading"
-        }
-      </span>
-    </button>
-  `);
-  learningRow.addEventListener("click", () => openReadingLogModal(id));
-  panel.appendChild(learningRow);
+  if (!todaysLog) {
+    const learningRow = el(`
+      <button type="button" class="learning-checkin-row">
+        <span class="learning-checkin-check"></span>
+        <span class="learning-checkin-label">Log today's reading</span>
+      </button>
+    `);
+    learningRow.addEventListener("click", () => openReadingLogModal(id));
+    panel.appendChild(learningRow);
+  }
   if (!sheet.items.length) {
     panel.appendChild(el(`<div class="muted" style="padding:2px 0 12px; font-size:12px;">Add a book below, then log your reading against it.</div>`));
   }
