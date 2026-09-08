@@ -9321,10 +9321,14 @@ const PILLAR_TREND_COLOR = {
 // used to read the retired six-pillar model (WELLNESS_YESNO_FIELDS), which
 // is why it could say something like "Spiritual is your strongest habit"
 // long after pillars were gone from the rest of the app.
-function computeStrongestPracticeTrend(today) {
+// restrictAppId (free-tier Trends gating): when given, skips the
+// "best of all Practices" search and just reports on that one Practice,
+// whatever its numbers are — see renderHomeTrendsSection.
+function computeStrongestPracticeTrend(today, restrictAppId) {
   let best = null;
   const labels = appLabelLookup();
-  currentPracticeAppIds().forEach((appId) => {
+  const ids = restrictAppId ? [restrictAppId] : currentPracticeAppIds();
+  ids.forEach((appId) => {
     let activeCount = 0;
     for (let i = 0; i < TREND_WINDOW_DAYS; i++) {
       if (isAppLoggedToday(appId, addDays(today, -i))) activeCount++;
@@ -9338,14 +9342,17 @@ function computeStrongestPracticeTrend(today) {
   return best;
 }
 
-function renderTrendInsightBanner(panel, today) {
-  const best = computeStrongestPracticeTrend(today);
+function renderTrendInsightBanner(panel, today, restrictAppId) {
+  const best = computeStrongestPracticeTrend(today, restrictAppId);
   if (!best || !best.activeCount) return; // nothing logged yet — nothing to say
   const streakClause = best.streak >= 2 ? `, including a ${best.streak}-day streak right now` : "";
+  const headline = restrictAppId
+    ? `<strong>${escapeHtml(best.label)}</strong> &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.`
+    : `<strong>${escapeHtml(best.label)}</strong> is your strongest Practice &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.`;
   panel.appendChild(el(`
     <div class="trend-insight-banner">
       <div class="trend-insight-icon">🔥</div>
-      <div class="trend-insight-text"><strong>${escapeHtml(best.label)}</strong> is your strongest Practice &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.</div>
+      <div class="trend-insight-text">${headline}</div>
     </div>
   `));
 }
@@ -9355,10 +9362,13 @@ function renderTrendInsightBanner(panel, today) {
 // that day. A smooth SVG line + soft fill under it, matching the app's
 // other hand-drawn (non-library) charts. Rebuilt off real Practices
 // (2026-09) — see computeStrongestPracticeTrend above for why.
-function renderPulseChart(panel, today) {
+// restrictAppId (free-tier Trends gating): chart just that one Practice's
+// logged/not-logged history instead of the combined count across all of
+// them — see renderHomeTrendsSection.
+function renderPulseChart(panel, today, restrictAppId) {
   const dates = [];
   for (let i = TREND_WINDOW_DAYS - 1; i >= 0; i--) dates.push(addDays(today, -i));
-  const practiceIds = currentPracticeAppIds();
+  const practiceIds = restrictAppId ? [restrictAppId] : currentPracticeAppIds();
   const totals = dates.map((d) => practiceIds.reduce((n, appId) => n + (isAppLoggedToday(appId, d) ? 1 : 0), 0));
 
   const W = 320, H = 100, PAD = 6, maxY = Math.max(practiceIds.length, 1);
@@ -11517,10 +11527,20 @@ function renderHomeMilestonesStreaksSection(panel, today) {
 
 // Trends — every correlation/pattern insight in one place: the
 // strongest-practice line, the "days you showed up" chart, the cycle-phase
-// completion card, and the same-day/next-day pattern banners (formerly
-// their own floating section above this card) all live here now. Nothing
-// about individual-app achievements or streaks belongs in this card
-// anymore — see renderHomeMilestonesStreaksSection above.
+// completion card, and the same-day/next-day pattern banners all live here
+// now. Nothing about individual-app achievements or streaks belongs in
+// this card anymore — see renderHomeMilestonesStreaksSection above; those
+// stay fully free/ungated on every tier per the Free vs. Paid doc.
+//
+// Trends itself IS gated, per that same doc: Free sees this whole section
+// scoped to whichever one Practice they've locked in Trend Settings (the
+// strongest-practice line, the chart, and the cycle-phase card all
+// restricted to just that Practice); Plus sees it exactly as before,
+// spanning every Practice at once. Patterns are inherently cross-Practice
+// (a pattern is a relationship between two apps), so there's no
+// single-Practice version of them to show a free account — that part
+// shows a blurred tease + upgrade prompt instead, same treatment the
+// original "full pattern grid" mockup used.
 function renderHomeTrendsSection(panel, today) {
   const section = el(`
     <details class="card" open>
@@ -11528,12 +11548,81 @@ function renderHomeTrendsSection(panel, today) {
     </details>
   `);
   panel.appendChild(section);
-  // The "strongest habit" line lives inside Trends now — it's describing
-  // this section's own data, so it reads as this section's own data.
-  renderTrendInsightBanner(section, today);
-  renderPulseChart(section, today);
-  renderCyclePhaseCompletionCard(section, today);
-  renderCooccurrenceCard(section, today);
+
+  if (!trendsUi.loaded && !trendsUi.loading) {
+    trendsUi.loading = true;
+    section.appendChild(el(`<div class="trends-empty">Loading your Trends&hellip;</div>`));
+    fetchTrendsProfile()
+      .then((profile) => {
+        trendsUi.profile = profile;
+      })
+      .catch((err) => {
+        console.error("Trends profile load failed", err);
+        trendsUi.profile = null; // fall back to free-tier behavior rather than blocking Home forever
+      })
+      .finally(() => {
+        trendsUi.loaded = true;
+        trendsUi.loading = false;
+        if (state.activeTab === "home") renderHome();
+      });
+    return;
+  }
+  if (trendsUi.loading) {
+    section.appendChild(el(`<div class="trends-empty">Loading your Trends&hellip;</div>`));
+    return;
+  }
+
+  const profile = trendsUi.profile;
+  if (!trendsIsFreePlan(profile)) {
+    // Plus (and the founder override) — unrestricted, every Practice at once.
+    renderTrendInsightBanner(section, today);
+    renderPulseChart(section, today);
+    renderCyclePhaseCompletionCard(section, today);
+    renderCooccurrenceCard(section, today);
+    return;
+  }
+
+  const lockedId = profile?.trends_locked_practice_id;
+  const ids = currentPracticeAppIds();
+  if (!lockedId || !ids.includes(lockedId)) {
+    const prompt = el(`
+      <div class="card trends-upgrade-card" style="cursor:pointer;">
+        <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
+        <div class="trends-lock-msg">Choose a Practice in Trend Settings to see its Trends here.</div>
+      </div>
+    `);
+    prompt.addEventListener("click", () => activateTab("trends"));
+    section.appendChild(prompt);
+    return;
+  }
+
+  // Free, locked to one Practice — that Practice's own trends, unblurred.
+  renderTrendInsightBanner(section, today, lockedId);
+  renderPulseChart(section, today, lockedId);
+  renderCyclePhaseCompletionCard(section, today, lockedId);
+
+  // Patterns — one real pattern involving the locked Practice shown
+  // plainly (the "one correlation insight" the Free vs. Paid doc promises
+  // free accounts), everything else blurred behind the upgrade prompt.
+  // Per-Practice-only patterns can't scope further than this one insight
+  // since a pattern is inherently a relationship between two apps.
+  section.appendChild(el(`<div class="subsection-title" style="margin-top:10px;">Patterns</div>`));
+  const labels = appLabelLookup();
+  const lockedSameDay = trendsSameDayPairsFor(lockedId, today).map((r) => ({ r, kind: "same" }));
+  const lockedNextDay = trendsNextDayPairsFor(lockedId, today).map((r) => ({ r, kind: "next" }));
+  const topForLocked = [...lockedSameDay, ...lockedNextDay].sort((a, b) => Math.abs(b.r.diff) - Math.abs(a.r.diff))[0];
+  if (topForLocked) {
+    section.insertAdjacentHTML("beforeend", trendsPatternBannerHtml(topForLocked.r, labels, topForLocked.kind));
+  }
+  section.appendChild(el(`
+    <div class="card trends-locked-card">
+      <div class="trends-blur-content">${trendsFullGridHtml(today)}</div>
+      <div class="trends-lock-overlay">
+        <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
+        <div class="trends-lock-msg">Upgrade to Plus to see patterns across every Practice, not just the one you've got locked.</div>
+      </div>
+    </div>
+  `));
 }
 
 // Completion rate by cycle phase — "not just seeing your streaks, but the
@@ -11592,10 +11681,22 @@ function pickCyclePhaseCompletionApp(today) {
   return best;
 }
 
-function renderCyclePhaseCompletionCard(panel, today) {
+// restrictAppId (free-tier Trends gating): completion-by-phase for that
+// one Practice specifically, bypassing the normal "widest spread wins"
+// search across every Practice — see renderHomeTrendsSection.
+function renderCyclePhaseCompletionCard(panel, today, restrictAppId) {
   if (!state.extraTrackers?.cycle) return;
   if (cycleSortedPeriods().length < 2) return; // needs real logged history, not just the manual fallback numbers
-  const best = pickCyclePhaseCompletionApp(today);
+  let best;
+  if (restrictAppId) {
+    const buckets = computeAppCompletionByCyclePhase(restrictAppId, today);
+    const rates = CYCLE_PHASE_ORDER.map((key) => ({ key, ...buckets[key], rate: buckets[key].total ? buckets[key].logged / buckets[key].total : null })).filter(
+      (r) => r.total >= CYCLE_PHASE_COMPLETION_MIN_DAYS
+    );
+    best = rates.length >= 2 ? { appId: restrictAppId, rates } : null;
+  } else {
+    best = pickCyclePhaseCompletionApp(today);
+  }
   if (!best) return;
   const label = appLabelLookup()[best.appId] || best.appId;
   const maxRate = Math.max(...best.rates.map((r) => r.rate), 0.01);
