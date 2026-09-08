@@ -3603,15 +3603,6 @@ const BOOK_MILESTONES = [
       return { earned: n >= 20, frac: Math.min(1, n / 20), caption: `${n} of 20` };
     },
   },
-  {
-    key: "weekStreak",
-    label: "7-day streak",
-    icon: "🏆",
-    progress: () => {
-      const longest = computeLongestReadingStreak();
-      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
-    },
-  },
 ];
 
 // ------------------------------------------------------------------
@@ -3725,15 +3716,6 @@ const SOCIAL_MILESTONES = [
     progress: (sheet) => {
       const n = sheet.items.length;
       return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
-    },
-  },
-  {
-    key: "weekStreak",
-    label: "7-day streak",
-    icon: "🏆",
-    progress: (sheet) => {
-      const longest = computeLongestSocialStreak(sheet);
-      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
     },
   },
 ];
@@ -4411,15 +4393,6 @@ const MEAL_MILESTONES = [
       return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
     },
   },
-  {
-    key: "weekStreak",
-    label: "7-day streak",
-    icon: "🏆",
-    progress: (sheet) => {
-      const longest = computeLongestMealStreak(sheet);
-      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
-    },
-  },
 ];
 
 function renderMealLogSheet(id) {
@@ -4824,15 +4797,6 @@ const PRAYER_MILESTONES = [
       return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
     },
   },
-  {
-    key: "sevenDayStreak",
-    label: "7-day streak",
-    icon: "🔥",
-    progress: (sheet) => {
-      const longest = computeLongestPrayerStreak(sheet);
-      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
-    },
-  },
 ];
 
 function renderPrayerSheet(id) {
@@ -5037,7 +5001,6 @@ const BREATHE_MILESTONES = [
   { key: "firstSession", label: "First session", icon: "🧘", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 1, frac: Math.min(1, n), caption: n >= 1 ? "Done" : "0 of 1" }; } },
   { key: "tenSessions", label: "10 sessions", icon: "📿", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` }; } },
   { key: "fiveCalmer", label: "Felt calmer after, 5 times", icon: "🌤️", progress: (sheet) => { const n = sheet.items.filter((i) => i.moodAfter === "calmer").length; return { earned: n >= 5, frac: Math.min(1, n / 5), caption: `${n} of 5` }; } },
-  { key: "sevenDayStreak", label: "7-day streak", icon: "🔥", progress: (sheet) => { const longest = computeLongestBreatheStreak(sheet); return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` }; } },
 ];
 
 // ---- Generative audio engine -------------------------------------
@@ -6073,15 +6036,6 @@ const WORKOUT_MILESTONES = [
     progress: (sheet) => {
       const n = countWorkoutSetsLogged(sheet);
       return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
-    },
-  },
-  {
-    key: "weekStreak",
-    label: "7-day streak",
-    icon: "🏆",
-    progress: (sheet) => {
-      const longest = computeLongestWorkoutStreak(sheet);
-      return { earned: longest >= 7, frac: Math.min(1, longest / 7), caption: `Best: ${longest} of 7` };
     },
   },
 ];
@@ -8706,39 +8660,48 @@ function computeLongestSleepProtectedStreak() {
 }
 const SLEEP_MILESTONES = [
   {
-    key: "night3",
-    label: "3-night sleep streak",
+    key: "nights10",
+    label: "10 nights logged",
     icon: "🌙",
     progress: () => {
-      const n = computeLongestSleepProtectedStreak();
-      return { earned: n >= 3, frac: Math.min(1, n / 3), caption: `Best: ${n} of 3` };
+      const n = sleepLoggedNights().length;
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` };
     },
   },
   {
-    key: "night7",
-    label: "7-night sleep streak",
+    key: "nights30",
+    label: "30 nights logged",
     icon: "🌟",
     progress: () => {
-      const n = computeLongestSleepProtectedStreak();
-      return { earned: n >= 7, frac: Math.min(1, n / 7), caption: `Best: ${n} of 7` };
+      const n = sleepLoggedNights().length;
+      return { earned: n >= 30, frac: Math.min(1, n / 30), caption: `${n} of 30` };
     },
   },
   {
-    key: "night10",
-    label: "10-night sleep streak",
+    key: "nights100",
+    label: "100 nights logged",
     icon: "🏅",
     progress: () => {
-      const n = computeLongestSleepProtectedStreak();
-      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `Best: ${n} of 10` };
+      const n = sleepLoggedNights().length;
+      return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` };
     },
   },
   {
-    key: "night14",
-    label: "14-night sleep streak",
-    icon: "🏆",
+    key: "caffeineFree20",
+    label: "20 caffeine-free nights",
+    icon: "☕",
     progress: () => {
-      const n = computeLongestSleepProtectedStreak();
-      return { earned: n >= 14, frac: Math.min(1, n / 14), caption: `Best: ${n} of 14` };
+      const n = sleepLoggedNights().filter((night) => night.pm && night.pm.noCaffeine).length;
+      return { earned: n >= 20, frac: Math.min(1, n / 20), caption: `${n} of 20` };
+    },
+  },
+  {
+    key: "alcoholFree20",
+    label: "20 alcohol-free nights",
+    icon: "🍷",
+    progress: () => {
+      const n = sleepLoggedNights().filter((night) => night.pm && night.pm.noAlcohol).length;
+      return { earned: n >= 20, frac: Math.min(1, n / 20), caption: `${n} of 20` };
     },
   },
 ];
