@@ -11037,8 +11037,12 @@ function renderHome() {
   // 2026-09: retired from Home now that gratitude + reflection live in
   // their own Daily Journal practice. renderHomeTodayDetailsCard,
   // WELLNESS_NOTE_FIELDS and ensureTodaysWellnessEntry stay in place --
-  // still used for historical day-editing/display in Trends/History.
-  renderWellnessHistory(panel, today);
+  // still used for historical day-editing/display in Trends.
+  // 2026-09 header decluttering (Veronika): removed the collapsible
+  // "History" card that used to sit at the bottom of Home — same pass
+  // as the week-strips and the Trends pulse chart. renderWellnessHistory
+  // is now dead code for Home; left in place in case it's wanted
+  // elsewhere later.
 
   panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap an app above to log it.</div>`));
 }
