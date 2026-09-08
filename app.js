@@ -94,6 +94,17 @@ const SHEET_GALLERY = [
     starterItems: [],
     type: "practice",
   },
+  {
+    key: "journal",
+    label: "Daily Journal",
+    // A spiral-bound notebook — the three short marks on the left edge
+    // read as the spiral binding, the two short lines inside as written
+    // text, distinct from Books' closed-book icon and Bible's Bible icon.
+    icon: `<path d="M7 4h12a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path><path d="M2 7h2M2 11.5h2M2 16h2"></path><path d="M9 9h6M9 13h4"></path>`,
+    desc: "A gratitude prompt (People, Opportunities, Experiences, or Things) plus a short daily reflection — what worked, what was harder, one adjustment to make.",
+    starterItems: [],
+    type: "practice",
+  },
   // Wardrobe dropped from scope entirely (Veronika's call, 2026-09) — no
   // longer offered in the Marketplace gallery. Removed from the template
   // list below; any existing instance is wiped by the one-time migration
@@ -1010,6 +1021,12 @@ function sheetActiveToday(sheetId, today) {
     // session saved) today, not a toggle.
     return cs.items.some((i) => i.date === today);
   }
+  if (cs && cs.templateKey === "journal") {
+    // One entry per day (gratitude pick + reflection) — same shape as
+    // Social/Activity/Prayer/Breathe, a real dated record rather than a
+    // toggle.
+    return cs.items.some((i) => i.date === today);
+  }
   if (cs && cs.templateKey === "workout") {
     // A week/day slot has no calendar date of its own — day.lastLoggedDate
     // is what actually gets stamped the moment a set's Actual is filled
@@ -1796,6 +1813,7 @@ function createSheetFromTemplateUnchecked(tpl) {
   const isMealLog = tpl.key === "mealLog";
   const isPrayer = tpl.key === "prayer";
   const isBreathe = tpl.key === "breathe";
+  const isJournal = tpl.key === "journal";
   state.customSheets[id] = {
     label: tpl.label,
     templateKey: tpl.key,
@@ -1805,6 +1823,8 @@ function createSheetFromTemplateUnchecked(tpl) {
       ? seedQuranItems()
       : isBooks
       ? seedBookItems()
+      : isJournal
+      ? seedJournalItemsFromWellness()
       : isWorkout || isSocial || isActivity || isMealLog || isPrayer || isBreathe
       ? []
       : tpl.starterItems.map((text) => ({ id: nextId(), text, done: false })),
@@ -1817,6 +1837,7 @@ function createSheetFromTemplateUnchecked(tpl) {
     ...(isMealLog ? { mealLogSchemaV: 1 } : {}),
     ...(isPrayer ? { prayerSchemaV: 1, milestonesEarned: {} } : {}),
     ...(isBreathe ? { breatheSchemaV: 1, milestonesEarned: {}, soundVoice: "pad" } : {}),
+    ...(isJournal ? { journalSchemaV: 1, milestonesEarned: {} } : {}),
   };
   state.sheets.push({ id, kind: "custom", visible: true });
   scheduleSave();
@@ -1850,6 +1871,8 @@ function renderCustomSheet(id) {
     renderPrayerSheet(id);
   } else if (sheet && sheet.templateKey === "breathe") {
     renderBreatheSheet(id);
+  } else if (sheet && sheet.templateKey === "journal") {
+    renderJournalSheet(id);
   } else {
     renderChecklistSheet(id);
   }
@@ -5019,6 +5042,173 @@ const BREATHE_MILESTONES = [
   { key: "tenSessions", label: "10 sessions", icon: "📿", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` }; } },
   { key: "fiveCalmer", label: "Felt calmer after, 5 times", icon: "🌤️", progress: (sheet) => { const n = sheet.items.filter((i) => i.moodAfter === "calmer").length; return { earned: n >= 5, frac: Math.min(1, n / 5), caption: `${n} of 5` }; } },
 ];
+
+// ---- Daily Journal (gratitude POET + reflection) ------------------
+
+const JOURNAL_POET_CATEGORIES = [
+  { key: "People", icon: "👥", question: "Who's one person you're grateful for today?" },
+  { key: "Opportunities", icon: "🌱", question: "What's one opportunity you're grateful for today?" },
+  { key: "Experiences", icon: "🌄", question: "What's one experience you're grateful for today?" },
+  { key: "Things", icon: "🎁", question: "What's one thing you're grateful for today?" },
+];
+
+const JOURNAL_REFLECTION_FIELDS = [
+  ["whatWorked", "What worked?"],
+  ["whatHarder", "What made things harder?"],
+  ["adjustment", "One adjustment to make"],
+];
+
+const JOURNAL_MILESTONES = [
+  { key: "tenEntries", label: "10 entries logged", icon: "📓", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` }; } },
+  { key: "thirtyEntries", label: "30 entries logged", icon: "🌟", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 30, frac: Math.min(1, n / 30), caption: `${n} of 30` }; } },
+  { key: "hundredEntries", label: "100 entries logged", icon: "🏅", progress: (sheet) => { const n = sheet.items.length; return { earned: n >= 100, frac: Math.min(1, n / 100), caption: `${n} of 100` }; } },
+  { key: "allPoet", label: "All 4 POET categories used", icon: "🔤", progress: (sheet) => { const cats = new Set(sheet.items.filter((i) => i.category).map((i) => i.category)); return { earned: cats.size >= 4, frac: Math.min(1, cats.size / 4), caption: `${cats.size} of 4` }; } },
+];
+
+function seedJournalItemsFromWellness() {
+  return (state.wellness || [])
+    .filter((w) => w.whatWorked || w.whatHarder || w.adjustment)
+    .map((w) => ({
+      id: nextId(),
+      date: w.logDate,
+      category: null,
+      gratitude: null,
+      whatWorked: w.whatWorked || null,
+      whatHarder: w.whatHarder || null,
+      adjustment: w.adjustment || null,
+    }));
+}
+
+function journalEntryFor(sheet, date) {
+  return sheet.items.find((i) => i.date === date);
+}
+
+function ensureJournalEntry(sheet, date) {
+  let entry = journalEntryFor(sheet, date);
+  if (!entry) {
+    entry = { id: nextId(), date, category: null, gratitude: null, whatWorked: null, whatHarder: null, adjustment: null };
+    sheet.items.push(entry);
+  }
+  return entry;
+}
+
+function renderJournalSheet(id) {
+  const panel = document.getElementById(`panel-${id}`);
+  const sheet = state.customSheets[id];
+  if (!panel || !sheet) return;
+  sheet.items ||= [];
+  sheet.milestonesEarned ||= {};
+  const today = todayISO();
+  panel.innerHTML = "";
+  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+
+  const streak = appCurrentStreak(id, today);
+  panel.appendChild(buildStreakCard(streak, "day journal streak"));
+
+  const existing = journalEntryFor(sheet, today);
+  let selectedCategory = existing?.category || null;
+  const entryCard = el(`<div class="card wellness-journal-card"></div>`);
+  entryCard.appendChild(el(`<div class="al-card-title">Today</div>`));
+
+  entryCard.appendChild(el(`<div class="eyebrow" style="margin-top:4px;">✨ Gratitude — pick one</div>`));
+  const poetRow = el(`<div class="poet-row"></div>`);
+  const gratitudeQ = el(`<div class="journal-q"></div>`);
+  const gratitudeLabel = el(`<label></label>`);
+  const gratitudeTextarea = document.createElement("textarea");
+  gratitudeTextarea.className = "auto-grow";
+  gratitudeTextarea.rows = 2;
+  gratitudeTextarea.placeholder = "…";
+  gratitudeTextarea.value = existing?.gratitude || "";
+
+  const setCategory = (catKey, save) => {
+    selectedCategory = catKey;
+    const cat = JOURNAL_POET_CATEGORIES.find((c) => c.key === catKey);
+    gratitudeLabel.textContent = cat.question;
+    poetRow.querySelectorAll(".poet-chip").forEach((chip) => {
+      chip.classList.toggle("selected", chip.dataset.cat === catKey);
+    });
+    if (save) {
+      const entry = ensureJournalEntry(sheet, today);
+      entry.category = catKey;
+      scheduleSave();
+      renderJournalSheet(id);
+    }
+  };
+
+  JOURNAL_POET_CATEGORIES.forEach((cat) => {
+    const chip = el(`
+      <div class="poet-chip" data-cat="${cat.key}">
+        <span class="emoji">${cat.icon}</span>${escapeHtml(cat.key)}
+      </div>
+    `);
+    chip.addEventListener("click", () => setCategory(cat.key, true));
+    poetRow.appendChild(chip);
+  });
+  entryCard.appendChild(poetRow);
+  entryCard.appendChild(el(`<div class="poet-hint"><b>POET</b> — People, Opportunities, Experiences, Things. Pick whichever one has something in it today.</div>`));
+
+  gratitudeQ.appendChild(gratitudeLabel);
+  const autoGrowGratitude = () => { gratitudeTextarea.style.height = "auto"; gratitudeTextarea.style.height = gratitudeTextarea.scrollHeight + "px"; };
+  gratitudeTextarea.addEventListener("input", autoGrowGratitude);
+  gratitudeTextarea.addEventListener("change", () => {
+    const entry = ensureJournalEntry(sheet, today);
+    entry.gratitude = gratitudeTextarea.value || null;
+    scheduleSave();
+  });
+  gratitudeQ.appendChild(gratitudeTextarea);
+  entryCard.appendChild(gratitudeQ);
+  requestAnimationFrame(autoGrowGratitude);
+
+  setCategory(selectedCategory || "People", false);
+
+  entryCard.appendChild(el(`<hr class="divider">`));
+  entryCard.appendChild(el(`<div class="eyebrow">🪞 Reflection</div>`));
+
+  JOURNAL_REFLECTION_FIELDS.forEach(([key, label]) => {
+    const q = el(`<div class="journal-q"></div>`);
+    q.appendChild(el(`<label>${escapeHtml(label)}</label>`));
+    const textarea = document.createElement("textarea");
+    textarea.className = "auto-grow";
+    textarea.rows = 1;
+    textarea.placeholder = "…";
+    textarea.value = existing?.[key] || "";
+    const autoGrow = () => { textarea.style.height = "auto"; textarea.style.height = textarea.scrollHeight + "px"; };
+    textarea.addEventListener("input", autoGrow);
+    textarea.addEventListener("change", () => {
+      const entry = ensureJournalEntry(sheet, today);
+      entry[key] = textarea.value || null;
+      scheduleSave();
+    });
+    q.appendChild(textarea);
+    entryCard.appendChild(q);
+    requestAnimationFrame(autoGrow);
+  });
+
+  panel.appendChild(entryCard);
+  panel.appendChild(buildMilestonesCard(sheet, JOURNAL_MILESTONES, today));
+
+  const historyCard = el(`<details class="card history-card"><summary><span class="al-card-title" style="margin:0;">History</span><span class="chevron">▸</span></summary></details>`);
+  const recent = [...sheet.items]
+    .filter((i) => i.date !== today || (i.category || i.gratitude || i.whatWorked || i.whatHarder || i.adjustment))
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .slice(0, 30);
+  if (!recent.length) {
+    historyCard.appendChild(el(`<div class="muted" style="margin-top:12px;">Nothing logged yet.</div>`));
+  } else {
+    recent.forEach((entry) => {
+      const cat = JOURNAL_POET_CATEGORIES.find((c) => c.key === entry.category);
+      const dateLabel = entry.date === today ? "Today" : entry.date === addDays(today, -1) ? "Yesterday" : activityDateShort(entry.date);
+      const snippet = entry.gratitude ? `${cat?.icon || "✨"} ${escapeHtml(entry.gratitude)}` : entry.whatWorked ? `🪞 ${escapeHtml(entry.whatWorked)}` : "Logged";
+      historyCard.appendChild(el(`
+        <div class="hist-row">
+          <span class="hist-date">${dateLabel}</span>
+          <span class="hist-snippet">${snippet}</span>
+        </div>
+      `));
+    });
+  }
+  panel.appendChild(historyCard);
+}
 
 // ---- Generative audio engine -------------------------------------
 // Guards against overlapping sound: only one audio "voice" (a preview
@@ -10568,7 +10758,10 @@ function renderHome() {
   // lives on the You sheet.
   renderHomeMilestonesStreaksSection(panel, today);
   renderHomeTrendsSection(panel, today);
-  panel.appendChild(renderHomeTodayDetailsCard(today));
+  // 2026-09: retired from Home now that gratitude + reflection live in
+  // their own Daily Journal practice. renderHomeTodayDetailsCard,
+  // WELLNESS_NOTE_FIELDS and ensureTodaysWellnessEntry stay in place --
+  // still used for historical day-editing/display in Trends/History.
   renderWellnessHistory(panel, today);
 
   panel.appendChild(el(`<div class="muted" style="font-size:12px;text-align:center;margin-top:8px;">Tap an app above to log it.</div>`));
@@ -11529,6 +11722,7 @@ const PRACTICE_MILESTONE_DEFS = {
   social: SOCIAL_MILESTONES,
   prayer: PRAYER_MILESTONES,
   breathe: BREATHE_MILESTONES,
+  journal: JOURNAL_MILESTONES,
 };
 
 // Real, earned achievements across every practice app -- the content half
