@@ -3319,36 +3319,24 @@ function renderBookSheet(id) {
 
   // ---- Streak, at the top like the other practices ----
   panel.appendChild(buildStreakCard(computeReadingStreak(todayStr), "day reading streak"));
-  // 2026-09 practice-header consistency pass: Books is an open-ended
-  // reading habit with no fixed total to finish (the shelf itself grows
-  // as books get added), so it gets the same 7-day consistency strip as
-  // Workout/Activity/Journal instead of a percent-of-shelf indicator.
-  panel.appendChild(buildWeekStripCard(id, "read", todayStr));
+  // 2026-09 header decluttering (Veronika): dropped the 7-day week-strip
+  // that used to sit under the streak card — the top of every practice
+  // was getting busy, and the streak alone already says what this card
+  // was for. See buildWeekStripCard's other removed call sites (Activity
+  // Log, Daily Journal, Workout, Sleep) for the same call.
 
   // Learning pillar check-in — a real log entry (which book, which
   // chapter), not just a same-day marker. Separate from any single
   // book's finished status, since the habit is reading today, not
   // finishing a book today.
   //
-  // Once today is logged, this used to turn into a green "Logged today —
-  // <title>, ch. N · tap to update" confirmation banner — but the
-  // Currently Reading shelf right below already shows that same book with
-  // "Ch. N of Total · logged today" (see renderCurrentlyReadingShelf), and
-  // tapping its card opens this exact same modal. Per Veronika's call
-  // (2026-09), that made the banner pure duplication, so it's only shown
-  // before today is logged, as the CTA to start — nothing replaces it once
-  // logged, since the shelf card already is the "logged today" state.
-  const todaysLog = (state.learningLog || []).find((e) => e.date === todayStr);
-  if (!todaysLog) {
-    const learningRow = el(`
-      <button type="button" class="learning-checkin-row">
-        <span class="learning-checkin-check"></span>
-        <span class="learning-checkin-label">Log today's reading</span>
-      </button>
-    `);
-    learningRow.addEventListener("click", () => openReadingLogModal(id));
-    panel.appendChild(learningRow);
-  }
+  // 2026-09 (Veronika): removed the standalone "Log today's reading" CTA
+  // row entirely — first cut down to only showing before today was logged
+  // (once the green "Logged today" banner was dropped as duplicating the
+  // Currently Reading shelf card), then removed altogether since the
+  // shelf's top-in-progress cards (renderCurrentlyReadingShelf) plus each
+  // book row's own log action (.wi-detail-log, below) already cover
+  // logging without a separate always-there button up here.
   if (!sheet.items.length) {
     panel.appendChild(el(`<div class="muted" style="padding:2px 0 12px; font-size:12px;">Add a book below, then log your reading against it.</div>`));
   }
@@ -4301,13 +4289,9 @@ function renderActivitySheet(id) {
   // longer shares a combined "movement" streak with Workout Log.
   const streak = appCurrentStreak(id, today);
   panel.appendChild(buildStreakCard(streak, "day movement streak"));
-  // 2026-09 practice-header consistency pass: replaces the old weekly-
-  // minutes-vs-goal bar (which also lost the weekly-minutes-goal concept
-  // entirely, per Veronika's call — nothing else in the app read that
-  // goal, so nothing else needed to change to drop it). Activity Log now
-  // tracks consistency the same way every other weekly Practice does —
-  // which days, not a separate minutes quota.
-  panel.appendChild(buildWeekStripCard(id, "active", today));
+  // 2026-09 header decluttering (Veronika): dropped the 7-day week-strip
+  // that used to sit here (see Books/Journal/Workout/Sleep for the same
+  // removal) — the streak card alone is enough at the top now.
 
   // ---- Log an activity ----
   const logCard = el(`<div class="card"></div>`);
@@ -5355,9 +5339,8 @@ function renderJournalSheet(id) {
 
   const streak = appCurrentStreak(id, today);
   panel.appendChild(buildStreakCard(streak, "day journal streak"));
-  // 2026-09 practice-header consistency pass: Daily Journal is a weekly
-  // habit like Workout/Activity/Books, not a fixed total to finish.
-  panel.appendChild(buildWeekStripCard(id, "journaled", today));
+  // 2026-09 header decluttering (Veronika): dropped the 7-day week-strip
+  // here too (see Books/Activity Log/Workout/Sleep).
 
   const existing = journalEntryFor(sheet, today);
   let selectedCategory = existing?.category || null;
@@ -6804,11 +6787,8 @@ function renderWorkoutSheet(sheetId) {
   const workoutToday = todayISO();
   panel.appendChild(buildStreakCard(appCurrentStreak(sheetId, workoutToday), "day streak"));
 
-  // 2026-09 practice-header consistency pass: Workout Log is an
-  // open-ended weekly habit, not a fixed total to finish, so it gets the
-  // same 7-day consistency strip as Activity/Journal/Books instead of its
-  // own ring — see buildWeekStripCard.
-  panel.appendChild(buildWeekStripCard(sheetId, "worked out", workoutToday));
+  // 2026-09 header decluttering (Veronika): dropped the 7-day week-strip
+  // here too (see Books/Activity Log/Journal/Sleep).
 
   if (!sheet.weeks.some((w) => w.id === sheet.activeWeekId)) {
     sheet.activeWeekId = sheet.weeks[sheet.weeks.length - 1]?.id;
@@ -8569,35 +8549,10 @@ function renderBible() {
     });
   });
   toolbarRow.appendChild(testamentToggle);
-  if (firstInProgressBook) {
-    const jumpBtn = el(
-      `<button type="button" class="icon-btn bible-jump-btn" title="Jump to where you left off — ${escapeHtml(firstInProgressBook)}" aria-label="Jump to where you left off — ${escapeHtml(firstInProgressBook)}">${bookmarkSvg}</button>`
-    );
-    jumpBtn.addEventListener("click", () => {
-      const jumpToTarget = () => {
-        const target = panel.querySelector(`.book-group[data-book="${CSS.escape(firstInProgressBook)}"]`);
-        if (target) {
-          target.open = true;
-          state.bibleOpenBooks[firstInProgressBook] = true;
-          scheduleSave();
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      };
-      // If the current filter is hiding that book's testament, switch to
-      // "All" first so there's actually something to scroll to.
-      const bookIsOT = OT_BOOKS.has(firstInProgressBook);
-      if ((bibleTestament === "ot" && !bookIsOT) || (bibleTestament === "nt" && bookIsOT)) {
-        bibleTestament = "all";
-        state.bibleTestament = bibleTestament;
-        scheduleSave();
-        renderBible();
-        requestAnimationFrame(jumpToTarget);
-      } else {
-        jumpToTarget();
-      }
-    });
-    toolbarRow.appendChild(jumpBtn);
-  }
+  // 2026-09 (Veronika): removed the "jump to where you left off" bookmark
+  // icon that used to sit next to this toggle — firstInProgressBook is
+  // computed above only to feed it, now dead code for this purpose but
+  // left in place in case it's wanted for something else later.
   panel.appendChild(toolbarRow);
 
   const visibleBooks = books.filter((book) => {
@@ -9732,16 +9687,15 @@ function renderSleep() {
   } else {
     panel.appendChild(renderSleepWindDownCard(today));
   }
-  // 2026-09 consistency pass: Sleep gets the same 7-day strip every other
-  // open-ended Practice has instead of its own bespoke "protected on X of
-  // Y nights" banner — this was the only Practice with an inline trend
-  // card of its own, left over from before the app-wide Trends section
-  // existed. Deliberately still no live streak chip here (see
-  // computeLongestSleepProtectedStreak above) — a week strip isn't one:
-  // one missed night just leaves a dot empty, it doesn't reset anything.
-  // The caffeine/movement/mood correlation insights that used to live in
-  // the retired banner now show up in Trends instead (renderSleepPatternsCard).
-  panel.appendChild(buildWeekStripCard("sleep", "protected", today));
+  // 2026-09 header decluttering (Veronika): dropped the 7-day week-strip
+  // here too (see Books/Activity Log/Journal/Workout for the same call).
+  // Note this leaves Sleep with no consistency indicator at all above
+  // Milestones — by design Sleep has no live streak chip either (see
+  // computeLongestSleepProtectedStreak above: a missed night shouldn't
+  // reset anything), so the week-strip had been Sleep's only at-a-glance
+  // "how am I doing this week" signal. Flagged for Veronika rather than
+  // silently leaving a gap — worth a look once the declutter pass across
+  // every Practice settles.
   // Best-ever protected-streak badges — no live streak chip on Sleep by
   // design (see computeLongestSleepProtectedStreak comment), just this.
   const sleepMilestonesSheet = { milestonesEarned: state.sleepMilestonesEarned };
@@ -12408,10 +12362,10 @@ function renderHomeTrendsSection(panel, today) {
   const profile = trendsUi.profile;
   if (!trendsIsFreePlan(profile)) {
     // Plus (and the founder override) — unrestricted, every Practice at once.
-    // Days-you-showed-up leads (the raw activity picture), then the
-    // strongest-practice read on it, then the cycle-phase breakdown,
-    // then patterns spotted between practices.
-    renderPulseChart(section, today);
+    // 2026-09 (Veronika): dropped the "Days you showed up" pulse chart
+    // that used to lead here — decluttering pass, same call as the
+    // week-strip removals. Leads with the strongest-practice read now,
+    // then the cycle-phase breakdown, then cross-practice patterns.
     renderTrendInsightBanner(section, today);
     renderCyclePhaseCompletionCard(section, today);
     renderCooccurrenceCard(section, today);
@@ -12434,8 +12388,7 @@ function renderHomeTrendsSection(panel, today) {
   }
 
   // Free, locked to one Practice — that Practice's own trends, unblurred.
-  // Same lead-with-the-raw-picture ordering as the Plus branch above.
-  renderPulseChart(section, today, lockedId);
+  // 2026-09 (Veronika): pulse chart dropped here too, same as the Plus branch.
   renderTrendInsightBanner(section, today, lockedId);
   renderCyclePhaseCompletionCard(section, today, lockedId);
   // Sleep's own within-practice correlations (caffeine, movement, mood)
