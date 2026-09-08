@@ -1145,7 +1145,7 @@ function applyPracticeDepositsForToday(today) {
     if (state.practiceDeposits[ledgerKey]) return;
     if (isAppLoggedToday(id, today)) {
       state.practiceDeposits[ledgerKey] = true;
-      awardRewardForPracticeLog();
+      awardRewardForPracticeLog(id);
       justCreditedAppIds.push(id);
       changed = true;
     }
@@ -1158,9 +1158,19 @@ function applyPracticeDepositsForToday(today) {
 // computeDollarPerLog for the formula (cycleLengthDays × practice count ×
 // 0.5, spread evenly across the cycle).
 function recomputeRewardDollarPerLog() {
-  const prize = state.veronikasPrize;
-  if (!prize || !prize.depositGoal) return;
-  prize.dollarPerLog = computeDollarPerLog(prize.depositGoal, prize.cycleLengthDays, currentPracticeAppIds().length);
+  (state.rewardGoals || [state.veronikasPrize]).forEach((prize) => {
+    if (!prize) return;
+    // A goal narrowed to specific practices falls back to "any practice
+    // counts" if every practice it was assigned to has since been
+    // removed/hidden — never silently shrinks to zero qualifying habits.
+    if (prize.practiceIds && prize.practiceIds.length) {
+      const stillValid = new Set(currentPracticeAppIds());
+      prize.practiceIds = prize.practiceIds.filter((id) => stillValid.has(id));
+      if (!prize.practiceIds.length) prize.practiceIds = null;
+    }
+    if (!prize.depositGoal) return;
+    prize.dollarPerLog = computeDollarPerLog(prize.depositGoal, prize.cycleLengthDays, rewardGoalPillarCount(prize));
+  });
   scheduleSave();
 }
 
@@ -1713,6 +1723,18 @@ function reorderGoal(draggedId, targetId, before) {
 function toggleSheetVisible(id) {
   const s = state.sheets.find((x) => x.id === id);
   if (!s) return;
+  // Re-enabling a hidden built-in Practice (e.g. Sleep, Bible) from Settings
+  // used to bypass the space cap entirely — addSheetFromTemplate() checks it
+  // for the Marketplace "+ Add" flow, but this show/hide toggle flipped
+  // `visible` directly with no gate at all. Only gate the OFF->ON direction,
+  // and only for real Practices (Books/Trackers etc. aren't capped either,
+  // matching countedSpaces()'s own filter) — turning something off should
+  // never be blocked.
+  const turningOn = !s.visible;
+  if (turningOn && appTypeForSheet(s) === "practice" && countedSpaces() >= spaceCapForAccount()) {
+    openSpaceCapModal();
+    return;
+  }
   s.visible = !s.visible;
   scheduleSave();
   recomputeRewardDollarPerLog();
@@ -3118,17 +3140,37 @@ let bookSearchQuery = ""; // resets each session, not persisted — same treatme
 
 // A small transient confirmation, for actions that change something
 // off-screen (or easy to miss) without opening a modal — e.g. the
-// Currently Reading shelf silently bumping a book back to "To Read".
-// No persistent container needed: each call appends its own node and
-// removes it after the fade-out.
-function showToast(message) {
-  const node = el(`<div class="app-toast">${escapeHtml(message)}</div>`);
+// Currently Reading shelf silently bumping a book back to "To Read", or
+// a one-tap toggle that used to flip silently with no way back (see
+// Book List's read/unread checkbox below). No persistent container
+// needed: each call appends its own node and removes it after the
+// fade-out. Pass opts.actionLabel + opts.onAction for an inline undo
+// button; opts.duration overrides the default dismiss delay (give an
+// undo toast longer than a plain confirmation).
+function showToast(message, opts) {
+  opts = opts || {};
+  const node = el(`
+    <div class="app-toast">
+      <span class="app-toast-msg">${escapeHtml(message)}</span>
+      ${opts.actionLabel ? `<button type="button" class="app-toast-action">${escapeHtml(opts.actionLabel)}</button>` : ""}
+    </div>
+  `);
   document.body.appendChild(node);
   requestAnimationFrame(() => node.classList.add("show"));
-  setTimeout(() => {
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
     node.classList.remove("show");
     setTimeout(() => node.remove(), 300);
-  }, 2600);
+  };
+  if (opts.actionLabel && opts.onAction) {
+    node.querySelector(".app-toast-action").addEventListener("click", () => {
+      opts.onAction();
+      dismiss();
+    });
+  }
+  setTimeout(dismiss, opts.duration || 2600);
 }
 
 // ------------------------------------------------------------------
@@ -3442,7 +3484,7 @@ function renderBookSheet(id) {
       const item = el(`
         <details class="wardrobe-item">
           <summary class="wardrobe-row">
-            <div class="checkbox ${book.read ? "checked" : ""}">${checkSvg}</div>
+            <div class="checkbox checkbox-book ${book.read ? "checked" : ""}" role="button" aria-label="${book.read ? "Mark as not read" : "Mark as read"}" title="${book.read ? "Mark as not read" : "Mark as read"}">${checkSvg}</div>
             <div class="wi-body">
               <div class="wi-name ${book.read ? "owned" : ""}">${escapeHtml(book.title)}${linkIcon}${readingTag}</div>
               <div class="wi-sub">${escapeHtml(book.author)}</div>
@@ -3469,9 +3511,26 @@ function renderBookSheet(id) {
       item.querySelector(".checkbox").addEventListener("click", (e) => {
         e.stopPropagation();
         e.preventDefault();
-        setBookStatus(book, book.status === "read" ? "to_read" : "read");
+        const previousStatus = book.status;
+        const newStatus = book.status === "read" ? "to_read" : "read";
+        setBookStatus(book, newStatus);
         scheduleSave();
         renderBookSheet(id);
+        // Undo only offered on the risky direction (marking read) — this
+        // used to flip silently with no way back (Veronika's own flag).
+        // Restores whatever the book's real previous status was (could be
+        // "reading", not just "to_read"), not a hardcoded fallback.
+        if (newStatus === "read") {
+          showToast(`Marked "${book.title}" read`, {
+            actionLabel: "Undo",
+            duration: 4000,
+            onAction: () => {
+              setBookStatus(book, previousStatus);
+              scheduleSave();
+              renderBookSheet(id);
+            },
+          });
+        }
       });
       item.querySelector(".wi-link-icon")?.addEventListener("click", (e) => e.stopPropagation());
       item.querySelector(".wi-detail-edit").addEventListener("click", () => openBookItemModal(id, book.id));
@@ -10558,15 +10617,48 @@ function computeRewardProgress(prize, today) {
   return { enabled, linked, goal, earned, pct, reached, realGrowth, targetDate };
 }
 
-// Credits one Practice log toward the reward the moment it happens —
-// called from applyPracticeDepositsForToday, the single place a Practice's
-// deposit ledger flips to true for a given day. Idempotent per app per day
-// isn't needed here since the ledger check upstream already guarantees
-// this only runs once per app per day.
-function awardRewardForPracticeLog() {
-  const prize = state.veronikasPrize;
-  if (!prize?.enabled || !prize.dollarPerLog) return;
-  prize.earnedAmount = Math.max(0, (prize.earnedAmount || 0) + prize.dollarPerLog);
+// Multiple concurrent reward goals (2026-09, Veronika's call): a goal can
+// optionally be narrowed to specific practices — "only Workout logs fund
+// this one" — instead of any log counting. `practiceIds` is null/empty for
+// a general goal (today's original behavior, and what every pre-existing
+// goal keeps meaning); a non-empty array means only those practices credit
+// it. Narrowing a goal to fewer practices also means fewer "slots" to
+// spread the dollar goal across, so each qualifying log is worth more —
+// the whole point being that pairing a reward with a specific habit you're
+// trying to build should feel like it's actually for that habit.
+function rewardGoalPillarCount(prize) {
+  return prize.practiceIds && prize.practiceIds.length ? prize.practiceIds.length : currentPracticeAppIds().length;
+}
+
+// Free stays at 1 active goal; Plus gets real breadth without going
+// uncapped, same "bigger number, never no limit" philosophy as the
+// Practice cap. Founder gets extra headroom to test multiple goals at
+// once, mirroring how spaceCapForAccount() treats her account.
+function rewardGoalCapForAccount() {
+  const acct = state.account || {};
+  if (acct.isFounder) return 10;
+  if (acct.plan === "paid") return 5;
+  return 1;
+}
+function enabledRewardGoals() {
+  return (state.rewardGoals || []).filter((g) => g.enabled);
+}
+
+// Credits one Practice log toward every reward goal it applies to, the
+// moment it happens — called from applyPracticeDepositsForToday, the
+// single place a Practice's deposit ledger flips to true for a given day.
+// Idempotent per app per day isn't needed here since the ledger check
+// upstream already guarantees this only runs once per app per day.
+// `practiceId` is which app was just logged — a general goal (no
+// practiceIds) takes every log; a narrowed goal only takes logs from its
+// assigned practices.
+function awardRewardForPracticeLog(practiceId) {
+  (state.rewardGoals || []).forEach((prize) => {
+    if (!prize?.enabled || !prize.dollarPerLog) return;
+    const applies = !prize.practiceIds || !prize.practiceIds.length || prize.practiceIds.includes(practiceId);
+    if (!applies) return;
+    prize.earnedAmount = Math.max(0, (prize.earnedAmount || 0) + prize.dollarPerLog);
+  });
 }
 
 // Fractions of the dollar goal, marked as ticks right on the progress
@@ -11126,12 +11218,12 @@ function rewardPiggyBankSvg() {
 // Progress is earned-dollars vs. goal (logging habits moves this, always,
 // whether or not a bank is linked) — never gated on Plaid. Tapping the
 // banner opens Settings → Your Reward, same as the old pill did.
-function renderHomeRewardBanner(today, isColdOpen) {
-  const prize = state.veronikasPrize;
-  // The reward pill is hidden entirely once there are zero Practice
-  // apps — nothing can deposit toward it, so showing an empty/stuck
-  // progress bar would just be confusing.
-  if (!prize.enabled || !currentPracticeAppIds().length) return null;
+// Renders one goal's photo + progress into a carousel slide. Broken out
+// of renderHomeRewardBanner so a single goal (the common case) and
+// multiple goals (a swipeable carousel, Veronika's call, 2026-09) share
+// the exact same slide markup and count-up animation — only the wrapper
+// around them differs.
+function buildRewardGoalSlide(prize, today, isColdOpen) {
   const stats = computeRewardProgress(prize, today);
   const name = prize.itemName || "your reward";
 
@@ -11151,24 +11243,24 @@ function renderHomeRewardBanner(today, isColdOpen) {
       <div class="home-reward-sub">${stats.reached ? "Tap to claim" : `Targeting ${stats.targetDate}`}</div>
     </div>
   `));
-  banner.addEventListener("click", () => openYourRewardScreen());
+  banner.addEventListener("click", () => openYourRewardScreen(prize.id));
 
-  const wrap = el(`<div></div>`);
-  wrap.appendChild(banner);
+  const slide = el(`<div class="home-reward-slide"></div>`);
+  slide.appendChild(banner);
 
-  // Counts up from the last-seen figure/bar instead of snapping. Two
-  // separate reasons to animate: a deposit just landed this render
-  // (justCreditedAppIds non-empty), or this is the very first Home render
-  // after opening the app (isColdOpen) — Veronika specifically asked for
-  // the bar to "reload with a twinkle" on app open, distinct from the
-  // per-deposit count-up. A cold open draws in from zero even if nothing
-  // was freshly deposited; otherwise (a plain tab switch back to Home)
-  // paint the real numbers straight away so nothing replays for nothing.
-  const fromEarned = justCreditedAppIds.length && prevRewardEarned != null
-    ? prevRewardEarned
+  // Counts up from the last-seen figure/bar instead of snapping, per goal
+  // (keyed by goal id) — same two triggers as before multi-goal existed:
+  // a deposit just landed this render (justCreditedAppIds non-empty,
+  // which now can credit several goals in one render), or this is the
+  // very first Home render after opening the app (isColdOpen) — Veronika
+  // specifically asked for the bar to "reload with a twinkle" on app
+  // open, distinct from the per-deposit count-up.
+  const gid = prize.id;
+  const fromEarned = justCreditedAppIds.length && prevRewardEarnedById[gid] != null
+    ? prevRewardEarnedById[gid]
     : isColdOpen ? 0 : stats.earned;
-  const fromPct = justCreditedAppIds.length && prevRewardPct != null
-    ? prevRewardPct
+  const fromPct = justCreditedAppIds.length && prevRewardPctById[gid] != null
+    ? prevRewardPctById[gid]
     : isColdOpen ? 0 : stats.pct;
   const figureFmt = (v) => `$${v.toFixed(2).replace(/\.00$/, "")} of $${stats.goal}`;
 
@@ -11183,7 +11275,7 @@ function renderHomeRewardBanner(today, isColdOpen) {
       </div></div>
     </div>
   `);
-  wrap.appendChild(progress);
+  slide.appendChild(progress);
 
   if (fromEarned !== stats.earned || fromPct !== stats.pct) {
     const figureEl = progress.querySelector(".home-reward-progress-figure");
@@ -11198,29 +11290,69 @@ function renderHomeRewardBanner(today, isColdOpen) {
       twinkleEl.classList.add("twinkle-play");
     });
   }
-  prevRewardEarned = stats.earned;
-  prevRewardPct = stats.pct;
+  prevRewardEarnedById[gid] = stats.earned;
+  prevRewardPctById[gid] = stats.pct;
+
+  return slide;
+}
+let prevRewardEarnedById = {};
+let prevRewardPctById = {};
+
+// One goal renders exactly as it always has. More than one becomes a
+// swipeable carousel — same full-photo treatment per goal, paged with a
+// horizontal scroll-snap track and dot indicators, per Veronika's call
+// (2026-09) over stacking every goal as a smaller card or hiding extras
+// in a list — Home's layout barely changes either way.
+function renderHomeRewardBanner(today, isColdOpen) {
+  const goals = enabledRewardGoals();
+  // The reward carousel is hidden entirely once there are zero Practice
+  // apps — nothing can deposit toward it, so showing an empty/stuck
+  // progress bar would just be confusing.
+  if (!goals.length || !currentPracticeAppIds().length) return null;
+
+  if (goals.length === 1) {
+    const wrap = el(`<div></div>`);
+    wrap.appendChild(buildRewardGoalSlide(goals[0], today, isColdOpen));
+    return wrap;
+  }
+
+  const wrap = el(`<div class="home-reward-carousel-wrap"></div>`);
+  const track = el(`<div class="home-reward-carousel-track"></div>`);
+  goals.forEach((prize) => track.appendChild(buildRewardGoalSlide(prize, today, isColdOpen)));
+  wrap.appendChild(track);
+
+  const dots = el(`<div class="home-reward-dots"></div>`);
+  goals.forEach((_, i) => dots.appendChild(el(`<span class="${i === 0 ? "on" : ""}"></span>`)));
+  wrap.appendChild(dots);
+  const dotEls = [...dots.children];
+  track.addEventListener("scroll", () => {
+    const idx = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+    dotEls.forEach((d, i) => d.classList.toggle("on", i === idx));
+  }, { passive: true });
 
   return wrap;
 }
-let prevRewardEarned = null;
-let prevRewardPct = null;
 
 // The small dashed "not linked yet" nudge that lives on Home once a
 // reward is set up and progress is earning normally — deliberately not a
 // big card (that lives only in onboarding, see the reward-setup step in
 // finishOnboarding). Tapping it pops the same "Track this in real
 // dollars" content as a bottom sheet instead of a permanent Home fixture.
+// With multiple goals, this only ever nudges about the first one that
+// still needs linking — linking is informational/per-goal, not the kind
+// of thing worth a nudge per goal on Home.
 function renderHomeRewardLinkLine() {
-  const prize = state.veronikasPrize;
-  if (!prize.enabled || !currentPracticeAppIds().length || (prize.linkedAccount && prize.linkedAccount.itemId)) return null;
+  const goals = enabledRewardGoals();
+  if (!goals.length || !currentPracticeAppIds().length) return null;
+  const unlinked = goals.find((g) => !(g.linkedAccount && g.linkedAccount.itemId));
+  if (!unlinked) return null;
   const line = el(`
     <div class="home-link-line">
       <span class="home-link-line-icon">${rewardPiggyBankSvg()}</span>
       <span>Link a bank account to start tracking</span>
     </div>
   `);
-  line.addEventListener("click", () => openLinkBankAccountSheet());
+  line.addEventListener("click", () => openLinkBankAccountSheet(unlinked));
   return line;
 }
 
@@ -11228,7 +11360,8 @@ function renderHomeRewardLinkLine() {
 // up as a bottom sheet instead of living permanently on Home. This is the
 // only place that big prompt appears again after setup — per Veronika's
 // call, Home itself only ever shows the small dashed line above.
-function openLinkBankAccountSheet() {
+function openLinkBankAccountSheet(prize) {
+  prize ||= state.veronikasPrize;
   const overlay = el(`
     <div class="sheet-overlay">
       <div class="sheet-box">
@@ -11247,6 +11380,7 @@ function openLinkBankAccountSheet() {
     linkBtn.textContent = "Connecting…";
     linkBtn.disabled = true;
     startPlaidLink(
+      prize,
       () => { overlay.remove(); render(); renderHome(); },
       () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; }
     );
@@ -11513,7 +11647,8 @@ function loadPlaidLinkScript() {
 // Opens Plaid's own hosted linking flow. On success, exchanges the
 // public token server-side and snapshots the current balance as this
 // cycle's starting point — `onLinked` re-renders whatever screen asked.
-async function startPlaidLink(onLinked, onError) {
+async function startPlaidLink(prize, onLinked, onError) {
+  prize ||= state.veronikasPrize;
   try {
     await loadPlaidLinkScript();
     const { data: tokenData, error: tokenErr } = await sb.functions.invoke("plaid-create-link-token");
@@ -11523,7 +11658,6 @@ async function startPlaidLink(onLinked, onError) {
       onSuccess: async (public_token) => {
         const { data, error } = await sb.functions.invoke("plaid-exchange-token", { body: { public_token } });
         if (error || !data) { onError?.(error || new Error("Linking failed")); return; }
-        const prize = state.veronikasPrize;
         prize.linkedAccount = {
           itemId: data.item_id,
           institutionName: data.institution_name,
@@ -11543,8 +11677,8 @@ async function startPlaidLink(onLinked, onError) {
   }
 }
 
-async function syncRewardBalance(onDone, onError) {
-  const prize = state.veronikasPrize;
+async function syncRewardBalance(prize, onDone, onError) {
+  prize ||= state.veronikasPrize;
   if (!prize.linkedAccount) return;
   try {
     const { data, error } = await sb.functions.invoke("plaid-sync-balance", { body: { item_id: prize.linkedAccount.itemId } });
@@ -11558,8 +11692,8 @@ async function syncRewardBalance(onDone, onError) {
   }
 }
 
-async function unlinkRewardAccount(onDone) {
-  const prize = state.veronikasPrize;
+async function unlinkRewardAccount(prize, onDone) {
+  prize ||= state.veronikasPrize;
   const itemId = prize.linkedAccount?.itemId;
   prize.linkedAccount = null;
   scheduleSave();
@@ -11570,21 +11704,127 @@ async function unlinkRewardAccount(onDone) {
 }
 
 // ------------------------------------------------------------------
-// Your Reward — the one screen (reached from Settings → Your Reward, or
-// by tapping the Home pill) that carries everything the old always-on
-// Home card used to: photo, quote, big dollar progress with milestone
-// ticks, the linked account's sync/unlink controls, and editing the
-// name/goal/target date. Claiming or extending the cycle is always a
-// deliberate tap here, never automatic.
+// Your Reward — reached from Settings → Your Reward, or by tapping a
+// Home carousel slide. A single active goal (the common case, and every
+// account's whole history before 2026-09) jumps straight to its detail
+// view exactly as before. More than one active goal shows the list
+// first, per goal name + mini progress, before drilling into one.
 // ------------------------------------------------------------------
-function openYourRewardScreen() {
-  const prize = state.veronikasPrize;
+function openYourRewardScreen(goalId) {
+  state.rewardGoals ||= [state.veronikasPrize];
+  const goals = enabledRewardGoals();
+  if (!goalId && goals.length > 1) {
+    openRewardGoalsListScreen();
+    return;
+  }
+  const prize = (goalId && state.rewardGoals.find((g) => g.id === goalId)) || goals[0] || state.rewardGoals[0] || state.veronikasPrize;
+  openRewardGoalDetailScreen(prize);
+}
+
+// The overview shown once there's more than one active goal — tapping a
+// row drills into that goal's detail view (openRewardGoalDetailScreen);
+// "+ Add another goal" is gated by rewardGoalCapForAccount(), same
+// "you've used all N" pattern as the Practice cap.
+function openRewardGoalsListScreen() {
+  const overlay = el(`<div class="modal-overlay"><div class="modal-box info-modal-box account-modal-box" style="width:380px;"></div></div>`);
+  const box = overlay.querySelector(".modal-box");
+
+  function render() {
+    box.innerHTML = "";
+    box.appendChild(el(`
+      <div class="info-modal-header">
+        <h3 style="display:flex;align-items:center;gap:10px;">
+          <span class="reward-pill-icon" style="width:30px;height:30px;background:radial-gradient(circle at 35% 30%, #EFE0C4, #C7A876 60%, #8E6B3E 100%);">${rewardCupcakeBadgeSvg()}</span>
+          Your Reward Goals
+        </h3>
+        <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+      </div>
+    `));
+    box.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+
+    const list = el(`<div class="reward-goal-list"></div>`);
+    enabledRewardGoals().forEach((g) => {
+      const stats = computeRewardProgress(g, todayISO());
+      const row = el(`
+        <div class="reward-goal-row">
+          <div class="reward-goal-row-photo"${g.itemPhoto ? ` style="background-image:url('${g.itemPhoto}');"` : ""}>${g.itemPhoto ? "" : rewardCupcakeBadgeSvg()}</div>
+          <div class="reward-goal-row-body">
+            <div class="reward-goal-row-name">${escapeHtml(g.itemName || "Not named yet")}</div>
+            <div class="reward-goal-row-bar"><div class="reward-goal-row-fill${stats.reached ? " reached" : ""}" style="width:${stats.pct}%;"></div></div>
+            <div class="reward-goal-row-fig">${stats.reached ? "Ready to claim" : `$${stats.earned.toFixed(2).replace(/\.00$/, "")} of $${stats.goal}`}</div>
+          </div>
+        </div>
+      `);
+      row.addEventListener("click", () => { overlay.remove(); openRewardGoalDetailScreen(g); });
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+
+    const addBtn = el(`<button type="button" class="sheet-primary-btn add-goal-btn" style="margin-top:14px;">+ Add another goal</button>`);
+    addBtn.addEventListener("click", () => {
+      if (enabledRewardGoals().length >= rewardGoalCapForAccount()) { openRewardGoalCapModal(); return; }
+      const newGoal = { id: `goal-${Math.random().toString(36).slice(2, 10)}`, cycleStartDate: todayISO(), cycleLengthDays: 90, itemName: "", itemPhoto: "", depositGoal: null, practiceIds: null, nudgedMilestones: [], enabled: false, linkedAccount: null, earnedAmount: 0 };
+      openEditRewardModal(newGoal, () => {
+        overlay.remove();
+        renderHome();
+        openRewardGoalDetailScreen(newGoal);
+      });
+    });
+    box.appendChild(addBtn);
+
+    document.body.appendChild(overlay);
+  }
+
+  render();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+// A small "you've used all N reward goals" modal, same shape/purpose as
+// openSpaceCapModal for Practices.
+function openRewardGoalCapModal() {
+  const acct = state.account || {};
+  const limit = rewardGoalCapForAccount();
+  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Paid";
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box" style="max-width:360px;text-align:center;">
+        <div style="font-size:26px;margin-bottom:8px;">🔒</div>
+        <h3 style="margin:0 0 8px;">You've used all ${limit} reward goal${limit === 1 ? "" : "s"}</h3>
+        <p class="muted" style="margin:0 0 18px;line-height:1.5;">
+          ${
+            nextTierLabel
+              ? `Upgrade to ${nextTierLabel} for up to 5 goals running at once. Or claim or remove a goal to make room for a new one.`
+              : `Claim or remove a goal to make room for a new one.`
+          }
+        </p>
+        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `See ${nextTierLabel} plan` : "Close"}</button>
+        <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Close</button>
+      </div>
+    </div>
+  `);
+  overlay.querySelector(".btn-primary").addEventListener("click", () => {
+    overlay.remove();
+    if (nextTierLabel) { settingsSubTab = "mine"; activateTab("settings"); }
+  });
+  overlay.querySelector(".btn-ghost").addEventListener("click", () => overlay.remove());
+  document.body.appendChild(overlay);
+}
+
+// The detail view for one goal — photo, quote, big dollar progress with
+// milestone ticks, the linked account's sync/unlink controls, and editing
+// the name/goal/target date/assigned practices. Claiming or extending the
+// cycle is always a deliberate tap here, never automatic. Shows a "← All
+// goals" back link whenever more than one goal is active, and an "+ Add
+// another goal" entry point so a second goal can be started from a
+// single-goal account (gated the same way as the list screen's).
+function openRewardGoalDetailScreen(prize) {
   const overlay = el(`<div class="modal-overlay"><div class="modal-box info-modal-box account-modal-box" style="width:380px;"></div></div>`);
   const box = overlay.querySelector(".modal-box");
 
   function render() {
     box.innerHTML = "";
     const stats = computeRewardProgress(prize, todayISO());
+    const hasMultiple = enabledRewardGoals().length > 1;
 
     box.appendChild(el(`
       <div class="info-modal-header">
@@ -11597,10 +11837,16 @@ function openYourRewardScreen() {
     `));
     box.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
 
+    if (hasMultiple) {
+      const back = el(`<button type="button" class="reward-back-link">&larr; All goals</button>`);
+      back.addEventListener("click", () => { overlay.remove(); openRewardGoalsListScreen(); });
+      box.appendChild(back);
+    }
+
     if (!prize.enabled) {
       box.appendChild(el(`<div class="account-note" style="padding:14px 0;">You skipped setting up a reward during onboarding — streaks and milestones still work exactly the same without one. Set one up any time.</div>`));
       const startBtn = el(`<button type="button" class="sheet-primary-btn" style="margin-top:4px;">Set up a reward</button>`);
-      startBtn.addEventListener("click", () => openEditRewardModal(render));
+      startBtn.addEventListener("click", () => openEditRewardModal(prize, render));
       box.appendChild(startBtn);
       document.body.appendChild(overlay);
       return;
@@ -11635,7 +11881,7 @@ function openYourRewardScreen() {
         ${iconSvg('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>')}
       </button>
     `);
-    editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditRewardModal(render); });
+    editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditRewardModal(prize, render); });
     banner.appendChild(editBtn);
     box.appendChild(banner);
 
@@ -11651,7 +11897,7 @@ function openYourRewardScreen() {
           <div class="home-deposit-track-fill" style="width:${stats.pct}%;"></div>
           ${REWARD_MILESTONE_FRACTIONS.map((f) => `<div class="home-deposit-tick ${stats.earned >= Math.round(stats.goal * f) ? "passed" : ""}" style="left:${f * 100}%;"></div>`).join("")}
         </div>
-        ${prize.dollarPerLog ? `<div class="account-note" style="margin-top:6px;">$${prize.dollarPerLog} earned per pillar logged, each day.</div>` : ""}
+        ${prize.dollarPerLog ? `<div class="account-note" style="margin-top:6px;">$${prize.dollarPerLog} earned per pillar logged, each day${prize.practiceIds && prize.practiceIds.length ? ` — only from ${prize.practiceIds.map((id) => sheetLabelForPracticeId(id)).join(", ")}` : ""}.</div>` : ""}
       </div>
     `));
 
@@ -11664,7 +11910,7 @@ function openYourRewardScreen() {
       linkBtn.addEventListener("click", () => {
         linkBtn.textContent = "Connecting…";
         linkBtn.disabled = true;
-        startPlaidLink(() => { render(); renderHome(); }, () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; });
+        startPlaidLink(prize, () => { render(); renderHome(); }, () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; });
       });
       box.appendChild(linkBtn);
     } else {
@@ -11679,7 +11925,7 @@ function openYourRewardScreen() {
       `);
       syncRow.querySelector(".sync-btn").addEventListener("click", (e) => {
         e.target.textContent = "…";
-        syncRewardBalance(() => { render(); renderHome(); }, () => { e.target.textContent = "Sync"; });
+        syncRewardBalance(prize, () => { render(); renderHome(); }, () => { e.target.textContent = "Sync"; });
       });
       box.appendChild(syncRow);
     }
@@ -11710,9 +11956,45 @@ function openYourRewardScreen() {
       });
     } else if (stats.linked) {
       const unlinkBtn = el(`<button type="button" class="unlink-btn">Unlink bank account</button>`);
-      unlinkBtn.addEventListener("click", () => unlinkRewardAccount(() => { render(); renderHome(); }));
+      unlinkBtn.addEventListener("click", () => unlinkRewardAccount(prize, () => { render(); renderHome(); }));
       box.appendChild(unlinkBtn);
     }
+
+    // Entry points for managing the SET of goals, not just this one —
+    // adding another, or removing this one once there's more than one
+    // active (removing the only goal would just be "turn the reward
+    // off", which the onboarding-style empty state above already covers).
+    const manageRow = el(`<div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;"></div>`);
+    const addGoalBtn = el(`<button type="button" class="btn-ghost add-goal-btn" style="width:100%;">+ Add another goal</button>`);
+    addGoalBtn.addEventListener("click", () => {
+      if (enabledRewardGoals().length >= rewardGoalCapForAccount()) { openRewardGoalCapModal(); return; }
+      const newGoal = { id: `goal-${Math.random().toString(36).slice(2, 10)}`, cycleStartDate: todayISO(), cycleLengthDays: 90, itemName: "", itemPhoto: "", depositGoal: null, practiceIds: null, nudgedMilestones: [], enabled: false, linkedAccount: null, earnedAmount: 0 };
+      openEditRewardModal(newGoal, () => {
+        overlay.remove();
+        renderHome();
+        openRewardGoalDetailScreen(newGoal);
+      });
+    });
+    manageRow.appendChild(addGoalBtn);
+    if (hasMultiple) {
+      const removeGoalBtn = el(`<button type="button" class="unlink-btn remove-goal-btn">Remove this goal</button>`);
+      removeGoalBtn.addEventListener("click", () => {
+        confirmModal(
+          `Remove ${prize.itemName || "this goal"}?`,
+          "Its saved progress is gone for good — this doesn't touch any other goal, or any streaks or milestones.",
+          "Remove",
+          () => {
+            state.rewardGoals = state.rewardGoals.filter((g) => g !== prize);
+            scheduleSave();
+            overlay.remove();
+            renderHome();
+            openYourRewardScreen();
+          }
+        );
+      });
+      manageRow.appendChild(removeGoalBtn);
+    }
+    box.appendChild(manageRow);
 
     document.body.appendChild(overlay);
   }
@@ -11721,10 +12003,23 @@ function openYourRewardScreen() {
   overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 }
 
-// Name, dollar goal, and target date — the three things that change
-// rarely enough to sit behind an explicit edit rather than inline.
-function openEditRewardModal(onSaved) {
-  const prize = state.veronikasPrize;
+// Practices assigned to a goal are stored by id — this looks up the
+// current display label for one, falling back to the id itself if the
+// practice was since removed (recomputeRewardDollarPerLog prunes dead
+// ids off the goal itself, but this stays defensive for the one render
+// that can happen in between).
+function sheetLabelForPracticeId(id) {
+  const entry = currentAppEntries().find((e) => e.id === id);
+  return entry ? entry.label : id;
+}
+
+// Name, dollar goal, target date, and which practices count toward it —
+// the things that change rarely enough to sit behind an explicit edit
+// rather than inline. `prize` may not be in state.rewardGoals yet (a
+// brand-new goal, or the very first one) — it's only added there, if
+// missing, once Save is actually tapped, so closing without saving never
+// leaves a half-created goal behind.
+function openEditRewardModal(prize, onSaved) {
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box info-modal-box account-modal-box">
@@ -11743,11 +12038,40 @@ function openEditRewardModal(onSaved) {
           <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Target date</label>
           <div class="reward-target-days-hint" style="font-size:11.5px;color:var(--accent-dark);font-weight:600;margin-bottom:6px;"></div>
           <input type="date" class="prize-start-date" value="${addDays(prize.cycleStartDate, prize.cycleLengthDays)}" style="width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--text);-webkit-appearance:none;appearance:none;" />
+          <label class="muted" style="display:block;font-size:12px;margin:14px 0 4px;">Which habits count toward this goal?</label>
+          <div class="reward-practice-hint">Leave everything checked for "any habit counts" — uncheck some to make this goal only about specific ones. Change this anytime.</div>
+          <div class="reward-practice-list"></div>
           <button type="button" class="btn-primary reward-save-btn" style="margin-top:18px;width:100%;padding:10px;border-radius:8px;border:none;">Save</button>
         </div>
       </div>
     </div>
   `);
+
+  // "General" (prize.practiceIds is null/empty) shows every current
+  // practice pre-checked, since that's what "any habit counts" means
+  // today. A narrowed goal shows only its assigned practices checked.
+  const allPractices = currentAppEntries().filter((e) => e.type === "practice");
+  const selected = new Set(
+    prize.practiceIds && prize.practiceIds.length ? prize.practiceIds : allPractices.map((p) => p.id)
+  );
+  const practiceListEl = overlay.querySelector(".reward-practice-list");
+  allPractices.forEach((p) => {
+    const row = el(`
+      <label class="reward-practice-row">
+        <input type="checkbox" ${selected.has(p.id) ? "checked" : ""} />
+        <span>${escapeHtml(p.label)}</span>
+      </label>
+    `);
+    row.querySelector("input").addEventListener("change", (e) => {
+      if (e.target.checked) selected.add(p.id);
+      else selected.delete(p.id);
+    });
+    practiceListEl.appendChild(row);
+  });
+  if (!allPractices.length) {
+    practiceListEl.appendChild(el(`<div class="account-note">No practices to assign yet.</div>`));
+  }
+
   const dateInput = overlay.querySelector(".prize-start-date");
   const daysHint = overlay.querySelector(".reward-target-days-hint");
   function updateDaysHint() {
@@ -11773,15 +12097,22 @@ function openEditRewardModal(onSaved) {
       const days = Math.max(1, Math.round((new Date(newTarget) - new Date(prize.cycleStartDate)) / 86400000));
       prize.cycleLengthDays = days;
     }
-    // Re-locks the per-log rate whenever the goal or target date changes —
-    // it's what keeps "earn dollars by logging" honest to the new numbers.
+    // Everything still checked means "general" (null) rather than an
+    // explicit list — so a practice added later automatically counts
+    // toward this goal too, instead of the list silently going stale.
+    prize.practiceIds = selected.size >= allPractices.length ? null : [...selected];
+    // Re-locks the per-log rate whenever the goal, target date, or
+    // assigned practices change — it's what keeps "earn dollars by
+    // logging" honest to the new numbers.
     if (prize.depositGoal) {
       prize.dollarPerLog = computeDollarPerLog(
         prize.depositGoal,
         prize.cycleLengthDays,
-        currentPracticeAppIds().length
+        rewardGoalPillarCount(prize)
       );
     }
+    state.rewardGoals ||= [state.veronikasPrize];
+    if (!state.rewardGoals.includes(prize)) state.rewardGoals.push(prize);
     scheduleSave();
     overlay.remove();
     renderHome();
@@ -14228,6 +14559,7 @@ function showOnboardingFlow() {
         // its result right now — stash it locally and finishOnboarding
         // will fold it into the real prize object it creates.
         startPlaidLink(
+          null,
           () => { stepIdx = STEPS.indexOf("review"); renderStep(); },
           () => { linkBtn.textContent = "Link a bank account"; linkBtn.disabled = false; }
         );
@@ -14789,6 +15121,23 @@ async function boot() {
   if (state.veronikasPrize.quote === OLD_DEFAULT_PRIZE_QUOTE) {
     state.veronikasPrize.quote = DEFAULT_PRIZE_QUOTE;
   }
+
+  // Multiple concurrent reward goals (2026-09) — Free stays at 1 goal,
+  // Plus/Founder can run more (see rewardGoalCapForAccount). Deliberately
+  // NOT a migration that copies data: state.veronikasPrize IS
+  // rewardGoals[0], the exact same object by reference, forever. Every
+  // existing call site that reads or writes state.veronikasPrize.* (award
+  // crediting, the edit sheet, onboarding, milestone backfill — dozens of
+  // them) keeps working untouched for goal #1; only goals beyond the
+  // first are new, and they're plain siblings in this array.
+  state.rewardGoals ||= [state.veronikasPrize];
+  if (state.rewardGoals[0] !== state.veronikasPrize) state.rewardGoals[0] = state.veronikasPrize;
+  state.rewardGoals.forEach((g) => {
+    g.id ||= `goal-${Math.random().toString(36).slice(2, 10)}`;
+    g.nudgedMilestones ||= [];
+    g.linkedAccount ||= null;
+    if (g.earnedAmount === undefined) g.earnedAmount = 0;
+  });
 
   // Extra trackers (Cycle, eventually others) are their own family,
   // separate from practices: they don't map to a pillar, don't count
