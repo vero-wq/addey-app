@@ -9572,37 +9572,71 @@ function appLabelLookup() {
 // not enough data yet, since a "not enough data" card would read as an
 // error in this prominent a spot. Two flavors — same-day and next-day —
 // both off real per-app data (2026-09, no more pillars).
+// Same-day pairs are already collapsed to one direction per pair
+// (computeNotableAppCooccurrences/computeAllNotableAppCooccurrences pick
+// the stronger side), so a sorted pair identifies them; next-day pairs are
+// directional, so the key keeps A->B distinct from B->A. Used to figure out
+// which of the uncapped "all patterns" results are already shown in the
+// top-couple list, so "Show more" never repeats one.
+function trendsPairKey(r, kind) {
+  return kind === "same" ? `same:${[r.appIdA, r.appIdB].sort().join("|")}` : `next:${r.appIdA}>${r.appIdB}`;
+}
+
+function trendsPatternCardHtml(r, labels, kind) {
+  const labelFor = (id) => labels[id] || id;
+  const icon = kind === "same" ? "🔗" : "&rarr;";
+  const eyebrow = kind === "same" ? "Pattern spotted" : "Next-day pattern";
+  const lead = kind === "same" ? "On days you log" : "The day after you log";
+  const verb = kind === "same" ? "also log" : "log";
+  return `
+    <div class="trend-insight-banner">
+      <div class="trend-insight-icon">${icon}</div>
+      <div class="trend-insight-text">
+        <div class="insight-hero-eyebrow">${eyebrow}</div>
+        ${lead} <b>${escapeHtml(labelFor(r.appIdA))}</b>, you ${verb} <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
+      </div>
+    </div>
+  `;
+}
+
+// Home's Patterns list — shows just the top couple (strongest same-day +
+// strongest next-day, already capped at 2 each) so the card doesn't turn
+// into a wall of banners, with a "Show more" toggle underneath that reveals
+// every other notable pattern (uncapped, via the same primitives the old
+// full pattern grid used) without re-rendering the whole section.
 function renderCooccurrenceCard(panel, today) {
   const labels = appLabelLookup();
-  const labelFor = (id) => labels[id] || id;
 
   const sameDay = computeNotableAppCooccurrences(today);
   const nextDay = computeNextDayAppPatterns(today);
   if (!sameDay.length && !nextDay.length) return;
 
-  sameDay.forEach((r) => {
-    panel.appendChild(el(`
-      <div class="trend-insight-banner">
-        <div class="trend-insight-icon">🔗</div>
-        <div class="trend-insight-text">
-          <div class="insight-hero-eyebrow">Pattern spotted</div>
-          On days you log <b>${escapeHtml(labelFor(r.appIdA))}</b>, you also log <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
-        </div>
-      </div>
-    `));
-  });
+  const shownKeys = new Set([
+    ...sameDay.map((r) => trendsPairKey(r, "same")),
+    ...nextDay.map((r) => trendsPairKey(r, "next")),
+  ]);
 
-  nextDay.forEach((r) => {
-    panel.appendChild(el(`
-      <div class="trend-insight-banner">
-        <div class="trend-insight-icon">&rarr;</div>
-        <div class="trend-insight-text">
-          <div class="insight-hero-eyebrow">Next-day pattern</div>
-          The day after you log <b>${escapeHtml(labelFor(r.appIdA))}</b>, you log <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
-        </div>
-      </div>
-    `));
-  });
+  sameDay.forEach((r) => panel.insertAdjacentHTML("beforeend", trendsPatternCardHtml(r, labels, "same")));
+  nextDay.forEach((r) => panel.insertAdjacentHTML("beforeend", trendsPatternCardHtml(r, labels, "next")));
+
+  const moreSameDay = computeAllNotableAppCooccurrences(today).filter((r) => !shownKeys.has(trendsPairKey(r, "same")));
+  const moreNextDay = computeAllNextDayAppPatterns(today).filter((r) => !shownKeys.has(trendsPairKey(r, "next")));
+  const moreTotal = moreSameDay.length + moreNextDay.length;
+
+  if (moreTotal > 0) {
+    const moreWrap = el(`<div class="trend-more-patterns" hidden></div>`);
+    moreSameDay.forEach((r) => moreWrap.insertAdjacentHTML("beforeend", trendsPatternCardHtml(r, labels, "same")));
+    moreNextDay.forEach((r) => moreWrap.insertAdjacentHTML("beforeend", trendsPatternCardHtml(r, labels, "next")));
+    panel.appendChild(moreWrap);
+
+    const moreLabel = `Show ${moreTotal} more pattern${moreTotal === 1 ? "" : "s"}`;
+    const toggle = el(`<button type="button" class="trend-show-more-btn">${moreLabel}</button>`);
+    toggle.addEventListener("click", () => {
+      moreWrap.hidden = !moreWrap.hidden;
+      toggle.textContent = moreWrap.hidden ? moreLabel : "Show fewer patterns";
+    });
+    panel.appendChild(toggle);
+  }
 
   panel.appendChild(el(`<div class="trend-pattern-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
 }
@@ -11575,8 +11609,11 @@ function renderHomeTrendsSection(panel, today) {
   const profile = trendsUi.profile;
   if (!trendsIsFreePlan(profile)) {
     // Plus (and the founder override) — unrestricted, every Practice at once.
-    renderTrendInsightBanner(section, today);
+    // Days-you-showed-up leads (the raw activity picture), then the
+    // strongest-practice read on it, then the cycle-phase breakdown,
+    // then patterns spotted between practices.
     renderPulseChart(section, today);
+    renderTrendInsightBanner(section, today);
     renderCyclePhaseCompletionCard(section, today);
     renderCooccurrenceCard(section, today);
     return;
@@ -11597,8 +11634,9 @@ function renderHomeTrendsSection(panel, today) {
   }
 
   // Free, locked to one Practice — that Practice's own trends, unblurred.
-  renderTrendInsightBanner(section, today, lockedId);
+  // Same lead-with-the-raw-picture ordering as the Plus branch above.
   renderPulseChart(section, today, lockedId);
+  renderTrendInsightBanner(section, today, lockedId);
   renderCyclePhaseCompletionCard(section, today, lockedId);
 
   // Patterns — one real pattern involving the locked Practice shown
