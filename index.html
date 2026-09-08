@@ -1262,9 +1262,15 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .al-bar { height: 8px; border-radius: 5px; background: var(--border); overflow: hidden; }
 .al-bar-fill { height: 100%; background: var(--accent-dark); border-radius: 5px; }
 
-.al-streak-chip { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 100px; background: #FBF3E4; border: 1px solid #EBD8AE; width: fit-content; }
-.al-streak-chip .num { font-size: 14px; font-weight: 800; color: var(--accent-dark); }
-.al-streak-chip .lbl { font-size: 10px; color: var(--muted); font-weight: 600; }
+/* Standardized streak presentation (2026-09, buildStreakCard) — replaces
+   the small pill chip every Practice screen used to render (inconsistent
+   from screen to screen depending what else shared the card, and easy to
+   miss at that size). Every Practice's own detail screen now leads with
+   this same medallion + big number treatment. */
+.streak-hero { display: flex; align-items: center; gap: 12px; }
+.streak-hero-text { display: flex; flex-direction: column; gap: 1px; }
+.streak-hero-text .num { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.streak-hero-text .lbl { font-size: 12.5px; color: var(--muted); font-weight: 600; }
 
 .al-chip-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
 .al-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); font-size: 10.5px; font-weight: 600; color: var(--muted); font-family: inherit; cursor: pointer; }
@@ -2057,10 +2063,14 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 
 /* Generalized milestone celebration (openMilestoneCelebration) — same
    pop-in as Sobriety's celebrate-toast above, plus a confetti burst
-   behind the flame glyph, since this one's explicitly meant to feel
-   bigger than Sobriety's deliberately quiet treatment. */
+   behind the flame glyph. Sobriety's own celebration (openSobrietyCelebration)
+   reuses this exact card + confetti burst now too (2026-09, Veronika's
+   call — it earned the same treatment as every other Practice), just
+   with its checkmark badge and a small "Sobriety" eyebrow instead of
+   the flame glyph. */
 .milestone-celebrate-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 16px; animation: sobriety-pop .35s cubic-bezier(.34,1.56,.64,1); }
 .milestone-celebrate-flame { margin-bottom: 6px; }
+.milestone-celebrate-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
 .milestone-confetti { position: absolute; top: 34%; left: 50%; width: 7px; height: 7px; opacity: 0; animation: milestone-confetti-burst 1.1s cubic-bezier(.22,1,.36,1) forwards; }
 @keyframes milestone-confetti-burst {
   0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
