@@ -248,6 +248,7 @@ let currentUserFirstName = "";
 // first time renderHome runs after that, as a toast — see boot() and
 // renderHome().
 let pendingGraceToastCount = 0;
+let pendingGraceToastLabels = [];
 // True only for the very first Home render after boot (a "cold open") —
 // flipped false the instant it's captured, so it never replays on later
 // re-renders within the same session (switching tabs back to Home, a
@@ -3876,10 +3877,24 @@ function computeMovementMix(sheet, today) {
 // they can't quietly drift apart from each other again the way they had
 // before this pass.
 // ------------------------------------------------------------------
+// Standardized streak presentation (2026-09) — every Practice's own detail
+// screen shows this same medallion-plus-big-number treatment now, rather
+// than the small pill chip this used to render (still used nowhere else
+// after this pass — the pill read as a minor detail, easy to miss, and
+// inconsistent screen to screen depending on what else shared the card).
+// `extraHtml` is any secondary info a particular Practice wants under the
+// streak itself (Meal Log's today recap, Activity Log's weekly-minutes
+// bar) — always secondary, never displacing the streak from the top.
 function buildStreakCard(streak, label, extraHtml) {
   return el(`
     <div class="card">
-      <div class="al-streak-chip">${homeStreakPlantSvg(streak, label)}<span class="num">${streak}</span><span class="lbl">${escapeHtml(label)}</span></div>
+      <div class="streak-hero">
+        ${homeStreakPlantSvg(streak, label, 36)}
+        <div class="streak-hero-text">
+          <span class="num">${streak}</span>
+          <span class="lbl">${escapeHtml(label)}</span>
+        </div>
+      </div>
       ${extraHtml || ""}
     </div>
   `);
@@ -3997,16 +4012,18 @@ function renderActivitySheet(id) {
   // with its own independent streak from its own logged days — it no
   // longer shares a combined "movement" streak with Workout Log.
   const streak = appCurrentStreak(id, today);
-  const summaryCard = el(`
-    <div class="card">
-      <div class="al-summary-row">
-        <span class="al-summary-label">Active minutes this week</span>
-        <span class="al-summary-count">${weeklyMinutes} of <span class="al-goal-edit" title="Tap to change your weekly goal">${goal}</span></span>
-      </div>
-      <div class="al-bar" style="margin-bottom:12px;"><div class="al-bar-fill" style="width:${barPct}%;"></div></div>
-      <div class="al-streak-chip">${homeStreakPlantSvg(streak, id)}<span class="num">${streak}</span><span class="lbl">day movement streak</span></div>
+  // Streak leads, standardized with every other Practice (buildStreakCard);
+  // the weekly-minutes bar is secondary info underneath it now, not above —
+  // it used to sit above the streak in its own separate summary row, which
+  // is exactly the inconsistency Veronika flagged across Practices.
+  const weeklyBarHtml = `
+    <div class="al-summary-row" style="margin-top:14px;">
+      <span class="al-summary-label">Active minutes this week</span>
+      <span class="al-summary-count">${weeklyMinutes} of <span class="al-goal-edit" title="Tap to change your weekly goal">${goal}</span></span>
     </div>
-  `);
+    <div class="al-bar"><div class="al-bar-fill" style="width:${barPct}%;"></div></div>
+  `;
+  const summaryCard = buildStreakCard(streak, "day movement streak", weeklyBarHtml);
   summaryCard.querySelector(".al-goal-edit").addEventListener("click", () => {
     const next = window.prompt("Weekly active-minutes goal:", String(goal));
     if (next == null) return;
@@ -8074,6 +8091,11 @@ function renderBible() {
   const doneCount = rows.filter((r) => r.done).length;
 
   panel.innerHTML = "";
+  // Standardized streak card, same as every other Practice's own screen
+  // (2026-09) — Bible was a real gap here, the one Practice besides Sleep
+  // with no streak shown at all despite having a real one (already used
+  // by Trends/push notifications).
+  panel.appendChild(buildStreakCard(appCurrentStreak("bible", todayISO()), "day Bible streak"));
   renderBiblePace(panel, doneCount, total);
 
   const books = [];
@@ -10404,17 +10426,27 @@ function reconcileGraceDays(today) {
   // GRACE_BANK_CAP, so a bonus can be "earned" here without a token
   // actually landing) — boot() uses this to surface a toast the first
   // time Home renders after this reconciliation.
+  // Tracks which Practice(s) actually earned a bonus this call, in the
+  // order they were awarded, so the toast can name them instead of just
+  // reporting a bare count — Veronika flagged the toast as a missed
+  // opportunity to say more (Sprint Board: grace-bonus-toast-unlabeled).
   let bonusesAwarded = 0;
+  const bonusLabels = [];
+  const appLookup = new Map(currentAppEntries().map((a) => [a.id, a.label]));
   appIds.forEach((id) => {
     const streak = appCurrentStreak(id, today);
     GRACE_BONUS_MILESTONES.forEach((day) => {
       if (streak >= day && (g.bonusAwardedAt[id] || 0) < day) {
         g.bonusAwardedAt[id] = day;
-        if (g.banked < GRACE_BANK_CAP) { g.banked += 1; bonusesAwarded++; }
+        if (g.banked < GRACE_BANK_CAP) {
+          g.banked += 1;
+          bonusesAwarded++;
+          bonusLabels.push(appLookup.get(id) || id);
+        }
       }
     });
   });
-  return bonusesAwarded;
+  return { count: bonusesAwarded, labels: bonusLabels };
 }
 
 // Same shape as graceStreakRunEndingAt, but for an app id under the new
@@ -10453,11 +10485,22 @@ function graceFeatherSvg() {
 // notice next time you opened Settings → Grace Days and saw one more
 // filled feather than you remembered). Self-removes once its animation
 // finishes; see the "pop-graceToast" keyframes in index.html.
-function showGraceTokenToast(count) {
+// `labels` names which Practice(s) actually earned the bonus this call
+// (from reconcileGraceDays), so the toast says what triggered it instead
+// of just a bare count — was previously silent on that point.
+function showGraceTokenToast(count, labels) {
+  const uniqueLabels = [...new Set(labels || [])];
+  const who = uniqueLabels.length
+    ? uniqueLabels.length > 2
+      ? `${uniqueLabels.slice(0, 2).join(", ")}, and ${uniqueLabels.length - 2} more`
+      : uniqueLabels.join(" and ")
+    : null;
+  const headline = count > 1 ? `${count} grace tokens earned` : "Grace token earned";
+  const headlineWithWho = who ? `${headline} &mdash; ${escapeHtml(who)}` : headline;
   const toast = el(`
     <div class="grace-earn-toast">
       <span class="grace-earn-toast-icon">${graceFeatherSvg()}</span>
-      <span>${count > 1 ? `${count} grace tokens earned` : "Grace token earned"} — ${state.grace.banked} of ${GRACE_BANK_CAP} banked now.</span>
+      <span>${headlineWithWho}. ${state.grace.banked} of ${GRACE_BANK_CAP} banked now.</span>
     </div>
   `);
   document.body.appendChild(toast);
@@ -10493,8 +10536,9 @@ function renderHome() {
   // the very first Home render after boot is the one moment to surface
   // it. Cleared immediately so it never replays on a later re-render.
   if (pendingGraceToastCount > 0) {
-    showGraceTokenToast(pendingGraceToastCount);
+    showGraceTokenToast(pendingGraceToastCount, pendingGraceToastLabels);
     pendingGraceToastCount = 0;
+    pendingGraceToastLabels = [];
   }
 
   // One page now, not two — Wellness's unique content (today's
@@ -13111,22 +13155,42 @@ function openSobrietySupportPicker(onDone) {
   document.body.appendChild(overlay);
 }
 
-// A quiet celebration, colored to the tier just earned — no confetti,
-// no repeat-count callout ("you've hit this 3 times" was explicitly
-// ruled out), just a beat of acknowledgment before "Keep going". `done`
-// is optional so any existing direct call sites keep working; pass it
-// via queueCelebration wherever another celebration could plausibly
-// stack on top of this one.
+// Shared confetti-burst markup for both celebrations below — a ring of
+// pieces flung outward from center, in brand colors. Kept as one
+// generator so Sobriety's celebration (below) and the general Practice
+// one render an identical burst rather than two subtly different ones.
+function confettiBurstHtml(colors, count) {
+  return Array.from({ length: count })
+    .map((_, i) => {
+      const angle = (Math.PI * 2 * i) / count + (i % 2 ? 0.2 : -0.2);
+      const dist = 70 + (i % 3) * 20;
+      const dx = Math.round(Math.cos(angle) * dist);
+      const dy = Math.round(Math.sin(angle) * dist) - 20;
+      const color = colors[i % colors.length];
+      return `<span class="milestone-confetti" style="--dx:${dx}px;--dy:${dy}px;background:${color};border-radius:${i % 2 ? "50%" : "2px"};animation-delay:${(i % 4) * 0.03}s;"></span>`;
+    })
+    .join("");
+}
+
+// Sobriety's celebration gets the same confetti burst every other
+// Practice's streak milestone does (Veronika's call — it earned it, same
+// as anything else), and now names itself "Sobriety" like the general
+// celebration below already does for its own practice. Deliberately
+// keeps the checkmark badge rather than anything drink-themed (a
+// champagne glass, a toast) — the tone stays "you showed up," not a
+// party. `done` is optional so any existing direct call sites keep
+// working; pass it via queueCelebration wherever another celebration
+// could plausibly stack on top of this one.
 function openSobrietyCelebration(tier, done) {
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box info-modal-box" style="width:340px;text-align:center;">
-        <div class="celebrate-toast" style="flex-direction:column;text-align:center;">
-          <div class="celebrate-badge" style="background:${tier.color};width:56px;height:56px;">${checkSvg}</div>
-          <div>
-            <div class="celebrate-title">${escapeHtml(tier.label)}</div>
-            <div class="celebrate-sub">However you got here, you're here. That's what counts.</div>
-          </div>
+        <div class="milestone-celebrate-card">
+          ${confettiBurstHtml(["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F"], 10)}
+          <div class="celebrate-badge" style="background:${tier.color};width:56px;height:56px;margin:0 auto 14px;">${checkSvg}</div>
+          <div class="milestone-celebrate-eyebrow">Sobriety</div>
+          <div class="celebrate-title">${escapeHtml(tier.label)}</div>
+          <div class="celebrate-sub">However you got here, you're here. That's what counts.</div>
         </div>
         <button type="button" class="sheet-primary-btn sob-celebrate-btn" style="background:${tier.color};">Keep going</button>
       </div>
@@ -13140,25 +13204,15 @@ function openSobrietyCelebration(tier, done) {
 
 // The generalized version of the celebration above — any Practice
 // crossing one of HOME_STREAK_MILESTONES gets this instead of the quiet
-// checkmark-only treatment Sobriety uses, per Veronika's call that this
-// was "probably the highest-value" gap once she saw the animation
+// checkmark-only treatment Sobriety used to use, per Veronika's call that
+// this was "probably the highest-value" gap once she saw the animation
 // mockups: a confetti burst plus the same streak-flame glyph/color ramp
 // used everywhere else a streak shows color (buildStreakCard, Trends'
 // milestone chips), so the celebration reads as "the app's own flame,
 // just bigger" rather than a new visual language.
 function openMilestoneCelebration(appLabel, days, done) {
   const flame = homeStreakPlantSvg(days, appLabel, 64);
-  const confettiColors = ["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F"];
-  const confettiHtml = Array.from({ length: 10 })
-    .map((_, i) => {
-      const angle = (Math.PI * 2 * i) / 10 + (i % 2 ? 0.2 : -0.2);
-      const dist = 70 + (i % 3) * 20;
-      const dx = Math.round(Math.cos(angle) * dist);
-      const dy = Math.round(Math.sin(angle) * dist) - 20;
-      const color = confettiColors[i % confettiColors.length];
-      return `<span class="milestone-confetti" style="--dx:${dx}px;--dy:${dy}px;background:${color};border-radius:${i % 2 ? "50%" : "2px"};animation-delay:${(i % 4) * 0.03}s;"></span>`;
-    })
-    .join("");
+  const confettiHtml = confettiBurstHtml(["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F"], 10);
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box info-modal-box" style="width:340px;text-align:center;">
@@ -14351,7 +14405,9 @@ async function boot() {
   // place a bonus token gets awarded (runs once per boot), so a bonus
   // earned overnight surfaces as a toast the first time Home renders
   // after this — see pendingGraceToastCount below and renderHome().
-  pendingGraceToastCount = reconcileGraceDays(todayISO());
+  const graceBonusResult = reconcileGraceDays(todayISO());
+  pendingGraceToastCount = graceBonusResult.count;
+  pendingGraceToastLabels = graceBonusResult.labels;
 
   // Write straight back after any migrations above so the row reflects
   // the current shape immediately, rather than waiting for the first
