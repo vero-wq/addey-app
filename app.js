@@ -1367,10 +1367,6 @@ function openAccountSheet() {
           ${iconSvg('<path d="M5 8l1.5-4h11L19 8"></path><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8z"></path><path d="M9 12a3 3 0 0 0 6 0"></path>')}
           <span>Marketplace</span>
         </button>
-        <button type="button" class="you-list-row" id="you-trends-row">
-          ${iconSvg('<path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M4 19h16"></path>')}
-          <span>Trends</span>
-        </button>
 
         <div class="you-list-group-title">Preferences</div>
         <button type="button" class="you-list-row" id="you-appearance-row">
@@ -1380,6 +1376,10 @@ function openAccountSheet() {
         <button type="button" class="you-list-row" id="you-notifications-row">
           ${iconSvg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>')}
           <span>Notifications</span>
+        </button>
+        <button type="button" class="you-list-row" id="you-trends-row">
+          ${iconSvg('<path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M4 19h16"></path>')}
+          <span>Trend Settings</span>
         </button>
         <button type="button" class="you-list-row" id="account-grace-btn">
           ${graceFeatherSvg()}
@@ -9553,14 +9553,15 @@ function appLabelLookup() {
   return map;
 }
 
-// Promoted to hero placement (right under the streak banner) per
-// Veronika's UI/UX audit walkthrough — reuses the same trend-insight-banner
-// gradient card as the streak banner above it, with its own eyebrow label,
-// rather than the plain dashed cards it used to sit in further down the
-// page. Quietly renders nothing when there's not enough data yet, same as
-// the streak banner does, since a "not enough data" hero card would read
-// as an error in this prominent a spot. Now two flavors — same-day and
-// next-day — both off real per-app data (2026-09, no more pillars).
+// Lives inside the Trends card now (moved in per Veronika's
+// milestones/streaks-and-patterns reorder, 2026-09) — these are pattern
+// insights, so they belong with the rest of Trends' analysis rather than
+// floating above it as their own section. Reuses the same
+// trend-insight-banner gradient card as the strongest-practice line above
+// it, with its own eyebrow label. Quietly renders nothing when there's
+// not enough data yet, since a "not enough data" card would read as an
+// error in this prominent a spot. Two flavors — same-day and next-day —
+// both off real per-app data (2026-09, no more pillars).
 function renderCooccurrenceCard(panel, today) {
   const labels = appLabelLookup();
   const labelFor = (id) => labels[id] || id;
@@ -9828,7 +9829,7 @@ function renderTrends() {
   const panel = document.getElementById("panel-trends");
   if (!panel) return;
   panel.innerHTML = "";
-  panel.appendChild(el(`<h2 class="section-title serif">Trends</h2>`));
+  panel.appendChild(el(`<h2 class="section-title serif">Trend Settings</h2>`));
 
   const today = todayISO();
   const ids = currentPracticeAppIds();
@@ -10493,15 +10494,21 @@ function renderHome() {
   if (hero) panel.appendChild(hero);
   panel.appendChild(renderHomeAppsGrid(today, isColdOpen));
 
-  // Trends comes right after the apps grid now — per Veronika's call,
-  // it's one of the more important sections and shouldn't sit below the
-  // journal card, especially with that card on its way out to become its
-  // own Journal app. Both Trends and History still read straight off the
-  // historical Wellness records exactly as they always have (2026-09:
-  // past days aren't rewritten under the new per-app model, only going
-  // forward does it take over). The identity quote ("Who do you say you
-  // are?") lives on the You sheet.
-  renderCooccurrenceCard(panel, today);
+  // Milestones & Streaks, then Trends, both right after the apps grid —
+  // per Veronika's 2026-09 milestones/streaks rework: real achievements
+  // and the day-streaks belong right under the apps they're about, not
+  // buried inside the analytical Trends card. Trends itself now owns
+  // every correlation/pattern insight (the strongest-practice line, the
+  // chart, and the same-day/next-day pattern banners that used to float
+  // above it as their own section) so "everything about patterns" lives
+  // in one place. Both still shouldn't sit below the journal card,
+  // especially with that card on its way out to become its own Journal
+  // app. Trends and History still read straight off the historical
+  // Wellness records exactly as they always have (2026-09: past days
+  // aren't rewritten under the new per-app model, only going forward
+  // does it take over). The identity quote ("Who do you say you are?")
+  // lives on the You sheet.
+  renderHomeMilestonesStreaksSection(panel, today);
   renderHomeTrendsSection(panel, today);
   panel.appendChild(renderHomeTodayDetailsCard(today));
   renderWellnessHistory(panel, today);
@@ -11525,6 +11532,25 @@ function renderTrendMilestonesRow(panel, today) {
 // Trends — open by default (per Veronika's call, this is one of the more
 // important sections, not something to bury behind a tap), but still a
 // <details> so it can be collapsed same as History right below it.
+// Milestones & Streaks — its own section right under the apps grid, not
+// buried inside the analytical Trends card below. Per Veronika's call:
+// these are about what each app itself has done (a real achievement, a
+// day-streak), not a pattern or correlation, so they don't belong under
+// an analysis heading.
+function renderHomeMilestonesStreaksSection(panel, today) {
+  const section = el(`<div class="card"></div>`);
+  panel.appendChild(section);
+  renderTrendMilestonesRow(section, today);
+  section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
+  renderPillarStreakList(section, today);
+}
+
+// Trends — every correlation/pattern insight in one place: the
+// strongest-practice line, the "days you showed up" chart, the cycle-phase
+// completion card, and the same-day/next-day pattern banners (formerly
+// their own floating section above this card) all live here now. Nothing
+// about individual-app achievements or streaks belongs in this card
+// anymore — see renderHomeMilestonesStreaksSection above.
 function renderHomeTrendsSection(panel, today) {
   const section = el(`
     <details class="card" open>
@@ -11537,9 +11563,7 @@ function renderHomeTrendsSection(panel, today) {
   renderTrendInsightBanner(section, today);
   renderPulseChart(section, today);
   renderCyclePhaseCompletionCard(section, today);
-  renderTrendMilestonesRow(section, today);
-  section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
-  renderPillarStreakList(section, today);
+  renderCooccurrenceCard(section, today);
 }
 
 // Completion rate by cycle phase — "not just seeing your streaks, but the
