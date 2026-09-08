@@ -1379,7 +1379,7 @@ function openAccountSheet() {
         </button>
         <button type="button" class="you-list-row" id="you-trends-row">
           ${iconSvg('<path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M4 19h16"></path>')}
-          <span>Trend Settings</span>
+          <span>Trends</span>
         </button>
         <button type="button" class="you-list-row" id="account-grace-btn">
           ${graceFeatherSvg()}
@@ -9620,7 +9620,14 @@ let trendsUi = {
   setupPick: null, // highlighted-but-not-yet-confirmed choice on the free+unlocked setup screen
 };
 
+// Founder override — Veronika is full access by definition, whatever her
+// actual profiles.plan row happens to say, so Trends should never lock
+// her to one Practice. Checked against currentUserEmail (already loaded
+// at boot from the real Supabase session) rather than touching her live
+// profile row in the database.
+const FOUNDER_EMAILS = ["vero@veronikaabrams.com"];
 function trendsIsFreePlan(profile) {
+  if (FOUNDER_EMAILS.includes((currentUserEmail || "").toLowerCase())) return false;
   return !profile || !profile.plan || profile.plan === "free";
 }
 
@@ -9829,7 +9836,7 @@ function renderTrends() {
   const panel = document.getElementById("panel-trends");
   if (!panel) return;
   panel.innerHTML = "";
-  panel.appendChild(el(`<h2 class="section-title serif">Trend Settings</h2>`));
+  panel.appendChild(el(`<h2 class="section-title serif">Trends</h2>`));
 
   const today = todayISO();
   const ids = currentPracticeAppIds();
@@ -9922,65 +9929,28 @@ function renderTrends() {
     return;
   }
 
+  // This screen is pure settings now — which Practice you've got locked
+  // in, nothing more. The actual Trends content (strongest practice,
+  // chart, patterns) all lives on Home, unblurred, for everyone — showing
+  // any of it again here just duplicated Home. Per Veronika's call: no
+  // insight content on this screen, ever, just the lock state and an
+  // upgrade prompt for Plus.
   if (trendsIsFreePlan(profile)) {
-    const days = trendsDaysRemaining(profile.trends_lock_expires_at);
-    panel.appendChild(el(`
-      <div class="trends-sub">Locked to <b>${escapeHtml(labels[profile.trends_locked_practice_id] || profile.trends_locked_practice_id)}</b> for ${days} more day${days === 1 ? "" : "s"}.</div>
-    `));
-  } else {
-    panel.appendChild(el(`<div class="trends-sub">Pick any practice to see its full Trends detail &mdash; Plus accounts can switch anytime.</div>`));
-  }
-
-  const pickerRow = el(`<div class="trends-picker-row"></div>`);
-  currentAppEntries()
-    .filter((e) => e.type === "practice")
-    .forEach((entry) => {
-      const streak = appCurrentStreak(entry.id, today);
-      const isLockedOutTarget = trendsIsFreePlan(profile) && locked && profile.trends_locked_practice_id !== entry.id;
-      const chip = el(`
-        <button type="button" class="trends-picker-chip${entry.id === trendsUi.selectedAppId ? " active" : ""}${isLockedOutTarget ? " locked-target" : ""}">
-          <span class="em">${iconSvg(entry.icon || '<circle cx="12" cy="12" r="9"></circle>')}</span>
-          <span>${escapeHtml(entry.label)}</span>
-          <span class="streak">${streak}d</span>
-          ${isLockedOutTarget ? `<span class="lock-dot">${trendsLockIconSvg()}</span>` : ""}
-        </button>
-      `);
-      chip.addEventListener("click", () => trendsSelectPractice(entry.id));
-      pickerRow.appendChild(chip);
-    });
-  panel.appendChild(pickerRow);
-
-  const selectedId = trendsUi.selectedAppId;
-  const isLockedOut = trendsIsFreePlan(profile) && locked && profile.trends_locked_practice_id !== selectedId;
-  if (isLockedOut) {
     const lockedLabel = labels[profile.trends_locked_practice_id] || profile.trends_locked_practice_id;
     const days = trendsDaysRemaining(profile.trends_lock_expires_at);
     panel.appendChild(el(`
-      <div class="card trends-locked-card">
-        <div class="trends-blur-content">${trendsPracticeDetailHtml(selectedId, today)}</div>
-        <div class="trends-lock-overlay">
-          <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
-          <div class="trends-lock-msg">Locked to <b>${escapeHtml(lockedLabel)}</b> for ${days} more day${days === 1 ? "" : "s"} &mdash; delete ${escapeHtml(lockedLabel)} from your Gallery to switch sooner, or wait it out.</div>
-        </div>
-      </div>
+      <div class="trends-sub">Locked to <b>${escapeHtml(lockedLabel)}</b> for ${days} more day${days === 1 ? "" : "s"} &mdash; delete ${escapeHtml(lockedLabel)} from your Gallery to switch sooner, or wait it out.</div>
     `));
-  } else {
-    panel.appendChild(el(`<div class="card">${trendsPracticeDetailHtml(selectedId, today)}</div>`));
-  }
-
-  panel.appendChild(el(`<div class="subsection-title">Full pattern grid</div>`));
-  if (trendsIsFreePlan(profile)) {
-    panel.appendChild(el(`
-      <div class="card trends-locked-card">
-        <div class="trends-blur-content">${trendsFullGridHtml(today)}</div>
-        <div class="trends-lock-overlay">
-          <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
-          <div class="trends-lock-msg">Upgrade to Plus to see every pattern across all your practices at once, instead of one locked practice at a time.</div>
-        </div>
+    const upgradeCard = el(`
+      <div class="card trends-upgrade-card" style="cursor:pointer;">
+        <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
+        <div class="trends-lock-msg">Upgrade to Plus to track every Practice at once, any time &mdash; no lock, nothing to choose between.</div>
       </div>
-    `));
+    `);
+    upgradeCard.addEventListener("click", () => openBillingModal());
+    panel.appendChild(upgradeCard);
   } else {
-    panel.appendChild(el(`<div class="card">${trendsFullGridHtml(today)}</div>`));
+    panel.appendChild(el(`<div class="trends-sub">You're on <b>Addley Plus</b> &mdash; every Practice is tracked automatically. Nothing to choose here.</div>`));
   }
 }
 
