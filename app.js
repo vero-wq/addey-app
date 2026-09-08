@@ -12281,6 +12281,11 @@ const CYCLE_SYMPTOMS = [
   { key: "backache", label: "Backache" },
   { key: "cravings", label: "Cravings" },
   { key: "insomnia", label: "Insomnia" },
+  // Distinct from `intimacy` above — that's logging that something
+  // happened; this is logging a symptom (higher sex drive), whether or
+  // not anything came of it. Per Veronika's own call, kept discreet on
+  // purpose — a plain glance at the log shouldn't read as explicit.
+  { key: "frisky", label: "Frisky" },
 ];
 const cycleHeartSvgPath = `<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>`;
 
@@ -12627,10 +12632,32 @@ function cycleAvgPeriodLength() {
 // NEXT period rather than a fixed day number, since the luteal phase
 // is the most biologically consistent part of the cycle even when the
 // rest runs short or long.
-function cyclePhaseForDay(day, avgCycleLen, avgPeriodLen) {
+// Shared boundary math for both cyclePhaseForDay (which phase "today" is
+// actually in) and the live "Where you are in the cycle" track's segment
+// widths in renderCyclePanel. These used to be computed two different
+// ways — the track built its ovulatory segment off its own rough
+// flex-width heuristic instead of these same day numbers — so the phase
+// label and the bar could visibly disagree (Veronika: labeled
+// "Ovulatory" while the marker still sat inside the follicular/yellow
+// segment). Deriving both off one shared set of day counts makes that
+// impossible: the segment widths and the day/avgCycleLen fraction that
+// places the marker now always sum to the same total.
+function cyclePhaseDayCounts(avgCycleLen, avgPeriodLen) {
   const ovulationCenter = Math.max(avgPeriodLen + 2, avgCycleLen - 14);
-  const ovulStart = ovulationCenter - 1;
-  const ovulEnd = ovulationCenter + 1;
+  const ovulStart = ovulationCenter - 1; // first day (1-indexed) of the ovulatory window
+  const ovulEnd = ovulationCenter + 1; // last day of the ovulatory window
+  return {
+    ovulStart,
+    ovulEnd,
+    menstrualDays: avgPeriodLen,
+    follicularDays: Math.max(0, ovulStart - avgPeriodLen - 1),
+    ovulatoryDays: ovulEnd - ovulStart + 1,
+    lutealDays: Math.max(0, avgCycleLen - ovulEnd),
+  };
+}
+
+function cyclePhaseForDay(day, avgCycleLen, avgPeriodLen) {
+  const { ovulStart, ovulEnd } = cyclePhaseDayCounts(avgCycleLen, avgPeriodLen);
   if (day <= avgPeriodLen) return { key: "menstrual", label: "Menstrual", color: "var(--cyc-menstrual)" };
   if (day < ovulStart) return { key: "follicular", label: "Follicular", color: "var(--cyc-follicular)" };
   if (day <= ovulEnd) return { key: "ovulatory", label: "Ovulatory", color: "var(--cyc-ovulatory)" };
@@ -13117,11 +13144,21 @@ function renderCyclePanel() {
 
     box.appendChild(el(`<div class="cyc-section-title">Where you are in the cycle</div>`));
     const track = el(`<div class="cyc-track"></div>`);
+    // Segment widths come from the exact same day counts cyclePhaseForDay
+    // used to decide today's phase (see cyclePhaseDayCounts) — that's
+    // what keeps the marker's position (frac = day/avgCycleLen) always
+    // landing inside the segment matching the phase named above it. A
+    // small flex floor keeps a very short phase (e.g. follicular on a
+    // short cycle) visible as a sliver rather than disappearing outright.
+    const dayCounts = cyclePhaseDayCounts(info.avgCycleLen, info.avgPeriodLen);
+    const flexByKey = {
+      menstrual: dayCounts.menstrualDays,
+      follicular: dayCounts.follicularDays,
+      ovulatory: dayCounts.ovulatoryDays,
+      luteal: dayCounts.lutealDays,
+    };
     CYCLE_PHASE_INFO.forEach((p) => {
-      let flex = p.flex;
-      if (p.key === "menstrual") flex = info.avgPeriodLen;
-      if (p.key === "ovulatory") flex = Math.max(1, Math.min(3, info.avgCycleLen - 14 >= info.avgPeriodLen + 2 ? 3 : 1));
-      track.appendChild(el(`<div class="cyc-seg cycle-phase-${p.key}" style="flex:${flex};"></div>`));
+      track.appendChild(el(`<div class="cyc-seg cycle-phase-${p.key}" style="flex:${Math.max(0.4, flexByKey[p.key])};"></div>`));
     });
     track.appendChild(el(`<div class="cyc-track-marker" style="left:${Math.round(frac * 100)}%;"></div>`));
     box.appendChild(track);
