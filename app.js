@@ -3349,43 +3349,128 @@ function renderBookTodayScreen(panel, id, sheet, todayStr) {
   // was for. See buildWeekStripCard's other removed call sites (Activity
   // Log, Daily Journal, Workout, Sleep) for the same call.
 
-  // Learning pillar check-in — a real log entry (which book, which
-  // chapter), not just a same-day marker. Separate from any single
-  // book's finished status, since the habit is reading today, not
-  // finishing a book today.
-  //
-  // 2026-09 (Veronika): removed the standalone "Log today's reading" CTA
-  // row entirely — first cut down to only showing before today was logged
-  // (once the green "Logged today" banner was dropped as duplicating the
-  // Currently Reading shelf card), then removed altogether since the
-  // shelf's top-in-progress cards (renderCurrentlyReadingShelf) plus each
-  // book row's own log action (.wi-detail-log, on the Shelf screen)
-  // already cover logging without a separate always-there button up here.
+  // 2026-09 Challenges (Veronika) — a scrollable trophy-pill row, below
+  // the full header (streak card, same as here since Books has no other
+  // header card anymore) same as Bible. "Books" is the plain base lens;
+  // joining a challenge never changes the base data, just adds a pill
+  // that narrows the view below to that challenge's own list/pace. Only
+  // shown once something's actually joined — a lone "Books" pill with
+  // nothing to toggle to would just be noise.
+  const joined = joinedChallengesForPractice(id);
+  if (sheet.focusedChallenge && !joined.some((c) => c.id === sheet.focusedChallenge)) {
+    sheet.focusedChallenge = null;
+  }
+  if (joined.length) {
+    const pillRow = el(`<div class="challenge-pill-row"></div>`);
+    const baseBtn = el(`<button type="button" class="challenge-pill base-pill ${!sheet.focusedChallenge ? "active" : ""}">${escapeHtml(sheet.label)}</button>`);
+    baseBtn.addEventListener("click", () => {
+      sheet.focusedChallenge = null;
+      scheduleSave();
+      renderBookSheet(id);
+    });
+    pillRow.appendChild(baseBtn);
+    joined.forEach((catalog) => {
+      const btn = el(`<button type="button" class="challenge-pill challenge-option ${sheet.focusedChallenge === catalog.id ? "active" : ""}">${catalog.icon} ${escapeHtml(catalog.name)}</button>`);
+      btn.addEventListener("click", () => {
+        sheet.focusedChallenge = catalog.id;
+        scheduleSave();
+        renderBookSheet(id);
+      });
+      pillRow.appendChild(btn);
+    });
+    panel.appendChild(pillRow);
+  }
 
-  // Currently Reading shelf — surfaces whatever's actively "Reading",
-  // capped at 2, so continuing what you're already in the middle of is
-  // one tap instead of a trip to the full shelf. See
-  // books_logging_audit.html for the full design.
-  renderCurrentlyReadingShelf(panel, id, sheet, todayStr);
+  if (sheet.focusedChallenge) {
+    renderChallengeDetail(panel, id, sheet.focusedChallenge, todayStr);
+  } else {
+    // Learning pillar check-in — a real log entry (which book, which
+    // chapter), not just a same-day marker. Separate from any single
+    // book's finished status, since the habit is reading today, not
+    // finishing a book today.
+    //
+    // 2026-09 (Veronika): removed the standalone "Log today's reading"
+    // CTA row entirely — first cut down to only showing before today was
+    // logged (once the green "Logged today" banner was dropped as
+    // duplicating the Currently Reading shelf card), then removed
+    // altogether since the shelf's top-in-progress cards
+    // (renderCurrentlyReadingShelf) plus each book row's own log action
+    // (.wi-detail-log, on the Shelf screen) already cover logging
+    // without a separate always-there button up here.
 
-  const total = sheet.items.length;
-  const readCount = sheet.items.filter((b) => b.read).length;
-  const toReadCount = total - readCount;
-  const shelfLink = el(`
-    <button type="button" class="shelf-link-card">
-      <div class="shelf-link-icon">📚</div>
-      <div class="shelf-link-body">
-        <div class="shelf-link-title">Your Shelf</div>
-        <div class="shelf-link-sub">${total} book${total === 1 ? "" : "s"} · ${toReadCount} to read · search &amp; browse everything</div>
-      </div>
-      <span class="shelf-link-chevron">›</span>
-    </button>
-  `);
-  shelfLink.addEventListener("click", () => goToBookScreen(id, "shelf"));
-  panel.appendChild(shelfLink);
+    // Currently Reading shelf — surfaces whatever's actively "Reading",
+    // capped at 2, so continuing what you're already in the middle of is
+    // one tap instead of a trip to the full shelf. See
+    // books_logging_audit.html for the full design.
+    renderCurrentlyReadingShelf(panel, id, sheet, todayStr);
+
+    const total = sheet.items.length;
+    const readCount = sheet.items.filter((b) => b.read).length;
+    const toReadCount = total - readCount;
+    const shelfLink = el(`
+      <button type="button" class="shelf-link-card">
+        <div class="shelf-link-icon">📚</div>
+        <div class="shelf-link-body">
+          <div class="shelf-link-title">Your Shelf</div>
+          <div class="shelf-link-sub">${total} book${total === 1 ? "" : "s"} · ${toReadCount} to read · search &amp; browse everything</div>
+        </div>
+        <span class="shelf-link-chevron">›</span>
+      </button>
+    `);
+    shelfLink.addEventListener("click", () => goToBookScreen(id, "shelf"));
+    panel.appendChild(shelfLink);
+  }
 
   // ---- Milestones — permanent, unlike the streak above ----
   panel.appendChild(buildMilestonesCard(sheet, BOOK_MILESTONES, todayStr));
+}
+
+// 2026-09 Challenges (Veronika) — the scoped view a challenge pill
+// switches to: progress against just that challenge's list, the current
+// month's assignment for a paced challenge, and the full list with each
+// title's real status. Reads book status straight off the linked book
+// (challengeProgress), same principle as everywhere else — no second
+// ledger.
+function renderChallengeDetail(panel, id, challengeId, todayStr) {
+  const progress = challengeProgress(challengeId);
+  if (!progress) return;
+  const pct = Math.round((progress.doneCount / progress.total) * 100);
+  const paceLine = progress.paceLabel
+    ? `${progress.doneCount} of ${progress.total} finished &middot; ${progress.paceLabel}`
+    : `${progress.doneCount} of ${progress.total} finished`;
+  panel.appendChild(el(`
+    <div class="challenge-detail-card">
+      <div style="font-size:13.5px;font-weight:700;">${escapeHtml(progress.catalog.name)}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${paceLine}</div>
+      <div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${pct}%;"></div></div>
+    </div>
+  `));
+
+  if (progress.currentIndex != null) {
+    const current = progress.books[progress.currentIndex];
+    if (current && !current.done) {
+      panel.appendChild(el(`
+        <div class="muted" style="font-size:12px;margin:-6px 0 14px;">This month: <b style="color:var(--text);">${escapeHtml(current.title)}</b> by ${escapeHtml(current.author)}</div>
+      `));
+    }
+  }
+
+  const list = el(`<div class="card" style="padding:2px 14px;"></div>`);
+  progress.books.forEach((b, i) => {
+    const isCurrent = i === progress.currentIndex && !b.done;
+    const row = el(`
+      <div class="challenge-book-row">
+        <div class="challenge-book-status ${b.done ? "done" : isCurrent ? "current" : ""}">${b.done ? checkSvg : i + 1}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="challenge-book-title">${escapeHtml(b.title)}</div>
+          <div class="challenge-book-author">${escapeHtml(b.author)}</div>
+        </div>
+      </div>
+    `);
+    if (b.book) row.addEventListener("click", () => openReadingLogModal(id, b.book.id));
+    list.appendChild(row);
+  });
+  panel.appendChild(list);
 }
 
 // ---- "Your Shelf" screen: the full library, one tap away ----
@@ -3601,6 +3686,167 @@ const BOOK_RATING_OPTIONS = [
   ["4", "⭐️⭐️⭐️⭐️"],
   ["5", "⭐️⭐️⭐️⭐️⭐️"],
 ];
+
+// ------------------------------------------------------------------
+// 2026-09 Challenges (Veronika) — first real build. A challenge is a
+// fixed, named list of items attached to one practice; it never keeps
+// its own ledger — progress is always read straight off the real book
+// list (sheet.items), the same read/status data the practice already
+// tracks. Joining just links (or adds) each catalog title on the shelf
+// and remembers the link; unjoining leaves the books exactly where
+// they are. Two shapes live here for now: "itemized-paced" (12
+// Classics — one title assigned per month, with a pace read-out) and
+// plain "itemized" (Top 12 Self-Improvement — a fixed list, no
+// deadline, just X of 12).
+// ------------------------------------------------------------------
+const CHALLENGE_CATALOG = {
+  classics12: {
+    id: "classics12",
+    practice: "books1",
+    icon: "📚",
+    name: "12 Classics in 12 Months",
+    tagline: "One classic novel a month, in order — all public domain, so it's just titles on your shelf, nothing licensed or hosted.",
+    type: "itemized-paced",
+    items: [
+      { title: "Pride and Prejudice", author: "Jane Austen" },
+      { title: "The Adventures of Sherlock Holmes", author: "Arthur Conan Doyle" },
+      { title: "Frankenstein", author: "Mary Shelley" },
+      { title: "The Picture of Dorian Gray", author: "Oscar Wilde" },
+      { title: "Dracula", author: "Bram Stoker" },
+      { title: "The Great Gatsby", author: "F. Scott Fitzgerald" },
+      { title: "Wuthering Heights", author: "Emily Brontë" },
+      { title: "Jane Eyre", author: "Charlotte Brontë" },
+      { title: "A Tale of Two Cities", author: "Charles Dickens" },
+      { title: "Moby-Dick", author: "Herman Melville" },
+      { title: "Anna Karenina", author: "Leo Tolstoy" },
+      { title: "The Count of Monte Cristo", author: "Alexandre Dumas" },
+    ],
+  },
+  selfimprove12: {
+    id: "selfimprove12",
+    practice: "books1",
+    icon: "🌱",
+    name: "Top 12 Self-Improvement Books",
+    tagline: "12 of today's most-read personal development books — current bestsellers alongside the modern staples. At your own pace, no deadline.",
+    type: "itemized",
+    items: [
+      { title: "Atomic Habits", author: "James Clear" },
+      { title: "The Let Them Theory", author: "Mel Robbins" },
+      { title: "The Subtle Art of Not Giving a F*ck", author: "Mark Manson" },
+      { title: "Four Thousand Weeks", author: "Oliver Burkeman" },
+      { title: "Man's Search for Meaning", author: "Viktor Frankl" },
+      { title: "The Power of Now", author: "Eckhart Tolle" },
+      { title: "Ikigai", author: "Héctor García & Francesc Miralles" },
+      { title: "Dare to Lead", author: "Brené Brown" },
+      { title: "How to Win Friends & Influence People", author: "Dale Carnegie" },
+      { title: "How to Talk to Anyone", author: "Leil Lowndes" },
+      { title: "The Richest Man in Babylon", author: "George S. Clason" },
+      { title: "Feel-Good Productivity", author: "Ali Abdaal" },
+    ],
+  },
+};
+
+// Case/punctuation-insensitive so "The Great Gatsby" matches "the great
+// gatsby" or "Great Gatsby, The" without asking Veronika to confirm each
+// title herself — she can't be expected to recall her own 115-book list
+// from memory, so this runs silently. Accepting a rare, low-cost
+// duplicate is the tradeoff, per the audit.
+function normalizeBookKey(str) {
+  return (str || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function findMatchingBook(sheet, title) {
+  const key = normalizeBookKey(title);
+  return sheet.items.find((b) => normalizeBookKey(b.title) === key);
+}
+
+// Links (or silently adds) every catalog title on the practice's real
+// shelf, then remembers the book id for each slot so progress can always
+// be read straight off that book's real status — never a separate
+// ledger. Safe to call again (e.g. re-joining after leaving): already
+// -linked slots are left alone.
+function joinChallenge(challengeId) {
+  const catalog = CHALLENGE_CATALOG[challengeId];
+  if (!catalog) return;
+  const sheet = state.customSheets[catalog.practice];
+  if (!sheet) return;
+  state.challenges ||= {};
+  state.challenges[challengeId] ||= { joined: false, bookIds: {} };
+  const c = state.challenges[challengeId];
+  c.joined = true;
+  c.joinedDate ||= todayISO();
+  if (catalog.type === "itemized-paced") c.startDate ||= todayISO();
+  ensureBookStatuses(sheet);
+  catalog.items.forEach((entry, i) => {
+    if (c.bookIds[i] && sheet.items.some((b) => b.id === c.bookIds[i])) return;
+    let book = findMatchingBook(sheet, entry.title);
+    if (!book) {
+      book = {
+        id: nextId(),
+        title: entry.title,
+        author: entry.author,
+        category: catalog.name,
+        format: "listen or read",
+        status: "to_read",
+        read: false,
+        onlineRating: null,
+        myRating: null,
+        notes: "",
+        totalChapters: null,
+        currentChapter: 0,
+        link: "",
+      };
+      sheet.items.push(book);
+    }
+    c.bookIds[i] = book.id;
+  });
+  scheduleSave();
+}
+
+function leaveChallenge(challengeId) {
+  state.challenges ||= {};
+  state.challenges[challengeId] ||= { joined: false, bookIds: {} };
+  state.challenges[challengeId].joined = false;
+  scheduleSave();
+}
+
+function isChallengeJoined(challengeId) {
+  return !!state.challenges?.[challengeId]?.joined;
+}
+
+function joinedChallengesForPractice(practiceId) {
+  return Object.values(CHALLENGE_CATALOG).filter((c) => c.practice === practiceId && isChallengeJoined(c.id));
+}
+
+// Reads progress straight off each linked book's real status — no
+// separate tally kept anywhere. For a paced challenge, "expected done"
+// counts calendar months since joining (month 1 = the join month) and
+// compares it to how many are actually finished.
+function challengeProgress(challengeId) {
+  const catalog = CHALLENGE_CATALOG[challengeId];
+  const c = state.challenges?.[challengeId];
+  if (!catalog || !c || !c.joined) return null;
+  const sheet = state.customSheets[catalog.practice];
+  const books = catalog.items.map((entry, i) => {
+    const book = sheet?.items.find((b) => b.id === c.bookIds[i]);
+    return { title: entry.title, author: entry.author, book, done: !!book?.read };
+  });
+  const doneCount = books.filter((b) => b.done).length;
+  const total = catalog.items.length;
+  let currentIndex = null;
+  let paceLabel = null;
+  if (catalog.type === "itemized-paced" && c.startDate) {
+    const start = new Date(c.startDate + "T00:00:00");
+    const now = new Date(todayISO() + "T00:00:00");
+    const monthsElapsed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+    currentIndex = Math.min(total - 1, Math.max(0, monthsElapsed));
+    const expectedDone = Math.min(total, monthsElapsed + 1);
+    if (doneCount > expectedDone) paceLabel = "ahead of pace";
+    else if (doneCount === expectedDone) paceLabel = "on pace";
+    else paceLabel = "behind pace";
+  }
+  return { catalog, books, doneCount, total, currentIndex, paceLabel };
+}
 
 function openBookItemModal(sheetId, itemId) {
   const sheet = state.customSheets[sheetId];
@@ -11070,6 +11316,10 @@ function renderHome() {
   if (hero) panel.appendChild(hero);
   panel.appendChild(renderHomeAppsGrid(today, isColdOpen));
 
+  // Challenges — its own gold-tinted section right under the apps grid,
+  // before Milestones & Streaks. See renderHomeChallengesSection.
+  renderHomeChallengesSection(panel, today);
+
   // Milestones & Streaks, then Trends, both right after the apps grid —
   // per Veronika's 2026-09 milestones/streaks rework: real achievements
   // and the day-streaks belong right under the apps they're about, not
@@ -12350,6 +12600,84 @@ function renderTrendMilestonesRow(panel, today) {
     `));
   });
   panel.appendChild(grid);
+}
+
+// Challenges (2026-09, Veronika) — its own clearly separate, gold-tinted
+// section right under the apps grid, same placement rule as Milestones &
+// Streaks below: never blended into the apps grid's own bounding box,
+// never near the Reward banner. Shows a progress card for anything
+// already joined, plus a compact Join card for anything in the catalog
+// not yet joined — there's no separate hub screen yet (only two
+// challenges exist so far), so this card IS the portal for now.
+function renderHomeChallengesSection(panel, today) {
+  const ids = Object.keys(CHALLENGE_CATALOG);
+  if (!ids.length) return;
+  panel.appendChild(el(`
+    <div class="home-section-title-group" style="margin:22px 0 10px;">
+      <span class="home-section-icon">🏆</span><span class="subsection-title serif" style="margin:0;">Challenges</span>
+    </div>
+  `));
+  ids.forEach((id) => {
+    const catalog = CHALLENGE_CATALOG[id];
+    const progress = challengeProgress(id);
+    if (progress) {
+      const pct = Math.round((progress.doneCount / progress.total) * 100);
+      const paceLine = progress.paceLabel
+        ? `${progress.doneCount} of ${progress.total} finished &middot; ${progress.paceLabel}`
+        : `${progress.doneCount} of ${progress.total} finished`;
+      const card = el(`
+        <div class="card home-challenge-card">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${paceLine}</div>
+            </div>
+            <div style="color:var(--muted);font-size:15px;">&rsaquo;</div>
+          </div>
+          <div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${pct}%;"></div></div>
+        </div>
+      `);
+      card.addEventListener("click", () => openChallengeFromHome(id));
+      panel.appendChild(card);
+    } else {
+      const card = el(`
+        <div class="card home-challenge-card">
+          <div class="challenge-join-row">
+            <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+              <div style="width:38px;height:38px;border-radius:10px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
+              <div style="min-width:0;">
+                <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
+                <div style="font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.4;">${escapeHtml(catalog.tagline)}</div>
+              </div>
+            </div>
+            <button type="button" class="challenge-join-btn">Join</button>
+          </div>
+        </div>
+      `);
+      card.querySelector(".challenge-join-btn").addEventListener("click", () => {
+        joinChallenge(id);
+        renderHome();
+      });
+      panel.appendChild(card);
+    }
+  });
+}
+
+// Jumps to the challenge's home practice with that challenge focused —
+// same pattern the rest of the app uses for cross-navigation (set the
+// state, explicitly re-render that panel since only the active tab gets
+// auto-rendered, then switch to it).
+function openChallengeFromHome(challengeId) {
+  const catalog = CHALLENGE_CATALOG[challengeId];
+  if (!catalog) return;
+  const sheet = state.customSheets[catalog.practice];
+  if (sheet) {
+    sheet.focusedChallenge = challengeId;
+    scheduleSave();
+    renderCustomSheet(catalog.practice);
+  }
+  activateTab(catalog.practice);
 }
 
 // Trends — open by default (per Veronika's call, this is one of the more
@@ -14814,6 +15142,11 @@ async function boot() {
     typeof e === "string" ? { date: e, bookId: null, chapter: null } : e
   );
   state.nextId ||= 1;
+  // Challenges (2026-09) — joined/progress state per catalog id. Reads
+  // progress off the real book/chapter data elsewhere; this only
+  // remembers which catalog entries are joined and which book each
+  // catalog slot links to. See CHALLENGE_CATALOG.
+  state.challenges ||= {};
   state.activeTab ||= "home";
   state.budgetView ||= "sections";
   state.budgetShowHidden ||= false;
