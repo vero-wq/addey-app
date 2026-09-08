@@ -3312,16 +3312,40 @@ function renderBookSheet(id) {
   if (!panel || !sheet) return;
   sheet.milestonesEarned ||= {};
   ensureBookStatuses(sheet);
+  // 2026-09 Books redesign, part 2 (Veronika): "Today" (streak, Currently
+  // Reading, Milestones — a quick daily check-in) and "Your Shelf" (the
+  // full searchable/filterable 115-book library) used to be one screen
+  // doing two jobs at once. Now they're two screens behind this one flag,
+  // persisted per sheet so leaving and coming back doesn't reset you to
+  // Today if you were mid-browse on the shelf.
+  sheet.bookScreen ||= "today";
   panel.innerHTML = "";
-  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
   const todayStr = todayISO();
+  if (sheet.bookScreen === "shelf") {
+    renderBookShelfScreen(panel, id, sheet, todayStr);
+  } else {
+    renderBookTodayScreen(panel, id, sheet, todayStr);
+  }
+}
+
+function goToBookScreen(id, screen) {
+  const sheet = state.customSheets[id];
+  if (!sheet) return;
+  sheet.bookScreen = screen;
+  scheduleSave();
+  renderBookSheet(id);
+}
+
+// ---- "Today" screen: the lean daily check-in ----
+function renderBookTodayScreen(panel, id, sheet, todayStr) {
+  panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
   // ---- Streak, at the top like the other practices ----
   panel.appendChild(buildStreakCard(computeReadingStreak(todayStr), "day reading streak"));
   // 2026-09 header decluttering (Veronika): dropped the 7-day week-strip
   // that used to sit under the streak card — the top of every practice
-  // was getting busy, and the streak alone already says what this card
+  // was getting busy, and the streak alone already said what this card
   // was for. See buildWeekStripCard's other removed call sites (Activity
   // Log, Daily Journal, Workout, Sleep) for the same call.
 
@@ -3335,8 +3359,42 @@ function renderBookSheet(id) {
   // (once the green "Logged today" banner was dropped as duplicating the
   // Currently Reading shelf card), then removed altogether since the
   // shelf's top-in-progress cards (renderCurrentlyReadingShelf) plus each
-  // book row's own log action (.wi-detail-log, below) already cover
-  // logging without a separate always-there button up here.
+  // book row's own log action (.wi-detail-log, on the Shelf screen)
+  // already cover logging without a separate always-there button up here.
+
+  // Currently Reading shelf — surfaces whatever's actively "Reading",
+  // capped at 2, so continuing what you're already in the middle of is
+  // one tap instead of a trip to the full shelf. See
+  // books_logging_audit.html for the full design.
+  renderCurrentlyReadingShelf(panel, id, sheet, todayStr);
+
+  const total = sheet.items.length;
+  const readCount = sheet.items.filter((b) => b.read).length;
+  const toReadCount = total - readCount;
+  const shelfLink = el(`
+    <button type="button" class="shelf-link-card">
+      <div class="shelf-link-icon">📚</div>
+      <div class="shelf-link-body">
+        <div class="shelf-link-title">Your Shelf</div>
+        <div class="shelf-link-sub">${total} book${total === 1 ? "" : "s"} · ${toReadCount} to read · search &amp; browse everything</div>
+      </div>
+      <span class="shelf-link-chevron">›</span>
+    </button>
+  `);
+  shelfLink.addEventListener("click", () => goToBookScreen(id, "shelf"));
+  panel.appendChild(shelfLink);
+
+  // ---- Milestones — permanent, unlike the streak above ----
+  panel.appendChild(buildMilestonesCard(sheet, BOOK_MILESTONES, todayStr));
+}
+
+// ---- "Your Shelf" screen: the full library, one tap away ----
+function renderBookShelfScreen(panel, id, sheet, todayStr) {
+  const back = el(`<button type="button" class="shelf-back-link">&lsaquo; ${escapeHtml(sheet.label)}</button>`);
+  back.addEventListener("click", () => goToBookScreen(id, "today"));
+  panel.appendChild(back);
+  panel.appendChild(el(`<h2 class="section-title serif">Your Shelf</h2>`));
+
   if (!sheet.items.length) {
     panel.appendChild(el(`<div class="muted" style="padding:2px 0 12px; font-size:12px;">Add a book below, then log your reading against it.</div>`));
   }
@@ -3351,12 +3409,6 @@ function renderBookSheet(id) {
     </div>
   `);
   panel.appendChild(summaryRow);
-
-  // Currently Reading shelf — surfaces whatever's actively "Reading"
-  // above the search box, capped at 2, so continuing what you're
-  // already in the middle of is one tap instead of a search through
-  // a long shelf. See books_logging_audit.html for the full design.
-  renderCurrentlyReadingShelf(panel, id, sheet, todayStr);
 
   // A shelf this size is easy to lose a specific book in, especially when
   // trying to log today's reading against it — search by title or author
@@ -3535,9 +3587,9 @@ function renderBookSheet(id) {
   const addBtn = el(`<button type="button" class="btn-ghost" style="margin-top:16px;">+ Add book</button>`);
   addBtn.addEventListener("click", () => openBookItemModal(id, null));
   panel.appendChild(addBtn);
-
-  // ---- Milestones — permanent, unlike the streak above ----
-  panel.appendChild(buildMilestonesCard(sheet, BOOK_MILESTONES, todayStr));
+  // 2026-09 Books redesign, part 2 (Veronika): Milestones moved to the
+  // Today screen (renderBookTodayScreen) — it's a permanent trophy case,
+  // not part of the browsing/searching job this screen does.
 }
 
 const BOOK_FORMAT_OPTIONS = ["read", "listen", "listen & read", "listen or read"];
