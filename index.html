@@ -1164,8 +1164,29 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .cr-step-btn { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid var(--accent); background: var(--surface); color: var(--accent-dark); font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .cr-step-btn:disabled { opacity: 0.4; cursor: default; }
 .cr-empty-note { font-size: 12px; color: var(--muted); padding: 2px 0 4px; }
-.app-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--text); color: var(--bg); font-size: 12.5px; font-weight: 600; padding: 10px 16px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.2); z-index: 1200; opacity: 0; transition: opacity 0.25s ease; pointer-events: none; max-width: 86%; text-align: center; }
-.app-toast.show { opacity: 1; }
+/* Centered, not bottom-anchored (Veronika's call, 2026-09) — a bottom toast
+   sat right on top of the mobile tab bar and was easy to miss/misread as
+   part of it, especially with an Undo action riding along.
+   Palette/shape/shadow deliberately match .grace-earn-toast below (the
+   app's one other toast) — accent-dark fill, #fff text, 13px radius, same
+   shadow — so the two read as the same component instead of two unrelated
+   ones. Scale-fade in place instead of grace's slide-from-bottom, since
+   this one lives center-screen rather than above the nav. */
+.app-toast { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.92); background: var(--accent-dark); color: #fff; font-size: 12.5px; font-weight: 600; padding: 12px 14px; border-radius: 13px; box-shadow: 0 10px 24px rgba(0,0,0,0.25); z-index: 1200; opacity: 0; transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none; max-width: 86%; text-align: center; display: flex; align-items: center; gap: 10px; }
+.app-toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .app-toast { transition: opacity 0.2s ease; transform: translate(-50%, -50%); }
+  .app-toast.show { transform: translate(-50%, -50%); }
+}
+.app-toast-msg { white-space: normal; }
+.app-toast-action { flex-shrink: 0; border: none; color: var(--accent-dark); background: var(--bg); padding: 5px 11px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; }
+/* c047: Book List's read/unread checkbox used to be identical to the
+   generic Wardrobe/checklist checkbox — easy to miss as this row's main
+   action. Larger, round, and accent-outlined even unchecked so it reads
+   as a deliberate "mark finished" control rather than a stray checklist
+   box; still shares the base .checkbox class/behavior everywhere else
+   in the app relies on. */
+.checkbox-book { width: 25px; height: 25px; border-radius: 50%; border-width: 2px; border-color: var(--accent); }
 .bk-rating-badge { font-size: 10.5px; color: var(--muted); text-align: right; line-height: 1.5; white-space: nowrap; }
 .bk-rating-badge .stars { font-size: 11px; }
 .book-search-wrap { position: relative; margin-bottom: 14px; }
@@ -1794,6 +1815,42 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .home-link-line { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 9px 12px; border: 1.5px dashed var(--border); border-radius: 10px; font-size: 12px; font-weight: 600; color: var(--accent-dark); cursor: pointer; background: transparent; }
 .home-link-line-icon { width: 16px; height: 16px; flex-shrink: 0; display: flex; }
 .home-link-line-icon svg { width: 100%; height: 100%; }
+
+/* Multiple reward goals (2026-09, Veronika's call) — a swipeable carousel
+   when there's more than one active goal. Each .home-reward-slide holds
+   the exact same banner/progress markup a single goal always has; only
+   this wrapper and the paging dots are new. Native scroll-snap does the
+   swiping — no drag/touch JS needed. */
+.home-reward-carousel-wrap { margin-top: 0; }
+.home-reward-carousel-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.home-reward-carousel-track::-webkit-scrollbar { display: none; }
+.home-reward-slide { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
+.home-reward-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
+.home-reward-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background 0.2s ease; }
+.home-reward-dots span.on { background: var(--accent-dark); }
+
+/* Goals overview (openRewardGoalsListScreen) — shown once there's more
+   than one active goal, before drilling into any single one. */
+.reward-goal-list { display: flex; flex-direction: column; gap: 10px; }
+.reward-goal-row { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; background: var(--surface); }
+.reward-goal-row:hover { background: var(--accent-soft); }
+.reward-goal-row-photo { width: 44px; height: 44px; border-radius: 9px; flex-shrink: 0; background-color: var(--accent-soft); background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; }
+.reward-goal-row-body { flex: 1; min-width: 0; }
+.reward-goal-row-name { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reward-goal-row-bar { height: 5px; border-radius: 4px; background: var(--border); margin-top: 5px; overflow: hidden; }
+.reward-goal-row-fill { height: 100%; border-radius: 4px; background: var(--accent-dark); }
+.reward-goal-row-fill.reached { background: var(--good); }
+.reward-goal-row-fig { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+/* Goal detail screen's "back to the list" link — only shown when more
+   than one goal is active. */
+.reward-back-link { display: inline-block; background: none; border: none; padding: 0; margin-bottom: 10px; font-size: 12.5px; font-weight: 700; color: var(--accent-dark); cursor: pointer; font-family: inherit; }
+
+/* Edit-goal modal: which practices count toward this goal. */
+.reward-practice-hint { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-bottom: 8px; }
+.reward-practice-list { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 4px 12px; }
+.reward-practice-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 13px; cursor: pointer; }
+.reward-practice-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-dark); flex-shrink: 0; }
 .sheet-overlay { position: fixed; inset: 0; background: rgba(34,30,26,0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
 .sheet-box { position: relative; width: 100%; max-width: 480px; background: var(--surface); border-radius: 20px 20px 0 0; padding: 28px 24px 30px; box-sizing: border-box; text-align: center; animation: sheet-rise 0.2s ease-out; }
 @keyframes sheet-rise { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
