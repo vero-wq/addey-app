@@ -3116,11 +3116,160 @@ function starsFor(n) {
 
 let bookSearchQuery = ""; // resets each session, not persisted — same treatment as settingsSubTab
 
+// A small transient confirmation, for actions that change something
+// off-screen (or easy to miss) without opening a modal — e.g. the
+// Currently Reading shelf silently bumping a book back to "To Read".
+// No persistent container needed: each call appends its own node and
+// removes it after the fade-out.
+function showToast(message) {
+  const node = el(`<div class="app-toast">${escapeHtml(message)}</div>`);
+  document.body.appendChild(node);
+  requestAnimationFrame(() => node.classList.add("show"));
+  setTimeout(() => {
+    node.classList.remove("show");
+    setTimeout(() => node.remove(), 300);
+  }, 2600);
+}
+
+// ------------------------------------------------------------------
+// 2026-09 Books redesign — a real third status (To Read → Reading →
+// Read) instead of a read/unread checkbox, so "what am I in the middle
+// of" is a fact the data model can answer instead of something buried
+// in whichever book you last searched for. Kept alongside the legacy
+// `read` boolean (always mirrored via setBookStatus) rather than
+// replacing it outright, since badges/milestones elsewhere still read
+// `book.read` directly and there's no need to touch every call site.
+// ------------------------------------------------------------------
+function setBookStatus(book, status) {
+  book.status = status;
+  book.read = status === "read";
+}
+
+// Lazy per-item migration — run every render rather than gated behind a
+// sheet-level schema bump, since this only ever adds a field and never
+// changes the shape of anything that already exists.
+function ensureBookStatuses(sheet) {
+  sheet.items.forEach((b) => {
+    if (b.status === undefined) b.status = b.read ? "read" : "to_read";
+  });
+}
+
+function currentlyReadingBooks(sheet, excludeId) {
+  return sheet.items.filter((b) => b.status === "reading" && b.id !== excludeId);
+}
+
+function lastLoggedDateForBook(bookId) {
+  const entries = (state.learningLog || []).filter((e) => e.bookId === bookId);
+  if (!entries.length) return null;
+  return entries.map((e) => e.date).sort().pop();
+}
+
+// Promotes a book onto the Currently Reading shelf, enforcing the
+// 2-book cap. Per Veronika's call: hitting the cap auto-bumps whichever
+// of the current two hasn't been logged against in longer back to "To
+// Read" — judged by last-logged date, not which was started first —
+// with no swap prompt. Returns the bumped book (or null) so callers can
+// surface a small toast.
+function promoteToReading(sheet, book) {
+  if (book.status === "reading") return null;
+  const current = currentlyReadingBooks(sheet, book.id);
+  let bumped = null;
+  if (current.length >= 2) {
+    current.sort((a, b) => (lastLoggedDateForBook(a.id) || "").localeCompare(lastLoggedDateForBook(b.id) || ""));
+    bumped = current[0];
+    setBookStatus(bumped, "to_read");
+  }
+  setBookStatus(book, "reading");
+  if (book.totalChapters && (book.currentChapter || 0) >= book.totalChapters) setBookStatus(book, "read");
+  return bumped;
+}
+
+// The shelf's own +/- stepper — logs a reading entry inline, no modal.
+// "+" is the real "log more reading today" action (upserts today's
+// learningLog entry, same one-entry-per-day model the full Log Reading
+// modal already uses, and runs the same promote/cap/swap logic since
+// it's just another door into "log a reading entry"). "-" is a quiet
+// correction for an accidental over-tap, so it adjusts the chapter
+// without manufacturing a new log entry or re-triggering promotion.
+function shelfLogChapter(sheetId, bookId, delta) {
+  const sheet = state.customSheets[sheetId];
+  const book = sheet?.items.find((b) => b.id === bookId);
+  if (!book) return;
+  const todayStr = todayISO();
+  const prevChapter = book.currentChapter || 0;
+  let newChapter = prevChapter + delta;
+  if (newChapter < 0) newChapter = 0;
+  if (book.totalChapters) newChapter = Math.min(newChapter, book.totalChapters);
+  if (newChapter === prevChapter) return;
+  book.currentChapter = newChapter;
+
+  let bumped = null;
+  if (delta > 0) {
+    state.learningLog = (state.learningLog || []).filter((e) => e.date !== todayStr);
+    state.learningLog.push({ date: todayStr, bookId: book.id, chapter: newChapter });
+    bumped = promoteToReading(sheet, book);
+  } else {
+    const todaysEntry = (state.learningLog || []).find((e) => e.date === todayStr && e.bookId === book.id);
+    if (todaysEntry) todaysEntry.chapter = newChapter;
+    if (book.status === "read" && (!book.totalChapters || newChapter < book.totalChapters)) setBookStatus(book, "reading");
+  }
+
+  scheduleSave();
+  renderBookSheet(sheetId);
+  renderHome();
+  if (bumped) showToast(`Moved "${bumped.title}" back to To Read`);
+}
+
+function renderCurrentlyReadingShelf(panel, sheetId, sheet, todayStr) {
+  const reading = currentlyReadingBooks(sheet, null);
+  if (!reading.length) return;
+  const shelf = el(`<div class="cr-shelf"><div class="cr-shelf-label">📖 Currently Reading</div></div>`);
+  reading.forEach((book) => {
+    const chapter = book.currentChapter || 0;
+    const total = book.totalChapters || null;
+    const pct = total ? Math.min(100, Math.round((chapter / total) * 100)) : 0;
+    const lastLogged = lastLoggedDateForBook(book.id);
+    let captionText;
+    if (lastLogged === todayStr) captionText = "logged today";
+    else if (lastLogged) captionText = `last logged ${daysBetween(new Date(lastLogged + "T00:00:00"), new Date(todayStr + "T00:00:00"))} day(s) ago`;
+    else captionText = "not logged yet";
+    const progressLabel = total ? `Ch. ${chapter} of ${total} · ${captionText}` : captionText;
+    const card = el(`
+      <div class="cr-card">
+        <div class="cr-card-top">
+          <div class="cr-card-top-text">
+            <div class="cr-title">${escapeHtml(book.title)}</div>
+            <div class="cr-author">${escapeHtml(book.author)}</div>
+          </div>
+          <div class="cr-stepper">
+            <button type="button" class="cr-step-btn cr-step-minus" ${chapter <= 0 ? "disabled" : ""} aria-label="Log one chapter back">&minus;</button>
+            <button type="button" class="cr-step-btn primary cr-step-plus" ${total && chapter >= total ? "disabled" : ""} aria-label="Log one chapter forward">+</button>
+          </div>
+        </div>
+        ${total ? `<div class="cr-progress-track"><div class="cr-progress-fill" style="width:${pct}%;"></div></div>` : ""}
+        <div class="cr-progress-label">${escapeHtml(progressLabel)}</div>
+      </div>
+    `);
+    card.querySelector(".cr-card-top-text").addEventListener("click", () => openReadingLogModal(sheetId, book.id));
+    card.querySelector(".cr-step-plus").addEventListener("click", (e) => {
+      e.stopPropagation();
+      shelfLogChapter(sheetId, book.id, 1);
+    });
+    card.querySelector(".cr-step-minus").addEventListener("click", (e) => {
+      e.stopPropagation();
+      shelfLogChapter(sheetId, book.id, -1);
+    });
+    shelf.appendChild(card);
+  });
+  panel.appendChild(shelf);
+}
+
 function renderBookSheet(id) {
   const panel = document.getElementById(`panel-${id}`);
   const sheet = state.customSheets[id];
   if (!panel || !sheet) return;
   sheet.milestonesEarned ||= {};
+  ensureBookStatuses(sheet);
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
 
@@ -3169,6 +3318,12 @@ function renderBookSheet(id) {
   `);
   panel.appendChild(summaryRow);
 
+  // Currently Reading shelf — surfaces whatever's actively "Reading"
+  // above the search box, capped at 2, so continuing what you're
+  // already in the middle of is one tap instead of a search through
+  // a long shelf. See books_logging_audit.html for the full design.
+  renderCurrentlyReadingShelf(panel, id, sheet, todayStr);
+
   // A shelf this size is easy to lose a specific book in, especially when
   // trying to log today's reading against it — search by title or author
   // narrows straight to it instead of scrolling and opening categories.
@@ -3204,6 +3359,7 @@ function renderBookSheet(id) {
   const filterWrap = filterRow.querySelector(".view-toggle");
   [
     ["toread", "To Read"],
+    ["reading", "Reading"],
     ["read", "Read"],
     ["all", "All"],
   ].forEach(([key, label]) => {
@@ -3219,8 +3375,9 @@ function renderBookSheet(id) {
 
   const query = bookSearchQuery.trim().toLowerCase();
   const items = sheet.items.filter((b) => {
-    if (sheet.activeStatus === "read" && !b.read) return false;
-    if (sheet.activeStatus === "toread" && b.read) return false;
+    if (sheet.activeStatus === "read" && b.status !== "read") return false;
+    if (sheet.activeStatus === "reading" && b.status !== "reading") return false;
+    if (sheet.activeStatus === "toread" && b.status !== "to_read") return false;
     if (query && !`${b.title} ${b.author}`.toLowerCase().includes(query)) return false;
     return true;
   });
@@ -3281,12 +3438,13 @@ function renderBookSheet(id) {
       const factsHtml = facts
         .map(([label, val]) => `<div class="wi-detail-fact"><span class="wi-detail-fact-label">${escapeHtml(label)}</span><span class="wi-detail-fact-val">${escapeHtml(val)}</span></div>`)
         .join("");
+      const readingTag = book.status === "reading" ? ` <span class="muted" style="font-weight:600;">· Reading</span>` : "";
       const item = el(`
         <details class="wardrobe-item">
           <summary class="wardrobe-row">
             <div class="checkbox ${book.read ? "checked" : ""}">${checkSvg}</div>
             <div class="wi-body">
-              <div class="wi-name ${book.read ? "owned" : ""}">${escapeHtml(book.title)}${linkIcon}</div>
+              <div class="wi-name ${book.read ? "owned" : ""}">${escapeHtml(book.title)}${linkIcon}${readingTag}</div>
               <div class="wi-sub">${escapeHtml(book.author)}</div>
             </div>
             ${badge}
@@ -3303,10 +3461,15 @@ function renderBookSheet(id) {
           </div>
         </details>
       `);
+      // The top-level checkbox is a quick "mark read"/"unmark" toggle, same
+      // as before — it just now speaks in statuses instead of a boolean.
+      // Unchecking a finished book drops it back to "To Read" (not
+      // "Reading"); if you're still partway through, use Log Reading or
+      // Edit Book to set "Reading" explicitly instead.
       item.querySelector(".checkbox").addEventListener("click", (e) => {
         e.stopPropagation();
         e.preventDefault();
-        book.read = !book.read;
+        setBookStatus(book, book.status === "read" ? "to_read" : "read");
         scheduleSave();
         renderBookSheet(id);
       });
@@ -3340,7 +3503,7 @@ function openBookItemModal(sheetId, itemId) {
   const sheet = state.customSheets[sheetId];
   const isNew = !itemId;
   const item = isNew
-    ? { title: "", author: "", category: "", format: "listen or read", link: "", read: false, onlineRating: null, myRating: null, notes: "", totalChapters: null, currentChapter: 0 }
+    ? { title: "", author: "", category: "", format: "listen or read", read: false, status: "to_read", onlineRating: null, myRating: null, notes: "", totalChapters: null, currentChapter: 0, link: "" }
     : sheet.items.find((b) => b.id === itemId);
   if (!item) return;
 
@@ -3371,9 +3534,10 @@ function openBookItemModal(sheetId, itemId) {
             </div>
             <div>
               <label class="muted">Status</label>
-              <select class="bk-f-read">
-                <option value="0" ${!item.read ? "selected" : ""}>To Read</option>
-                <option value="1" ${item.read ? "selected" : ""}>Read</option>
+              <select class="bk-f-status">
+                <option value="to_read" ${item.status === "to_read" ? "selected" : ""}>To Read</option>
+                <option value="reading" ${item.status === "reading" ? "selected" : ""}>Reading</option>
+                <option value="read" ${item.status === "read" ? "selected" : ""}>Read</option>
               </select>
             </div>
           </div>
@@ -3385,7 +3549,10 @@ function openBookItemModal(sheetId, itemId) {
             </div>
             <div>
               <label class="muted">Currently on</label>
-              <input type="number" min="0" class="bk-f-current-chapter" value="${item.currentChapter || 0}" />
+              <div class="muted" style="padding:9px 0; font-size:13px; color:var(--text);">
+                ${item.totalChapters ? `Chapter ${item.currentChapter || 0} of ${item.totalChapters}` : item.currentChapter ? `Chapter ${item.currentChapter}` : "Not started"}
+              </div>
+              <div class="muted" style="font-size:10.5px;">Set from Log Reading, not here</div>
             </div>
           </div>
 
@@ -3420,28 +3587,43 @@ function openBookItemModal(sheetId, itemId) {
   });
 
   overlay.querySelector(".bk-save").addEventListener("click", () => {
+    // "Currently on" is read-only here (see the form above) — chapter
+    // progress only ever moves through Log Reading now, so it's the one
+    // action that can move that number and it always updates the log too.
     const updated = {
       title: overlay.querySelector(".bk-f-title").value.trim(),
       author: overlay.querySelector(".bk-f-author").value.trim(),
       category: overlay.querySelector(".bk-f-category").value.trim(),
       format: overlay.querySelector(".bk-f-format").value,
-      read: overlay.querySelector(".bk-f-read").value === "1",
       totalChapters: overlay.querySelector(".bk-f-total-chapters").value ? Number(overlay.querySelector(".bk-f-total-chapters").value) : null,
-      currentChapter: overlay.querySelector(".bk-f-current-chapter").value ? Number(overlay.querySelector(".bk-f-current-chapter").value) : 0,
       onlineRating: overlay.querySelector(".bk-f-online-rating").value ? Number(overlay.querySelector(".bk-f-online-rating").value) : null,
       myRating: overlay.querySelector(".bk-f-my-rating").value ? Number(overlay.querySelector(".bk-f-my-rating").value) : null,
       notes: overlay.querySelector(".bk-f-notes").value.trim(),
       link: overlay.querySelector(".bk-f-link").value.trim(),
     };
+    const newStatus = overlay.querySelector(".bk-f-status").value;
     if (!updated.title) return;
+    let target;
     if (isNew) {
-      sheet.items.push({ id: nextId(), ...updated });
+      target = { id: nextId(), status: "to_read", currentChapter: 0, ...updated };
+      sheet.items.push(target);
     } else {
       Object.assign(item, updated);
+      target = item;
+    }
+    // Manually setting "Reading" is one of the two ways onto the shelf
+    // (the other is logging against a book) — runs the same cap/auto-swap
+    // logic. Setting To Read or Read just frees the slot, no swap needed.
+    let bumped = null;
+    if (newStatus === "reading" && target.status !== "reading") {
+      bumped = promoteToReading(sheet, target);
+    } else {
+      setBookStatus(target, newStatus);
     }
     scheduleSave();
     overlay.remove();
     renderBookSheet(sheetId);
+    if (bumped) showToast(`Moved "${bumped.title}" back to To Read`);
   });
 
   const deleteBtn = overlay.querySelector(".bk-delete");
@@ -3562,15 +3744,21 @@ function openReadingLogModal(sheetId, presetBookId) {
     state.learningLog = (state.learningLog || []).filter((e) => e.date !== todayStr);
     state.learningLog.push({ date: todayStr, bookId, chapter });
 
+    // Logging a reading entry is one of the two doors onto the Currently
+    // Reading shelf (the other is manually setting status → Reading in
+    // Edit Book) — promotes the book, enforcing the 2-book cap with the
+    // auto-swap-the-staler-one rule.
+    let bumped = null;
     if (chapter !== null) {
       book.currentChapter = chapter;
-      if (book.totalChapters && chapter >= book.totalChapters) book.read = true;
+      bumped = promoteToReading(sheet, book);
     }
 
     scheduleSave();
     overlay.remove();
     renderBookSheet(sheetId);
     renderHome();
+    if (bumped) showToast(`Moved "${bumped.title}" back to To Read`);
   });
 
   document.body.appendChild(overlay);
@@ -9164,6 +9352,16 @@ function renderSleepMorningCard(nightDate, today) {
   return card;
 }
 
+// 2026-09 consistency pass: retired from the Sleep tab itself — it was
+// the only Practice with its own bespoke inline trend banner, built
+// before the app-wide Trends section existed and never reconciled with
+// it (per Veronika's call). Sleep now gets the same week strip as every
+// other open-ended Practice (see renderSleep below); the "protected
+// on X of Y nights" framing and its 10-night unlock gate go away since
+// none of the other week strips gate on a sample size either. Left
+// defined, unused, per the project's don't-delete-superseded-code
+// convention — the caffeine/movement/mood insights below moved to
+// renderSleepPatternsCard, which now lives in Trends instead.
 function renderSleepProgressCard() {
   const count = sleepLoggedNights().length;
   const remaining = SLEEP_NIGHTS_TO_UNLOCK - count;
@@ -9205,6 +9403,33 @@ function renderSleepTrendCard(trend) {
     );
   });
   return wrap;
+}
+
+// Sleep's own within-Practice correlations — moved here (2026-09) from
+// the old inline Sleep trend banner, so "patterns" all live in one place
+// app-wide instead of Sleep alone having its own copy. Same underlying
+// computeSleepTrend() (still gated at SLEEP_NIGHTS_TO_UNLOCK nights,
+// since a real correlation claim needs an actual sample — unlike the
+// week strip, which never gates). Silent when there's not enough data
+// or nothing worth flagging yet, same restraint every other Trends card
+// already uses.
+function renderSleepPatternsCard(section, today) {
+  const trend = computeSleepTrend();
+  if (!trend || !trend.insights.length) return;
+  section.appendChild(el(`<div class="subsection-title" style="margin-top:10px;">Sleep patterns</div>`));
+  trend.insights.forEach((ins) => {
+    section.appendChild(
+      el(`
+        <div class="sleep-insight-card">
+          <div class="sleep-insight-top">
+            <span class="sleep-insight-ic ${ins.tone}">${ins.icon}</span>
+            <div class="sleep-insight-text">${ins.text}</div>
+          </div>
+          <div class="sleep-bar-track"><div class="sleep-bar-fill ${ins.tone}" style="width:${ins.pct}%;"></div></div>
+        </div>
+      `)
+    );
+  });
 }
 
 function renderSleepHistory(panel) {
@@ -9444,8 +9669,16 @@ function renderSleep() {
   } else {
     panel.appendChild(renderSleepWindDownCard(today));
   }
-  const trend = computeSleepTrend();
-  panel.appendChild(trend ? renderSleepTrendCard(trend) : renderSleepProgressCard());
+  // 2026-09 consistency pass: Sleep gets the same 7-day strip every other
+  // open-ended Practice has instead of its own bespoke "protected on X of
+  // Y nights" banner — this was the only Practice with an inline trend
+  // card of its own, left over from before the app-wide Trends section
+  // existed. Deliberately still no live streak chip here (see
+  // computeLongestSleepProtectedStreak above) — a week strip isn't one:
+  // one missed night just leaves a dot empty, it doesn't reset anything.
+  // The caffeine/movement/mood correlation insights that used to live in
+  // the retired banner now show up in Trends instead (renderSleepPatternsCard).
+  panel.appendChild(buildWeekStripCard("sleep", "protected", today));
   // Best-ever protected-streak badges — no live streak chip on Sleep by
   // design (see computeLongestSleepProtectedStreak comment), just this.
   const sleepMilestonesSheet = { milestonesEarned: state.sleepMilestonesEarned };
@@ -11847,6 +12080,7 @@ function renderHomeTrendsSection(panel, today) {
     renderTrendInsightBanner(section, today);
     renderCyclePhaseCompletionCard(section, today);
     renderCooccurrenceCard(section, today);
+    renderSleepPatternsCard(section, today);
     return;
   }
 
@@ -11869,6 +12103,12 @@ function renderHomeTrendsSection(panel, today) {
   renderPulseChart(section, today, lockedId);
   renderTrendInsightBanner(section, today, lockedId);
   renderCyclePhaseCompletionCard(section, today, lockedId);
+  // Sleep's own within-practice correlations (caffeine, movement, mood)
+  // aren't a cross-Practice pattern, but they're still real analysis tied
+  // specifically to whichever Practice she's locked — so they show here
+  // only when Sleep itself is the locked Practice, same restriction logic
+  // as everything else on this branch.
+  if (lockedId === "sleep") renderSleepPatternsCard(section, today);
 
   // Patterns — one real pattern involving the locked Practice shown
   // plainly (the "one correlation insight" the Free vs. Paid doc promises
