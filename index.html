@@ -962,6 +962,10 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 .trend-pattern-card b { color: var(--text); font-style: normal; }
 .trend-pattern-card + .trend-pattern-card { margin-top: 8px; }
 .trend-pattern-note { font-size: 10.5px; color: var(--muted); margin-top: 8px; font-style: italic; }
+.trend-more-patterns { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.trend-more-patterns[hidden] { display: none; }
+.trend-show-more-btn { display: block; width: 100%; margin-top: 8px; padding: 9px 12px; border: 1px dashed var(--border); border-radius: 10px; background: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; text-align: center; }
+.trend-show-more-btn:hover { border-color: var(--accent); }
 
 /* ---------- Trends screen (free/paid-gated per-practice + full grid) ---------- */
 .trends-sub { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
