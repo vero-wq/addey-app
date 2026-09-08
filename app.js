@@ -3879,7 +3879,7 @@ function computeMovementMix(sheet, today) {
 function buildStreakCard(streak, label, extraHtml) {
   return el(`
     <div class="card">
-      <div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">${escapeHtml(label)}</span></div>
+      <div class="al-streak-chip">${homeStreakPlantSvg(streak, label)}<span class="num">${streak}</span><span class="lbl">${escapeHtml(label)}</span></div>
       ${extraHtml || ""}
     </div>
   `);
@@ -4004,7 +4004,7 @@ function renderActivitySheet(id) {
         <span class="al-summary-count">${weeklyMinutes} of <span class="al-goal-edit" title="Tap to change your weekly goal">${goal}</span></span>
       </div>
       <div class="al-bar" style="margin-bottom:12px;"><div class="al-bar-fill" style="width:${barPct}%;"></div></div>
-      <div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">day movement streak</span></div>
+      <div class="al-streak-chip">${homeStreakPlantSvg(streak, id)}<span class="num">${streak}</span><span class="lbl">day movement streak</span></div>
     </div>
   `);
   summaryCard.querySelector(".al-goal-edit").addEventListener("click", () => {
@@ -9758,7 +9758,7 @@ function trendsPracticeDetailHtml(appId, today) {
   const streak = appCurrentStreak(appId, today);
   const sameDay = trendsSameDayPairsFor(appId, today);
   const nextDay = trendsNextDayPairsFor(appId, today);
-  let html = `<div class="al-streak-chip">${homeStreakFlameSvg(streak)}<span class="num">${streak}</span><span class="lbl">day streak</span></div>`;
+  let html = `<div class="al-streak-chip">${homeStreakPlantSvg(streak, appId)}<span class="num">${streak}</span><span class="lbl">day streak</span></div>`;
   if (!sameDay.length && !nextDay.length) {
     html += `<div class="trends-empty" style="margin-top:12px;">Not enough data yet for ${escapeHtml(labels[appId] || appId)} &mdash; keep logging and patterns will show up here.</div>`;
   } else {
@@ -10574,21 +10574,24 @@ const FLAME_CORE_PATH =
   "M9.2 15.2c.3 1.6 1.6 2.6 3 2.4 1.8-.3 2.6-2 2.3-3.7-.2-1-.9-1.7-1.1-2.7.9 1.5.4 3-.6 3.6-1 .6-2.2.1-2.6-1-.4-1 .1-2 .8-3-1.3.9-2.1 2.7-1.8 4.4z";
 let flameGradientSeq = 0;
 
-function homeStreakFlameSvg(days) {
-  const c = flameColorsForStreak(days);
-  const gradId = `flameGrad${flameGradientSeq++}`;
-  return `
-    <svg viewBox="0 0 24 24" width="28" height="28" style="overflow:visible;flex-shrink:0;">
-      <defs>
-        <linearGradient id="${gradId}" x1="0.2" y1="1" x2="0.8" y2="0">
-          <stop offset="0%" stop-color="${c.deep}"/>
-          <stop offset="55%" stop-color="${c.mid}"/>
-          <stop offset="100%" stop-color="${c.light}"/>
-        </linearGradient>
-      </defs>
-      <path d="${FLAME_GLYPH_PATH}" fill="url(#${gradId})"/>
-      <path d="${FLAME_CORE_PATH}" fill="#fff" opacity="0.3"/>
-    </svg>`;
+// Renamed from the old homeStreakFlameSvg — per Veronika's call (2026-09
+// milestones/streaks rework), the streak indicator everywhere it shows up
+// (buildStreakCard's chip, Trends' per-practice detail, this celebration
+// popup) is the same growing-plant medallion Trends' Milestones row used
+// to use on its own, not a flame. `seedStr` should be something stable
+// per-Practice (its id or label) so the flower it blooms into at 100+
+// days is consistent for that Practice but varies from one Practice to
+// the next — see bloomRevealColor. Reuses the exact HOME_STREAK_MILESTONES
+// ladder and bloomBadgeMarkup already built for Trends, just resized to
+// fit wherever it's dropped in (28px inline chip by default, bigger for
+// the celebration popup).
+function homeStreakPlantSvg(days, seedStr, size) {
+  const px = size || 28;
+  const reached = HOME_STREAK_MILESTONES.filter((m) => days >= m).pop() || 3;
+  return bloomBadgeMarkup(reached, seedStr != null ? seedStr : String(days)).replace(
+    'width="56" height="56"',
+    `width="${px}" height="${px}"`
+  );
 }
 
 // Lucide-style cupcake glyph — the icon for the reward feature everywhere
@@ -11448,33 +11451,70 @@ function bloomBadgeMarkup(dayTier, seedStr) {
   return `<svg class="bloom-medal" width="56" height="56" viewBox="0 0 64 64" style="display:block;overflow:visible;"><path d="${coinD}" fill="${bg}"/>${inner}</svg>`;
 }
 
+// Which practice apps have a real, content-based Milestones card, and
+// what that card's definitions are -- Bible and Sleep are builtins with
+// their own earned-date stores (state.bibleMilestonesEarned /
+// state.sleepMilestonesEarned) rather than a customSheets entry, so
+// they're handled as special cases below instead of through this map.
+const PRACTICE_MILESTONE_DEFS = {
+  workout: WORKOUT_MILESTONES,
+  activity: ACTIVITY_MILESTONES,
+  mealLog: MEAL_MILESTONES,
+  books: BOOK_MILESTONES,
+  social: SOCIAL_MILESTONES,
+  prayer: PRAYER_MILESTONES,
+  breathe: BREATHE_MILESTONES,
+};
+
+// Real, earned achievements across every practice app -- the content half
+// of "milestone" per the Milestones & Streaks Audit: a book finished, a
+// testament completed, a caffeine-free-night count. Never a day-streak --
+// that's the plant medallion's job now, not this list's. Newest first.
+function collectEarnedMilestones() {
+  const out = [];
+  currentAppEntries()
+    .filter((e) => e.type === "practice")
+    .forEach((app) => {
+      const templateKey = state.customSheets[app.id]?.templateKey;
+      let defs, sheet;
+      if (templateKey && PRACTICE_MILESTONE_DEFS[templateKey]) {
+        defs = PRACTICE_MILESTONE_DEFS[templateKey];
+        sheet = state.customSheets[app.id];
+        sheet.milestonesEarned ||= {};
+      } else if (app.id === "bible") {
+        defs = BIBLE_MILESTONES;
+        state.bibleMilestonesEarned ||= {};
+        sheet = { milestonesEarned: state.bibleMilestonesEarned };
+      } else if (app.id === "sleep") {
+        defs = SLEEP_MILESTONES;
+        state.sleepMilestonesEarned ||= {};
+        sheet = { milestonesEarned: state.sleepMilestonesEarned };
+      } else {
+        return;
+      }
+      defs.forEach((m) => {
+        const earnedDate = sheet.milestonesEarned[m.key];
+        if (earnedDate) {
+          out.push({ appId: app.id, appLabel: app.label, key: m.key, label: m.label, icon: m.icon, earnedDate });
+        }
+      });
+    });
+  return out.sort((a, b) => (a.earnedDate < b.earnedDate ? 1 : a.earnedDate > b.earnedDate ? -1 : 0));
+}
+
 function renderTrendMilestonesRow(panel, today) {
-  const practiceApps = currentAppEntries().filter((e) => e.type === "practice");
-  const hits = practiceApps
-    .map((app) => {
-      const streak = appCurrentStreak(app.id, today);
-      const reached = HOME_STREAK_MILESTONES.filter((m) => streak >= m).pop();
-      return reached ? { id: app.id, label: app.label, reached } : null;
-    })
-    .filter(Boolean);
-  if (!hits.length) return;
+  const earned = collectEarnedMilestones();
+  if (!earned.length) return;
   panel.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Milestones</div>`));
-  // Bloom badges: a small growing plant per Practice instead of a flat
-  // gold checkmark medal. Early tiers are the same generic seedling for
-  // every Practice; the first time a streak actually blooms (100 days)
-  // it's revealed to be one of a few flower species in one of a few
-  // colors, picked deterministically from the Practice's own id so it's
-  // stable across renders but a surprise the first time you see it —
-  // per Veronika's call, variety and "what will this one turn out to be"
-  // is a more interesting reward than a single fixed medal shape.
+  panel.appendChild(el(`<div class="al-note-line" style="margin:-4px 0 12px;">Real things you've actually done, not the day-streak &mdash; that's the plant next to each app above.</div>`));
   const grid = el(`<div class="pr-badge-grid"></div>`);
-  hits.forEach((h) => {
+  earned.slice(0, 6).forEach((m) => {
     grid.appendChild(el(`
       <div class="pr-badge">
-        <div class="pr-badge-medal earned" style="background:none; box-shadow:none; border-radius:0; overflow:visible;">${bloomBadgeMarkup(h.reached, h.id)}</div>
+        <div class="pr-badge-medal earned">${m.icon}</div>
         <div class="pr-badge-text">
-          <div class="lbl">${escapeHtml(h.label)}</div>
-          <div class="sub earned-date">${h.reached}-day streak</div>
+          <div class="lbl">${escapeHtml(m.label)}</div>
+          <div class="sub earned-date">${escapeHtml(m.appLabel)} &middot; ${activityDateShort(m.earnedDate)}</div>
         </div>
       </div>
     `));
@@ -12974,7 +13014,7 @@ function openSobrietyCelebration(tier, done) {
 // milestone chips), so the celebration reads as "the app's own flame,
 // just bigger" rather than a new visual language.
 function openMilestoneCelebration(appLabel, days, done) {
-  const flame = homeStreakFlameSvg(days);
+  const flame = homeStreakPlantSvg(days, appLabel, 64);
   const confettiColors = ["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F"];
   const confettiHtml = Array.from({ length: 10 })
     .map((_, i) => {
