@@ -1272,6 +1272,30 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .streak-hero-text .num { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1; }
 .streak-hero-text .lbl { font-size: 12.5px; color: var(--muted); font-weight: 600; }
 
+/* Daily Journal — gratitude POET chip picker + reflection + history */
+.eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-dark); margin: 18px 0 10px; display: flex; align-items: center; gap: 6px; }
+.eyebrow:first-of-type { margin-top: 4px; }
+.poet-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.poet-chip { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); font-size: 10.5px; font-weight: 600; color: var(--muted); cursor: pointer; transition: border-color 0.15s, background 0.15s, color 0.15s; }
+.poet-chip .emoji { font-size: 17px; }
+.poet-chip.selected { border-color: var(--accent); background: #F3E9DA; color: var(--accent-dark); }
+.poet-hint { font-size: 10px; color: var(--muted); margin: -6px 0 14px; line-height: 1.5; }
+.poet-hint b { color: var(--accent-dark); }
+.journal-q { margin: 14px 0 0; }
+.journal-q label { display: block; font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-style: italic; font-size: 14.5px; color: var(--text); margin-bottom: 6px; }
+.journal-q textarea { width: 100%; border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; font-family: inherit; font-size: 13px; color: var(--text); resize: none; background: var(--surface); }
+.journal-q textarea::placeholder { color: var(--muted); opacity: 0.7; }
+.divider { border: none; border-top: 1px dashed var(--border); margin: 18px 0 2px; }
+.history-card summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+.history-card summary::-webkit-details-marker { display: none; }
+.history-card summary .chevron { transition: transform 0.15s; color: var(--muted); }
+.history-card[open] summary .chevron { transform: rotate(90deg); }
+.hist-row { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-top: 1px dashed var(--border); }
+.hist-row:first-of-type { border-top: none; margin-top: 12px; }
+.hist-date { font-size: 10.5px; font-weight: 700; color: var(--accent-dark); }
+.hist-snippet { font-size: 12px; color: var(--text); line-height: 1.5; }
+.hist-snippet b { color: var(--accent-dark); font-weight: 600; }
+
 .al-chip-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
 .al-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); font-size: 10.5px; font-weight: 600; color: var(--muted); font-family: inherit; cursor: pointer; }
 .al-chip .em { font-size: 18px; }
