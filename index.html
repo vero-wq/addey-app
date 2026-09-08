@@ -1296,6 +1296,19 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .hist-snippet { font-size: 12px; color: var(--text); line-height: 1.5; }
 .hist-snippet b { color: var(--accent-dark); font-weight: 600; }
 
+/* 7-day consistency strip (2026-09 practice-header pass) — Workout,
+   Activity, Daily Journal, Books: open-ended weekly habits with no fixed
+   total to finish, so "which days landed this week" beats a percent ring
+   or bar. Bible/Quran keep the ring (bible-ring, above) since they ARE a
+   fixed, permanent total with a real percent-complete. */
+.week-block { margin: 4px 0 2px; }
+.week-dots { display: flex; gap: 5px; margin-bottom: 9px; }
+.week-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--surface); border: 1.5px solid var(--border); color: var(--muted); flex-shrink: 0; }
+.week-dot.logged { background: var(--accent); border-color: var(--accent); color: #fff; }
+.week-dot.today { box-shadow: 0 0 0 2px var(--accent-dark); }
+.week-caption { font-size: 12px; color: var(--muted); }
+.week-caption strong { color: var(--text); }
+
 .al-chip-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
 .al-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); font-size: 10.5px; font-weight: 600; color: var(--muted); font-family: inherit; cursor: pointer; }
 .al-chip .em { font-size: 18px; }
