@@ -881,6 +881,10 @@ function activateTab(tab) {
   if (tab === "sobriety") renderSobrietyPanel();
   if (tab === "cycle") renderCyclePanel();
   if (tab === "trends") renderTrends();
+  // Leaving Challenges always resets any open Learn More screen, so
+  // coming back to the tab later starts fresh on the list rather than
+  // resuming wherever you last were.
+  if (tab !== "challenges") challengesLearnMoreId = null;
   if (tab === "challenges") renderChallengesPage();
   state.activeTab = tab;
   scheduleSave();
@@ -12756,10 +12760,27 @@ function renderHomeChallengesSection(panel, today) {
 // still has something unjoined, grouped so a Bible challenge never gets
 // lost in a Books-heavy list once more practices have challenges of
 // their own.
+// Which unjoined challenge (if any) is showing its Learn More screen —
+// transient UI state, not persisted, same pattern as trendsUi/etc.
+// Reset whenever the Challenges tab isn't the active one so a stale
+// Learn More screen never reappears behind someone's back.
+let challengesLearnMoreId = null;
+
 function renderChallengesPage() {
   const panel = document.getElementById("panel-challenges");
   if (!panel) return;
   panel.innerHTML = "";
+
+  // Veronika's call: "what if I wanna browse before I join?" — tapping an
+  // unjoined challenge's card body (not its Join button) opens this Learn
+  // More screen instead of requiring you to join first just to see what's
+  // in it.
+  if (challengesLearnMoreId && CHALLENGE_CATALOG[challengesLearnMoreId] && !isChallengeJoined(challengesLearnMoreId)) {
+    renderChallengeLearnMore(panel, challengesLearnMoreId);
+    return;
+  }
+  challengesLearnMoreId = null;
+
   panel.appendChild(el(`<h2 class="section-title serif">Challenges</h2>`));
   panel.appendChild(el(`<div class="muted" style="font-size:12.5px;margin:-8px 0 16px;">What you're on, and what's out there</div>`));
 
@@ -12804,7 +12825,15 @@ function renderChallengesPage() {
         </div>
       </div>
     `);
-    card.querySelector(".challenge-join-btn").addEventListener("click", () => {
+    // Tapping the card body opens Learn More; the Join button itself
+    // still joins immediately, same as before — stopPropagation keeps
+    // the two from firing together.
+    card.addEventListener("click", () => {
+      challengesLearnMoreId = id;
+      renderChallengesPage();
+    });
+    card.querySelector(".challenge-join-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
       if (joinedChallengesCount() >= challengeCapForAccount()) {
         openChallengeCapModal();
         return;
@@ -12838,6 +12867,72 @@ function renderChallengesPage() {
     panel.appendChild(el(`<div class="challenge-hub-group-title">Browse &mdash; ${escapeHtml(group.label)}</div>`));
     group.ids.forEach((id) => panel.appendChild(joinCard(id)));
   });
+}
+
+// Learn More — the full pitch and title list for a challenge you haven't
+// joined yet, before you commit. Matches the design Veronika approved in
+// the Challenges Journey artifact: back to the list, the tagline in full,
+// the first several titles with a "+N more" line, and a Join button at
+// the bottom. Icons are bare here too, same as the rest of the page.
+function renderChallengeLearnMore(panel, id) {
+  const catalog = CHALLENGE_CATALOG[id];
+  if (!catalog) return;
+
+  const back = el(`<button type="button" class="shelf-back-link">&lsaquo; Challenges</button>`);
+  back.addEventListener("click", () => {
+    challengesLearnMoreId = null;
+    renderChallengesPage();
+  });
+  panel.appendChild(back);
+
+  const itemCount = catalog.items.length;
+  const paceLine = catalog.type === "itemized-paced"
+    ? `${catalog.practiceLabel} &middot; one ${(catalog.unitLabel || "item").replace(/s$/, "")} a month &middot; ${itemCount} months`
+    : `${catalog.practiceLabel} &middot; at your own pace &middot; no deadline`;
+
+  panel.appendChild(el(`
+    <div class="card challenge-detail-card">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="font-size:38px;line-height:1;flex-shrink:0;">${catalog.icon}</div>
+        <div style="min-width:0;">
+          <div style="font-size:16px;font-weight:800;color:var(--text);">${escapeHtml(catalog.name)}</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${paceLine}</div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text);line-height:1.5;margin:14px 0 0;">${escapeHtml(catalog.tagline)}</p>
+    </div>
+  `));
+
+  panel.appendChild(el(`<div class="challenge-hub-group-title">What's included</div>`));
+  const list = el(`<div class="card" style="padding:2px 14px;"></div>`);
+  const SHOWN_COUNT = 5;
+  catalog.items.slice(0, SHOWN_COUNT).forEach((item, i) => {
+    list.appendChild(el(`
+      <div class="challenge-book-row" style="cursor:default;">
+        <div class="challenge-book-status">${i + 1}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="challenge-book-title">${escapeHtml(item.title)}</div>
+          <div class="challenge-book-author">${escapeHtml(item.author)}</div>
+        </div>
+      </div>
+    `));
+  });
+  if (itemCount > SHOWN_COUNT) {
+    list.appendChild(el(`<div class="muted" style="padding:10px 0;font-size:12px;text-align:center;">+ ${itemCount - SHOWN_COUNT} more</div>`));
+  }
+  panel.appendChild(list);
+
+  const joinBtn = el(`<button type="button" class="btn-primary" style="width:100%;margin-top:16px;">Join this challenge</button>`);
+  joinBtn.addEventListener("click", () => {
+    if (joinedChallengesCount() >= challengeCapForAccount()) {
+      openChallengeCapModal();
+      return;
+    }
+    joinChallenge(id);
+    challengesLearnMoreId = null;
+    renderChallengesPage();
+  });
+  panel.appendChild(joinBtn);
 }
 
 // Jumps to the challenge's home practice with that challenge focused —
