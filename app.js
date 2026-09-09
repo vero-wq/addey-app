@@ -11454,6 +11454,90 @@ function trendsDaysRemaining(expiresAt) {
   return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
 }
 
+// c027 — "Momentum trigger": syncs profiles.plan/earned_trial_granted_at
+// into state.account once per session, in the background. Runs once at
+// boot (see bootInner) and re-renders Home if it lands after Home's
+// already on screen. Follows the same shape as fetchTrendsProfile just
+// below, but writes into state.account instead of a UI-only cache, since
+// this is the one place anything client-side ever reflects a plan change
+// from either the RevenueCat webhook or grant-earned-trial.
+let earnedTrialUi = { loaded: false, loading: false, checking: false };
+
+async function syncAccountPlanFromProfile() {
+  if (earnedTrialUi.loaded || earnedTrialUi.loading) return;
+  earnedTrialUi.loading = true;
+  try {
+    const { data, error } = await sb
+      .from("profiles")
+      .select("plan, earned_trial_granted_at")
+      .eq("id", currentUserId)
+      .single();
+    if (error && error.code !== "PGRST116") throw error;
+    if (data) {
+      state.account ||= { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false, earnedTrialGrantedAt: null };
+      state.account.plan = data.plan === "paid" ? "paid" : "free";
+      state.account.planLabel = data.plan === "paid" ? "Plus" : "Free";
+      state.account.earnedTrialGrantedAt = data.earned_trial_granted_at || null;
+    }
+  } catch (err) {
+    console.error("syncAccountPlanFromProfile failed", err);
+  } finally {
+    earnedTrialUi.loaded = true;
+    earnedTrialUi.loading = false;
+    if (state.activeTab === "home") renderHome();
+  }
+}
+
+// Fires from renderHomeAppsGrid on every Home render — cheap (pure client
+// math) until an actual 14-day streak shows up, so re-running it often is
+// fine. `checking` guards against a second overlapping call while one
+// grant-earned-trial round trip is already in flight, since renderHome can
+// fire several times in quick succession (a log, then its own re-render).
+function checkEarnedTrialEligibility(today) {
+  if (earnedTrialUi.checking) return;
+  if (state.account?.plan === "paid") return;
+  if (state.account?.earnedTrialGrantedAt) return;
+
+  let bestId = null;
+  let bestStreak = 0;
+  currentPracticeAppIds().forEach((id) => {
+    const streak = appCurrentStreak(id, today);
+    if (streak > bestStreak) {
+      bestStreak = streak;
+      bestId = id;
+    }
+  });
+  if (bestStreak < 14) return;
+
+  earnedTrialUi.checking = true;
+  sb.functions
+    .invoke("grant-earned-trial", { body: { practiceId: bestId, streakDays: bestStreak } })
+    .then(({ data, error }) => {
+      if (error) throw error;
+      state.account ||= { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false, earnedTrialGrantedAt: null };
+      if (data?.granted) {
+        state.account.plan = "paid";
+        state.account.planLabel = "Plus";
+        state.account.earnedTrialGrantedAt = new Date().toISOString();
+        scheduleSave();
+        const appLabel = currentAppEntries().find((a) => a.id === bestId)?.label || "That practice";
+        queueCelebration((done) => openEarnedTrialCelebration(appLabel, data.expiresAt, done));
+      } else if (data?.alreadyGranted) {
+        // Another tab (or a retry) already claimed this — stop asking, so
+        // a stale local copy of state.account doesn't keep re-triggering
+        // this check every render.
+        state.account.earnedTrialGrantedAt ||= new Date().toISOString();
+        scheduleSave();
+      }
+    })
+    .catch((err) => {
+      console.error("checkEarnedTrialEligibility: grant-earned-trial failed", err);
+    })
+    .finally(() => {
+      earnedTrialUi.checking = false;
+    });
+}
+
 async function fetchTrendsProfile() {
   const { data, error } = await sb
     .from("profiles")
@@ -13036,6 +13120,12 @@ function renderHomeAppsGrid(today, isColdOpen) {
         queueCelebration((done) => openMilestoneCelebration(app.label, reachedDay, done));
       }
     });
+
+  // c027 — Momentum trigger: any Practice's real 14-day streak earns a
+  // one-time Addley Plus trial. Cheap to call on every Home render (it's
+  // pure client math until a streak actually clears 14) — see
+  // checkEarnedTrialEligibility for the guards against duplicate grants.
+  checkEarnedTrialEligibility(today);
 
   const card = el(`<div class="card"></div>`);
   // 2026-09 (Veronika): "Today" alone only named the caption's timeframe,
@@ -16043,6 +16133,35 @@ function openMilestoneCelebration(appLabel, days, done) {
   document.body.appendChild(overlay);
 }
 
+// c027's redemption moment — same confetti/celebrate-card language as
+// openMilestoneCelebration so it reads as part of the same streak-reward
+// system, not a separate upsell popup, plus a plain line on what actually
+// just happened (14 free days, no card, tied to this one streak).
+function openEarnedTrialCelebration(appLabel, expiresAt, done) {
+  const confettiHtml = confettiBurstHtml(["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F"], 14);
+  const endDate = expiresAt
+    ? new Date(expiresAt).toLocaleDateString(undefined, { month: "long", day: "numeric" })
+    : "";
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box" style="width:340px;text-align:center;">
+        <div class="milestone-celebrate-card">
+          ${confettiHtml}
+          <div class="celebrate-badge" style="background:#B3543E;width:56px;height:56px;margin:0 auto 14px;">${rewardCupcakeBadgeSvg()}</div>
+          <div class="milestone-celebrate-eyebrow">14-Day Streak</div>
+          <div class="celebrate-title">You earned Addley Plus</div>
+          <div class="celebrate-sub">${escapeHtml(appLabel)} hit a real 14-day streak — that's 14 days of Plus, free, no card needed${endDate ? `, through ${endDate}` : ""}.</div>
+        </div>
+        <button type="button" class="sheet-primary-btn milestone-celebrate-btn">Let's go</button>
+      </div>
+    </div>
+  `);
+  const close = () => { overlay.remove(); done?.(); };
+  overlay.querySelector(".milestone-celebrate-btn").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
 // Logging a reset — the record and all-time chips are untouched; only
 // startDate moves to today and the current-tier grid clears, so
 // there's something real to re-earn starting tomorrow. Your Why and a
@@ -16847,11 +16966,12 @@ async function bootInner() {
   state.paycheckSettings ||= { amount: 0, frequency: "semimonthly" };
   state.portfolioChoice ||= "yours";
   state.selectedInvestmentAccount ||= "rrsp";
-  // Plan/account info — nothing reads this for gating yet, but every
-  // account gets a real shape here from the start so that logic has
-  // something safe to check once it exists, instead of treating a missing
-  // field as either plan by accident.
-  state.account ||= { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false };
+  // Plan/account info. earnedTrialGrantedAt mirrors profiles.earned_trial_
+  // granted_at (see syncAccountPlanFromProfile) — it's the client-visible
+  // half of c027's one-time-per-account guard, so checkEarnedTrialEligibility
+  // can stop asking the server once this account has already redeemed.
+  state.account ||= { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false, earnedTrialGrantedAt: null };
+  state.account.earnedTrialGrantedAt ??= null;
 
   // Settings — sheet order/visibility, plus any sheets added from the gallery.
   state.deletedBuiltinSheets ||= [];
@@ -17402,6 +17522,18 @@ async function bootInner() {
   // real edit to trigger a save.
   doSave();
 
+  // Awaited (not fire-and-forget) and placed BEFORE the first renderAll —
+  // this is the only place profiles.plan (which the RevenueCat webhook and
+  // grant-earned-trial both write) actually gets read back into
+  // state.account, and checkEarnedTrialEligibility (run from every Home
+  // render) needs an accurate, already-settled state.account before its
+  // very first check. Sequencing it after would race: a slow profile read
+  // landing after a same-session grant already flipped plan to "paid"
+  // optimistically would stomp that back to "free" with stale server data
+  // and re-trigger a second grant. The function catches its own errors
+  // internally, so a failed read here just leaves the free-tier defaults
+  // in place rather than blocking boot.
+  await syncAccountPlanFromProfile();
   applyTheme();
   ensureCustomPanels();
   initTabs();
