@@ -11710,13 +11710,269 @@ function enabledRewardGoals() {
 // `practiceId` is which app was just logged — a general goal (no
 // practiceIds) takes every log; a narrowed goal only takes logs from its
 // assigned practices.
+// 2026-09 (Veronika, engagement audit — "finishing a reward goal is a dead
+// end"): every credit now also decides what, if anything, to show for it.
+// Three tiers, confirmed against mockups:
+//   - A routine credit that doesn't cross anything: a quiet toast
+//     (showRewardDepositToast) — same family as the existing grace-token
+//     toast, frequent and easy to ignore.
+//   - Crossing 25/50/75% for the first time this cycle: a small popup
+//     (openRewardMilestonePopup) — real weight, but not the full
+//     celebration. Deduped per cycle via prize.nudgedMilestones, which
+//     already existed on the goal object but was never actually written
+//     to before this.
+//   - Reaching 100%: deliberately NOT auto-celebrated here. That fires
+//     from the "Claim" button instead (openRewardClaimCelebration), same
+//     as before this change — the difference is only in what tapping
+//     Claim now does. Home's existing "reached" banner ("ready to claim")
+//     is enough of a signal in the moment; the confetti is reserved for
+//     the deliberate claim action.
+// Checked highest-first so a log that jumps past more than one fraction at
+// once (a narrowed goal with few qualifying practices can do this) only
+// ever fires the highest newly-crossed one, not a stack of three popups —
+// deliberately separate from REWARD_MILESTONE_FRACTIONS further down
+// (the progress-bar tick marks), which needs ascending order instead.
+const REWARD_MILESTONE_CHECK_ORDER = [0.75, 0.5, 0.25];
 function awardRewardForPracticeLog(practiceId) {
   (state.rewardGoals || []).forEach((prize) => {
     if (!prize?.enabled || !prize.dollarPerLog) return;
     const applies = !prize.practiceIds || !prize.practiceIds.length || prize.practiceIds.includes(practiceId);
     if (!applies) return;
-    prize.earnedAmount = Math.max(0, (prize.earnedAmount || 0) + prize.dollarPerLog);
+    const before = Math.max(0, prize.earnedAmount || 0);
+    prize.earnedAmount = before + prize.dollarPerLog;
+    const goal = prize.depositGoal || 0;
+    if (goal <= 0) return; // nothing configured to measure progress against yet
+    const pctBefore = before / goal;
+    const pctAfter = prize.earnedAmount / goal;
+    const reachedNow = pctAfter >= 1 && pctBefore < 1;
+    if (reachedNow) return; // surfaced via the Home banner + Claim button, not here
+    prize.nudgedMilestones ||= [];
+    const crossedFrac = REWARD_MILESTONE_CHECK_ORDER.find((f) => pctAfter >= f && pctBefore < f && !prize.nudgedMilestones.includes(String(f)));
+    if (crossedFrac) {
+      prize.nudgedMilestones.push(String(crossedFrac));
+      queueCelebration((done) => openRewardMilestonePopup(prize, crossedFrac, done));
+    } else {
+      showRewardDepositToast(prize);
+    }
   });
+}
+
+// The routine per-log toast — fires for every credit that doesn't cross a
+// milestone. Visually the same family as showGraceTokenToast (slides up
+// over the bottom nav, holds, slides away) but its own class since it's a
+// different, unrelated feature — sharing a class name here would make a
+// future change to one silently change the other too.
+function showRewardDepositToast(prize) {
+  const itemLabel = prize.itemName || "your reward";
+  const amt = prize.dollarPerLog.toFixed(2).replace(/\.00$/, "");
+  const earned = prize.earnedAmount.toFixed(2).replace(/\.00$/, "");
+  const toast = el(`
+    <div class="reward-earn-toast">
+      <span class="reward-earn-toast-icon">${iconSvg('<line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>')}</span>
+      <span>+$${amt} toward ${escapeHtml(itemLabel)}. $${earned} of $${prize.depositGoal} now.</span>
+    </div>
+  `);
+  document.body.appendChild(toast);
+  toast.addEventListener("animationend", () => toast.remove());
+}
+
+// The three checkpoint tiers — icon, gold-family gradient, and copy that
+// nudges toward actually moving money, since Addley itself never does
+// (see the money-note in openRewardClaimCelebration for the same point at
+// 100%). Deliberately not the same emoji as any Practice's streak tiers
+// (24-hour Sobriety is also 🌱) — Veronika flagged that overlap directly;
+// these read as gift/celebration, not growth.
+const REWARD_MILESTONE_META = {
+  "0.25": {
+    icon: "🎁",
+    bg: "radial-gradient(circle at 35% 30%, #F0E4D8, #D9B98C 70%)",
+    title: (item) => `25% toward ${item}`,
+    sub: (earned, goal) => `$${earned} of $${goal} — worth setting a little aside now.`,
+  },
+  "0.5": {
+    icon: "🎉",
+    bg: "radial-gradient(circle at 35% 30%, #F5D28A, #C6883F 70%)",
+    title: (item) => `Halfway to ${item}!`,
+    sub: (earned, goal) => `$${earned} of $${goal} — a good moment to move some into savings.`,
+  },
+  "0.75": {
+    icon: "✨",
+    bg: "radial-gradient(circle at 35% 30%, #F5D9C4, #C97B4B 70%)",
+    title: () => `75% there — so close`,
+    sub: (earned, goal, remaining) => `$${earned} of $${goal} — $${remaining} left, time to top off your fund.`,
+  },
+};
+function openRewardMilestonePopup(prize, frac, done) {
+  const meta = REWARD_MILESTONE_META[String(frac)];
+  const itemLabel = prize.itemName || "your reward";
+  const earned = prize.earnedAmount.toFixed(2).replace(/\.00$/, "");
+  const remaining = Math.max(0, prize.depositGoal - prize.earnedAmount).toFixed(2).replace(/\.00$/, "");
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="mini-popup-box">
+        <div class="mini-popup-icon" style="background:${meta.bg};">${meta.icon}</div>
+        <div class="mini-popup-title">${escapeHtml(meta.title(itemLabel))}</div>
+        <div class="mini-popup-sub">${escapeHtml(meta.sub(earned, prize.depositGoal, remaining))}</div>
+        <button type="button" class="mini-popup-btn">Nice</button>
+      </div>
+    </div>
+  `);
+  const close = () => { overlay.remove(); done?.(); };
+  overlay.querySelector(".mini-popup-btn").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
+// The 100% moment — full-screen confetti (front AND back layers, so some
+// pieces visibly drift across the card instead of only appearing behind
+// it), the real numbers (dollars, days, practices this goal counted),
+// and a short honest note that Addley tracked the goal but never moved
+// any money itself. "See what's next" leads straight into
+// openRewardWhatsNextModal rather than closing back to the detail
+// screen — nothing about the goal resets until that screen's choice is
+// made.
+function openRewardClaimCelebration(prize, today, done) {
+  const itemLabel = prize.itemName || "your reward";
+  const days = Math.max(1, daysBetween(new Date(prize.cycleStartDate + "T00:00:00"), new Date(today + "T00:00:00")) + 1);
+  const practiceCount = rewardGoalPillarCount(prize);
+  const confettiColors = ["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F", "#6B5B95"];
+  const confettiPieces = (count) =>
+    Array.from({ length: count })
+      .map(() => {
+        const color = confettiColors[Math.floor(Math.random() * confettiColors.length)];
+        return `<span class="fs-piece" style="left:${Math.random() * 100}%;top:${Math.random() * 100}%;background:${color};border-radius:${Math.random() < 0.5 ? "50%" : "2px"};transform:rotate(${Math.random() * 360}deg);"></span>`;
+      })
+      .join("");
+  const overlay = el(`
+    <div class="reward-claim-overlay">
+      <div class="fullscreen-confetti">${confettiPieces(55)}</div>
+      <div class="modal-overlay" style="position:absolute;">
+        <div class="modal-box" style="max-width:340px;text-align:center;">
+          <div class="milestone-celebrate-card">
+            <div class="reward-claim-photo"${prize.itemPhoto ? ` style="background-image:url('${prize.itemPhoto}');"` : ""}>${prize.itemPhoto ? "" : "🏆"}</div>
+            <div class="celebrate-title">You earned it!</div>
+            <div class="celebrate-sub">${escapeHtml(itemLabel)} is fully funded &mdash; ${days} day${days === 1 ? "" : "s"} of showing up made this happen.</div>
+            <div class="celebrate-stats">
+              <div class="celebrate-stat"><div class="num">$${Math.round(prize.depositGoal)}</div><div class="lbl">earned</div></div>
+              <div class="celebrate-stat"><div class="num">${days}</div><div class="lbl">days</div></div>
+              <div class="celebrate-stat"><div class="num">${practiceCount}</div><div class="lbl">practice${practiceCount === 1 ? "" : "s"}</div></div>
+            </div>
+            <div class="celebrate-money-note">Addley tracked the goal &mdash; actually moving the money (or booking it) is up to you.</div>
+          </div>
+          <button type="button" class="sheet-primary-btn">See what's next</button>
+        </div>
+      </div>
+      <div class="fullscreen-confetti fs-front">${confettiPieces(20)}</div>
+    </div>
+  `);
+  const close = () => { overlay.remove(); done?.(); };
+  overlay.querySelector(".sheet-primary-btn").addEventListener("click", () => {
+    close();
+    openRewardWhatsNextModal(prize, today);
+  });
+  document.body.appendChild(overlay);
+}
+
+// The deliberate choice that replaces the old silent reset. Nothing about
+// `prize` changes until one of the two buttons is tapped — the goal stays
+// "reached" if this gets dismissed by, say, a device rotation or a stray
+// tap, so nothing is lost by not deciding immediately.
+function openRewardWhatsNextModal(prize, today) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box" style="max-width:340px;text-align:center;">
+        <div class="whats-next-icon">🎯</div>
+        <div class="whats-next-title">What's next for you?</div>
+        <div class="whats-next-sub">${escapeHtml(prize.itemName || "This goal")} is claimed and moves to your Past Goals. Your streaks and milestones aren't touched &mdash; only the reward resets.</div>
+      </div>
+    </div>
+  `);
+  const box = overlay.querySelector(".modal-box");
+  const nextBtn = el(`
+    <button type="button" class="next-option primary">
+      <span class="next-option-icon">✨</span>
+      <span class="next-option-text"><div class="t">Start your next goal</div><div class="s">Pick a new item and dollar target</div></span>
+    </button>
+  `);
+  const breakBtn = el(`
+    <button type="button" class="next-option">
+      <span class="next-option-icon">⏸️</span>
+      <span class="next-option-text"><div class="t">Take a break for now</div><div class="s">Turn Your Reward off &mdash; Practices and streaks keep going</div></span>
+    </button>
+  `);
+  box.appendChild(nextBtn);
+  box.appendChild(breakBtn);
+  if (state.pastRewardGoals.length) {
+    const pastLink = el(`<a class="past-goals-link" style="cursor:pointer;">View past goals (${state.pastRewardGoals.length})</a>`);
+    pastLink.addEventListener("click", () => openPastRewardGoalsModal());
+    box.appendChild(pastLink);
+  }
+  document.body.appendChild(overlay);
+
+  function archiveAndReset() {
+    state.pastRewardGoals.push({
+      id: prize.id,
+      itemName: prize.itemName,
+      itemPhoto: prize.itemPhoto || null,
+      depositGoal: prize.depositGoal,
+      earnedAmount: prize.earnedAmount,
+      cycleStartDate: prize.cycleStartDate,
+      claimedDate: today,
+    });
+    prize.cycleStartDate = today;
+    prize.itemName = "";
+    prize.itemPhoto = null;
+    prize.earnedAmount = 0;
+    prize.nudgedMilestones = [];
+    if (prize.linkedAccount) prize.linkedAccount.cycleStartBalance = prize.linkedAccount.currentBalance;
+  }
+
+  nextBtn.addEventListener("click", () => {
+    archiveAndReset();
+    overlay.remove();
+    scheduleSave();
+    renderHome();
+    openEditRewardModal(prize, () => openRewardGoalDetailScreen(prize));
+  });
+  breakBtn.addEventListener("click", () => {
+    archiveAndReset();
+    prize.enabled = false;
+    overlay.remove();
+    scheduleSave();
+    renderHome();
+  });
+}
+
+// A simple read-only list — nothing to tap through to, just proof that
+// past goals aren't just discarded anymore.
+function openPastRewardGoalsModal() {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box" style="width:380px;">
+        <div class="info-modal-header">
+          <h3>Past Goals</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+      </div>
+    </div>
+  `);
+  const box = overlay.querySelector(".modal-box");
+  overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  const list = el(`<div class="reward-goal-list"></div>`);
+  [...state.pastRewardGoals].reverse().forEach((g) => {
+    list.appendChild(el(`
+      <div class="reward-goal-row">
+        <div class="reward-goal-row-photo"${g.itemPhoto ? ` style="background-image:url('${g.itemPhoto}');"` : ""}>${g.itemPhoto ? "" : "🏆"}</div>
+        <div class="reward-goal-row-body">
+          <div class="reward-goal-row-name">${escapeHtml(g.itemName || "Claimed goal")}</div>
+          <div class="reward-goal-row-fig">$${Math.round(g.depositGoal)} &mdash; claimed ${activityDateShort(g.claimedDate)}</div>
+        </div>
+      </div>
+    `));
+  });
+  box.appendChild(list);
+  document.body.appendChild(overlay);
 }
 
 // Fractions of the dollar goal, marked as ticks right on the progress
@@ -13018,15 +13274,14 @@ function openRewardGoalDetailScreen(prize) {
       actionRow.appendChild(claimBtn);
       actionRow.appendChild(extendBtn);
       box.appendChild(actionRow);
+      // 2026-09 (Veronika, engagement audit): this used to reset every
+      // field on the spot with zero acknowledgment — the exact "finishing
+      // a reward goal is a dead end" complaint. Now it opens the real
+      // celebration first; nothing about `prize` changes until the
+      // What's Next screen it leads into gets an answer.
       claimBtn.addEventListener("click", () => {
-        prize.cycleStartDate = todayISO();
-        prize.itemName = "";
-        prize.itemPhoto = null;
-        prize.earnedAmount = 0;
-        if (prize.linkedAccount) prize.linkedAccount.cycleStartBalance = prize.linkedAccount.currentBalance;
-        scheduleSave();
-        render();
-        renderHome();
+        overlay.remove();
+        openRewardClaimCelebration(prize, todayISO());
       });
       extendBtn.addEventListener("click", () => {
         prize.cycleLengthDays += 30;
@@ -16732,6 +16987,11 @@ async function bootInner() {
     g.linkedAccount ||= null;
     if (g.earnedAmount === undefined) g.earnedAmount = 0;
   });
+  // Claimed goals (2026-09, Veronika: "finishing a reward goal is a dead
+  // end") — a light snapshot taken at claim time (openRewardWhatsNextModal),
+  // never mutated after, so "View past goals" has something real to show
+  // instead of the old behavior of just silently wiping the goal's fields.
+  state.pastRewardGoals ||= [];
 
   // Extra trackers (Cycle, eventually others) are their own family,
   // separate from practices: they don't map to a pillar, don't count
