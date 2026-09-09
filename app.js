@@ -10945,15 +10945,17 @@ function renderPulseChart(panel, today, restrictAppId) {
   `));
 }
 
-// One full-width row per pillar — a colored dot, the label, a mini strip
-// of the last 7 days, and the current streak on the right. Five items in
-// a single column always reads evenly; the earlier 2-up ring grid left an
-// odd one stranded alone on its own row, which is what this replaces.
-// Per-app streaks, not per-pillar — each Practice you've added gets its
-// own row, its own 7-day dot strip, and its own streak count, matching
-// the "no combined streak, every app runs its own" model. Trackers are
-// left out here on purpose: they never have a streak to show.
-const APP_TREND_COLOR_CYCLE = ["#A9804F", "#5B7A93", "#6E9B6A", "#B3543E", "#8A6A22", "#7C5C36"];
+// One full-width row per pillar — the app's own icon, the label, a mini
+// strip of the last 7 days, and the current streak on the right. Five
+// items in a single column always reads evenly; the earlier 2-up ring grid
+// left an odd one stranded alone on its own row, which is what this
+// replaces. Per-app streaks, not per-pillar — each Practice you've added
+// gets its own row, its own 7-day dot strip, and its own streak count,
+// matching the "no combined streak, every app runs its own" model.
+// Trackers are left out here on purpose: they never have a streak to show.
+// 2026-09 (Veronika): the row used to lead with a color-cycle dot
+// (APP_TREND_COLOR_CYCLE) instead of the app's icon — removed along with
+// that constant once nothing referenced it anymore.
 function renderPillarStreakList(panel, today) {
   // 2026-09 (Veronika): this sits directly under renderTrendMilestonesRow's
   // badge grid inside the merged Milestones & Streaks card, and the two
@@ -10970,18 +10972,21 @@ function renderPillarStreakList(panel, today) {
     panel.appendChild(list);
     return;
   }
-  practiceApps.forEach((app, i) => {
+  // 2026-09 (Veronika): swapped the old per-app-colored dot + bar-segment
+  // mini chart for the app's own icon (same SVG the Today's Practices tile
+  // above uses) plus a row of plain circular pellets — confirmed against
+  // the weekly-recap mockup's "This Week" card, which used this same
+  // icon-well + pellet-dot pairing. The per-app color cycle is dropped
+  // here (still used elsewhere) since a uniform "on" color reads more like
+  // a calendar of logged days and less like a legend to decode.
+  practiceApps.forEach((app) => {
     const streak = appCurrentStreak(app.id, today);
-    const color = APP_TREND_COLOR_CYCLE[i % APP_TREND_COLOR_CYCLE.length];
     const dots = last7
-      .map((d) => {
-        const on = isAppLoggedToday(app.id, d);
-        return `<i class="${on ? "on" : ""}" style="${on ? `background:${color}` : ""}"></i>`;
-      })
+      .map((d) => `<i class="${isAppLoggedToday(app.id, d) ? "on" : ""}"></i>`)
       .join("");
     list.appendChild(el(`
       <div class="streak-chip">
-        <span class="sc-dot" style="background:${color}"></span>
+        <span class="sc-icon">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}</span>
         <span class="sc-label">${escapeHtml(app.label)}</span>
         <span class="sc-mini">${dots}</span>
         <span class="sc-streak">${streak ? `${streak}d` : "&mdash;"}</span>
@@ -12112,6 +12117,15 @@ function renderHome() {
   const hero = renderHomeHero(today, isColdOpen);
   if (hero) panel.appendChild(hero);
   panel.appendChild(renderHomeAppsGrid(today, isColdOpen));
+
+  // 2026-09 (Veronika): now that Sobriety's count depends on actually
+  // checking in, a forgotten day has a real cost, not just a cosmetic
+  // one — this is the closest thing to a "reminder" a web app can do
+  // without push notifications (no service-worker/push infra exists
+  // here): an afternoon-or-later nudge on Home if there's no check-in
+  // yet today, dismissible for the rest of the day so it doesn't nag.
+  const sobRem = renderSobrietyReminderBanner(today);
+  if (sobRem) panel.appendChild(sobRem);
 
   // Challenges — its own gold-tinted section right under the apps grid,
   // before Milestones & Streaks. See renderHomeChallengesSection.
@@ -14957,6 +14971,36 @@ function sobrietyAffirmation(today) {
 }
 function sobrietyCheckInToday(today) {
   return state.sobriety.checkIns.find((c) => c.date === today) || null;
+}
+
+// Home's afternoon-or-later nudge to check in — see the call site in
+// renderHome for why this exists and what it deliberately isn't (a real
+// push notification). Returns null (nothing rendered) whenever Sobriety
+// isn't on, is already checked in for today, it's still morning, or
+// she's already dismissed today's nudge — so renderHome can just
+// appendChild the result without its own conditional.
+function renderSobrietyReminderBanner(today) {
+  if (!state.extraTrackers?.sobriety || !state.sobriety) return null;
+  if (sobrietyCheckInToday(today)) return null;
+  if (state.sobriety.reminderDismissedOn === today) return null;
+  if (new Date().getHours() < 15) return null;
+  const line = el(`
+    <div class="home-link-line sob-reminder-line">
+      <span class="home-link-line-text">Haven&rsquo;t checked in to Sobriety yet today &mdash; takes a few seconds.</span>
+      <button type="button" class="home-link-line-dismiss" aria-label="Dismiss">${closeSvg}</button>
+    </div>
+  `);
+  line.addEventListener("click", (e) => {
+    if (e.target.closest(".home-link-line-dismiss")) return;
+    activateTab("sobriety");
+  });
+  line.querySelector(".home-link-line-dismiss").addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.sobriety.reminderDismissedOn = today;
+    scheduleSave();
+    line.remove();
+  });
+  return line;
 }
 
 // Recomputes which tiers are earned (current + all-time) against
