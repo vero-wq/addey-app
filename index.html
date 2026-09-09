@@ -1183,7 +1183,15 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .challenge-book-status.current { border-color: var(--accent); background: rgba(169,128,79,.15); }
 .challenge-book-title { font-size: 13px; font-weight: 700; }
 .challenge-book-author { font-size: 11px; color: var(--muted); margin-top: 1px; }
-.challenge-leave-link { display: block; width: 100%; text-align: center; background: none; border: none; padding: 14px 0 4px; font-size: 12px; color: var(--muted); text-decoration: underline; cursor: pointer; }
+/* 2026-09 (Veronika): was a bare underlined text link jammed right
+   against the Milestones card below with almost no breathing room — read
+   as an accidental leftover, not a real action, and looked like it
+   belonged to Milestones rather than the challenge above it. Now a real
+   pill-style secondary button, centered with even margin on both sides
+   so it reads as its own, deliberate control sitting between the two
+   cards rather than glued to either one. */
+.challenge-leave-link { display: block; width: fit-content; margin: 22px auto; text-align: center; background: none; border: 1.5px solid var(--border); border-radius: 100px; padding: 9px 20px; font-size: 12.5px; font-weight: 700; color: var(--muted); text-decoration: none; cursor: pointer; }
+.challenge-leave-link:hover, .challenge-leave-link:active { border-color: var(--accent); color: var(--accent-dark); }
 .challenge-hub-group-title { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 18px 2px 8px; }
 .challenge-hub-group-title:first-of-type { margin-top: 4px; }
 
