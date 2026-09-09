@@ -881,6 +881,7 @@ function activateTab(tab) {
   if (tab === "sobriety") renderSobrietyPanel();
   if (tab === "cycle") renderCyclePanel();
   if (tab === "trends") renderTrends();
+  if (tab === "challenges") renderChallengesPage();
   state.activeTab = tab;
   scheduleSave();
   // Auto-growing textareas measure scrollHeight, which is 0 while their
@@ -1644,7 +1645,7 @@ function openGraceDaysModal() {
           <div class="grace-earn-row"><span>Bonus for long streaks</span><b>+1 at every streak milestone, 30 days on</b></div>
           <div class="grace-earn-row"><span>Bank limit</span><b>${GRACE_BANK_CAP} days</b></div>
         </div>
-        ${!isPaid ? `<div class="account-note" style="margin-top:2px;">Upgrading doubles your monthly earn rate — the bank limit stays the same for everyone.</div>` : ""}
+        ${!isPaid ? `<div class="account-note" style="margin-top:2px;">Upgrading to Addley Plus doubles your monthly earn rate — the bank limit stays the same for everyone.</div>` : ""}
       </div>
     </div>
   `);
@@ -1781,7 +1782,7 @@ function countedSpaces() {
 function openSpaceCapModal() {
   const acct = state.account || {};
   const limit = spaceCapForAccount();
-  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Paid";
+  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Addley Plus";
   const nextTierLimit = 15;
   const overlay = el(`
     <div class="modal-overlay">
@@ -1795,7 +1796,7 @@ function openSpaceCapModal() {
               : `Remove a practice in My Practices to make room for a new one.`
           }
         </p>
-        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `See ${nextTierLabel} plan` : "Manage my practices"}</button>
+        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `Upgrade to ${nextTierLabel}` : "Manage my practices"}</button>
         <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Close</button>
       </div>
     </div>
@@ -3713,6 +3714,8 @@ const CHALLENGE_CATALOG = {
   classics12: {
     id: "classics12",
     practice: "books1",
+    practiceLabel: "Books",
+    unitLabel: "read",
     icon: "📚",
     name: "12 Classics in 12 Months",
     tagline: "One classic novel a month, in order — all public domain, so it's just titles on your shelf, nothing licensed or hosted.",
@@ -3735,6 +3738,8 @@ const CHALLENGE_CATALOG = {
   selfimprove12: {
     id: "selfimprove12",
     practice: "books1",
+    practiceLabel: "Books",
+    unitLabel: "read",
     icon: "🌱",
     name: "Top 12 Self-Improvement Books",
     tagline: "12 of today's most-read personal development books — current bestsellers alongside the modern staples. At your own pace, no deadline.",
@@ -10795,7 +10800,7 @@ function renderTrends() {
     const upgradeCard = el(`
       <div class="card trends-upgrade-card" style="cursor:pointer;">
         <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
-        <div class="trends-lock-msg">Upgrade to Plus to track every Practice at once, any time &mdash; no lock, nothing to choose between.</div>
+        <div class="trends-lock-msg">Upgrade to Addley Plus to track every Practice at once, any time &mdash; no lock, nothing to choose between.</div>
       </div>
     `);
     upgradeCard.addEventListener("click", () => openBillingModal());
@@ -12102,7 +12107,7 @@ function openRewardGoalsListScreen() {
 function openRewardGoalCapModal() {
   const acct = state.account || {};
   const limit = rewardGoalCapForAccount();
-  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Paid";
+  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Addley Plus";
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box" style="max-width:360px;text-align:center;">
@@ -12115,7 +12120,7 @@ function openRewardGoalCapModal() {
               : `Claim or remove a goal to make room for a new one.`
           }
         </p>
-        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `See ${nextTierLabel} plan` : "Close"}</button>
+        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `Upgrade to ${nextTierLabel}` : "Close"}</button>
         <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Close</button>
       </div>
     </div>
@@ -12656,13 +12661,13 @@ function renderTrendMilestonesRow(panel, today) {
   panel.appendChild(grid);
 }
 
-// Challenges (2026-09, Veronika) — its own clearly separate, gold-tinted
-// section right under the apps grid, same placement rule as Milestones &
-// Streaks below: never blended into the apps grid's own bounding box,
-// never near the Reward banner. Shows a progress card for anything
-// already joined, plus a compact Join card for anything in the catalog
-// not yet joined — there's no separate hub screen yet (only two
-// challenges exist so far), so this card IS the portal for now.
+// Challenges (2026-09, Veronika) — Home gets exactly ONE entry point, not
+// one card per challenge (that was the first pass, and it was wrong — a
+// list of every challenge belongs on Challenges' own page, same as Your
+// Reward gets one banner on Home and its full detail lives behind
+// openYourRewardScreen). This single card summarizes state at a glance —
+// nothing joined yet, or the lead joined challenge's own progress — and
+// always opens the real hub, openChallengesHubScreen().
 function renderHomeChallengesSection(panel, today) {
   const ids = Object.keys(CHALLENGE_CATALOG);
   if (!ids.length) return;
@@ -12671,61 +12676,142 @@ function renderHomeChallengesSection(panel, today) {
       <span class="home-section-icon">🏆</span><span class="subsection-title serif" style="margin:0;">Challenges</span>
     </div>
   `));
-  ids.forEach((id) => {
+  const joinedIds = ids.filter((id) => isChallengeJoined(id));
+  const joinedCatalogs = joinedIds.map((id) => CHALLENGE_CATALOG[id]);
+  const joinedProgresses = joinedIds.map((id) => challengeProgress(id)).filter(Boolean);
+
+  let title, subLine, avgPct;
+  if (joinedCatalogs.length) {
+    title = `${joinedCatalogs.length} active challenge${joinedCatalogs.length === 1 ? "" : "s"}`;
+    subLine = joinedCatalogs.map((c) => escapeHtml(c.name)).join(" &middot; ");
+    avgPct = Math.round(
+      joinedProgresses.reduce((sum, p) => sum + p.doneCount / p.total, 0) / joinedProgresses.length * 100
+    );
+  } else {
+    title = "Challenges";
+    subLine = `${ids.length} challenge${ids.length === 1 ? "" : "s"} to try &mdash; one book a month, or read at your own pace`;
+  }
+
+  const card = el(`
+    <div class="card home-challenge-card">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:10px;background:${joinedCatalogs.length ? "var(--accent)" : "var(--bg)"};${joinedCatalogs.length ? "color:#fff;" : "border:1px solid var(--border);"}display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏆</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13.5px;font-weight:700;color:var(--text);">${title}</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${subLine}</div>
+        </div>
+        <div style="color:var(--muted);font-size:15px;">&rsaquo;</div>
+      </div>
+      ${joinedCatalogs.length ? `<div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${avgPct}%;"></div></div>` : ""}
+    </div>
+  `);
+  card.addEventListener("click", () => activateTab("challenges"));
+  panel.appendChild(card);
+}
+
+// The real Challenges page — its own tab-style panel (#panel-challenges),
+// not a popup. Veronika's call: this is meant to grow into a real
+// library of challenges across every practice, so it gets the same
+// standing as Trends or Settings — reached by tapping the Home preview
+// card (or, later, straight from a menu), rendered fresh by activateTab
+// exactly like Trends already is, and left the same way every other
+// non-bottom-bar page is: the Addley logo/Home button in the header.
+// Layout is what Veronika sketched: an ACTIVE section up top (every
+// joined challenge, whatever practice it belongs to, each with its own
+// progress bar), then one BROWSE — <Practice> section per practice that
+// still has something unjoined, grouped so a Bible challenge never gets
+// lost in a Books-heavy list once more practices have challenges of
+// their own.
+function renderChallengesPage() {
+  const panel = document.getElementById("panel-challenges");
+  if (!panel) return;
+  panel.innerHTML = "";
+  panel.appendChild(el(`<h2 class="section-title serif">Challenges</h2>`));
+  panel.appendChild(el(`<div class="muted" style="font-size:12.5px;margin:-8px 0 16px;">What you're on, and what's out there</div>`));
+
+  function progressCard(id) {
     const catalog = CHALLENGE_CATALOG[id];
     const progress = challengeProgress(id);
-    if (progress) {
-      const pct = Math.round((progress.doneCount / progress.total) * 100);
-      const paceLine = progress.paceLabel
-        ? `${progress.doneCount} of ${progress.total} finished &middot; ${progress.paceLabel}`
-        : `${progress.doneCount} of ${progress.total} finished`;
-      const card = el(`
-        <div class="card home-challenge-card">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
-            <div style="flex:1;min-width:0;">
+    const pct = Math.round((progress.doneCount / progress.total) * 100);
+    const unit = catalog.unitLabel || "finished";
+    const paceLine = progress.paceLabel
+      ? `${catalog.practiceLabel} &middot; ${progress.doneCount} of ${progress.total} ${unit} &middot; ${progress.paceLabel}`
+      : `${catalog.practiceLabel} &middot; ${progress.doneCount} of ${progress.total} ${unit}`;
+    const card = el(`
+      <div class="card home-challenge-card">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${paceLine}</div>
+          </div>
+          <div style="color:var(--muted);font-size:15px;">&rsaquo;</div>
+        </div>
+        <div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${pct}%;"></div></div>
+      </div>
+    `);
+    card.addEventListener("click", () => openChallengeFromHome(id));
+    return card;
+  }
+
+  function joinCard(id) {
+    const catalog = CHALLENGE_CATALOG[id];
+    const card = el(`
+      <div class="card home-challenge-card">
+        <div class="challenge-join-row">
+          <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+            <div style="width:38px;height:38px;border-radius:10px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
+            <div style="min-width:0;">
               <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
-              <div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${paceLine}</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.4;">${escapeHtml(catalog.tagline)}</div>
             </div>
-            <div style="color:var(--muted);font-size:15px;">&rsaquo;</div>
           </div>
-          <div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${pct}%;"></div></div>
+          <button type="button" class="challenge-join-btn">Join</button>
         </div>
-      `);
-      card.addEventListener("click", () => openChallengeFromHome(id));
-      panel.appendChild(card);
-    } else {
-      const card = el(`
-        <div class="card home-challenge-card">
-          <div class="challenge-join-row">
-            <div style="display:flex;align-items:center;gap:12px;min-width:0;">
-              <div style="width:38px;height:38px;border-radius:10px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
-              <div style="min-width:0;">
-                <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
-                <div style="font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.4;">${escapeHtml(catalog.tagline)}</div>
-              </div>
-            </div>
-            <button type="button" class="challenge-join-btn">Join</button>
-          </div>
-        </div>
-      `);
-      card.querySelector(".challenge-join-btn").addEventListener("click", () => {
-        if (joinedChallengesCount() >= challengeCapForAccount()) {
-          openChallengeCapModal();
-          return;
-        }
-        joinChallenge(id);
-        renderHome();
-      });
-      panel.appendChild(card);
-    }
+      </div>
+    `);
+    card.querySelector(".challenge-join-btn").addEventListener("click", () => {
+      if (joinedChallengesCount() >= challengeCapForAccount()) {
+        openChallengeCapModal();
+        return;
+      }
+      joinChallenge(id);
+      renderChallengesPage();
+    });
+    return card;
+  }
+
+  const allIds = Object.keys(CHALLENGE_CATALOG);
+  const activeIds = allIds.filter((id) => isChallengeJoined(id));
+  const browseIds = allIds.filter((id) => !isChallengeJoined(id));
+
+  if (activeIds.length) {
+    panel.appendChild(el(`<div class="challenge-hub-group-title">Active</div>`));
+    activeIds.forEach((id) => panel.appendChild(progressCard(id)));
+  }
+
+  // Group what's left to join by practice, in catalog order, so each
+  // practice's own section only ever appears once even if its
+  // challenges aren't adjacent in CHALLENGE_CATALOG.
+  const browseGroups = [];
+  browseIds.forEach((id) => {
+    const label = CHALLENGE_CATALOG[id].practiceLabel;
+    let group = browseGroups.find((g) => g.label === label);
+    if (!group) { group = { label, ids: [] }; browseGroups.push(group); }
+    group.ids.push(id);
+  });
+  browseGroups.forEach((group) => {
+    panel.appendChild(el(`<div class="challenge-hub-group-title">Browse &mdash; ${escapeHtml(group.label)}</div>`));
+    group.ids.forEach((id) => panel.appendChild(joinCard(id)));
   });
 }
 
 // Jumps to the challenge's home practice with that challenge focused —
 // same pattern the rest of the app uses for cross-navigation (set the
 // state, explicitly re-render that panel since only the active tab gets
-// auto-rendered, then switch to it).
+// auto-rendered, then switch to it). Called from the Challenges page
+// (a real tab switch, no overlay to close) whenever a joined challenge
+// needs a direct link.
 function openChallengeFromHome(challengeId) {
   const catalog = CHALLENGE_CATALOG[challengeId];
   if (!catalog) return;
@@ -12858,7 +12944,7 @@ function renderHomeTrendsSection(panel, today) {
       <div class="trends-blur-content">${trendsFullGridHtml(today)}</div>
       <div class="trends-lock-overlay">
         <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
-        <div class="trends-lock-msg">Upgrade to Plus to see patterns across every Practice, not just the one you've got locked.</div>
+        <div class="trends-lock-msg">Upgrade to Addley Plus to see patterns across every Practice, not just the one you've got locked.</div>
       </div>
     </div>
   `));
