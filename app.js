@@ -3471,6 +3471,16 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
     list.appendChild(row);
   });
   panel.appendChild(list);
+
+  const leaveLink = el(`<button type="button" class="challenge-leave-link">Leave this challenge</button>`);
+  leaveLink.addEventListener("click", () => {
+    if (!window.confirm(`Leave "${progress.catalog.name}"? Your books stay on your shelf — only the challenge link is removed.`)) return;
+    leaveChallenge(challengeId);
+    const sheet = state.customSheets[id];
+    if (sheet) sheet.focusedChallenge = null;
+    renderBookSheet(id);
+  });
+  panel.appendChild(leaveLink);
 }
 
 // ---- "Your Shelf" screen: the full library, one tap away ----
@@ -3816,6 +3826,50 @@ function isChallengeJoined(challengeId) {
 
 function joinedChallengesForPractice(practiceId) {
   return Object.values(CHALLENGE_CATALOG).filter((c) => c.practice === practiceId && isChallengeJoined(c.id));
+}
+
+// Free accounts can run one challenge at a time (any practice); Paid and
+// the founder override can run all of them at once. This counts joined
+// challenges across every practice, not just Books, since the cap is a
+// single account-wide allowance rather than per-practice.
+function challengeCapForAccount() {
+  const acct = state.account || {};
+  if (acct.isFounder) return Infinity;
+  if (acct.plan === "paid") return Infinity;
+  return 1;
+}
+function joinedChallengesCount() {
+  return Object.keys(CHALLENGE_CATALOG).filter((id) => isChallengeJoined(id)).length;
+}
+
+// This is a deliberate upgrade prompt, not a neutral cap notice — Veronika
+// wants a free member hitting the second-challenge wall to see it as the
+// moment to go Plus, not as a nudge to leave their current challenge (that
+// option still exists, quietly, on the challenge detail screen itself —
+// it's just not the pitch here). Only ever shown to free accounts, since
+// challengeCapForAccount() is Infinity for Plus and founder accounts.
+function openChallengeCapModal() {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box" style="max-width:360px;text-align:center;">
+        <div style="font-size:26px;margin-bottom:8px;">🏆</div>
+        <h3 style="margin:0 0 8px;">Take on every challenge with Addley Plus</h3>
+        <p class="muted" style="margin:0 0 18px;line-height:1.5;">
+          Free includes one challenge at a time. Upgrade to Addley Plus to run all of them at once — no picking and choosing.
+        </p>
+        <button type="button" class="btn-primary" style="width:100%;">Upgrade to Addley Plus</button>
+        <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Not now</button>
+      </div>
+    </div>
+  `);
+  overlay.querySelector(".btn-primary").addEventListener("click", () => {
+    overlay.remove();
+    settingsSubTab = "mine";
+    activateTab("settings");
+  });
+  overlay.querySelector(".btn-ghost").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 }
 
 // Reads progress straight off each linked book's real status — no
@@ -12656,6 +12710,10 @@ function renderHomeChallengesSection(panel, today) {
         </div>
       `);
       card.querySelector(".challenge-join-btn").addEventListener("click", () => {
+        if (joinedChallengesCount() >= challengeCapForAccount()) {
+          openChallengeCapModal();
+          return;
+        }
         joinChallenge(id);
         renderHome();
       });
