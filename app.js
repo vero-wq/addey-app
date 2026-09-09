@@ -6,7 +6,7 @@ const checkSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 // state.customSheets holds the data for the gallery-added ones.
 // ------------------------------------------------------------------
 const BUILTIN_SHEET_META = {
-  todo: { label: "Lists", icon: `<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path>` },
+  todo: { label: "Lists", icon: `<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path> },
   budget: { label: "Budget", icon: `<line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>` },
   investments: { label: "Investments", icon: `<polyline points="3 17 9 11 13 15 21 6"></polyline><polyline points="15 6 21 6 21 12"></polyline>` },
   bible: {
