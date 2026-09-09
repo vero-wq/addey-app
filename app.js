@@ -42,7 +42,11 @@ const SHEET_GALLERY = [
     key: "activity",
     label: "Activity Log",
     icon: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>`,
-    desc: "Walks, hikes, runs, rides — anything that's not sets and reps. Workout Log's sibling for Movement.",
+    // 2026-09 (Veronika): dropped the "Workout Log's sibling for
+    // Movement" line — the six-pillar model (Movement included) is
+    // retired, so a description that leans on it reads as stale to
+    // anyone new reading the gallery today.
+    desc: "Walks, hikes, runs, rides — anything that's not sets and reps.",
     starterItems: [],
     type: "practice",
   },
@@ -50,15 +54,18 @@ const SHEET_GALLERY = [
     key: "mealLog",
     label: "Meal Log",
     icon: `<path d="M11 2a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3v8"></path><path d="M18 2v9a3 3 0 0 1-3 3"></path><path d="M18 2v20"></path>`,
-    desc: "A quick daily log of how you ate — Food's practice, same idea as Activity Log for Movement.",
+    // 2026-09 (Veronika): same pillar-model cleanup as Activity Log above
+    // — the "same idea as Activity Log for Movement" comparison leaned on
+    // the retired six-pillar model.
+    desc: "A quick daily log of how you ate — what, when, and how it felt.",
     starterItems: [],
     type: "practice",
   },
   {
     key: "quran",
-    label: "Quran Plan",
+    label: "Quran",
     icon: `<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h8M9 11h8M9 15h5"></path>`,
-    desc: "31 paced readings through the Qur'an, Surah by Surah, from Al-Fatiha to An-Nas.",
+    desc: "A real read-through of all 114 surahs, ayah by ayah, with a Meccan/Medinan view, lifetime Milestones, and a daily streak.",
     starterItems: [],
     type: "practice",
   },
@@ -101,7 +108,11 @@ const SHEET_GALLERY = [
     // read as the spiral binding, the two short lines inside as written
     // text, distinct from Books' closed-book icon and Bible's Bible icon.
     icon: `<path d="M7 4h12a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path><path d="M2 7h2M2 11.5h2M2 16h2"></path><path d="M9 9h6M9 13h4"></path>`,
-    desc: "A gratitude prompt (People, Opportunities, Experiences, or Things) plus a short daily reflection — what worked, what was harder, one adjustment to make.",
+    // 2026-09 (Veronika): trimmed — spelling out every reflection
+    // sub-prompt on the marketplace card was too much detail for a
+    // one-line pitch; what's actually inside is self-explanatory once
+    // she's using it.
+    desc: "A gratitude prompt plus a short daily reflection on how the day went.",
     starterItems: [],
     type: "practice",
   },
@@ -2508,8 +2519,11 @@ function renderSettings() {
   }
 
   // Practices — log it and it can deposit toward your reward, with its
-  // own streak.
-  marketplaceShelf("Practices", "practices", "Log it and it can deposit");
+  // own streak. 2026-09 (Veronika): reworded this trio of badges to
+  // actually contrast with each other in one line, rather than each
+  // reading fine alone but not explaining why a Practice differs from a
+  // Tracker or a Tool.
+  marketplaceShelf("Practices", "practices", "Builds a streak, feeds your reward");
   const practiceGallery = el(`<div class="sheet-gallery"></div>`);
   SHEET_GALLERY.filter((t) => t.type === "practice").forEach((tpl) => {
     const alreadyAdded = Object.values(state.customSheets).some((cs) => cs.templateKey === tpl.key);
@@ -2560,7 +2574,7 @@ function renderSettings() {
   galleryPanel.appendChild(practiceGallery);
 
   // Trackers — note it, no streak, no deposit.
-  marketplaceShelf("Trackers", "trackers", "Note it — no streak");
+  marketplaceShelf("Trackers", "trackers", "Logged — no streak, no reward");
   const trackerGallery = el(`<div class="sheet-gallery trackers-style"></div>`);
   EXTRA_TRACKERS_GALLERY.filter((t) => t.type === "tracker").forEach((tpl) => {
     const added = !!state.extraTrackers?.[tpl.key];
@@ -2586,7 +2600,7 @@ function renderSettings() {
   galleryPanel.appendChild(trackerGallery);
 
   // Tools — a checklist, nothing dated or tracked.
-  marketplaceShelf("Tools", "tools", "Just a checklist");
+  marketplaceShelf("Tools", "tools", "Just a checklist — nothing tracked");
   const toolGallery = el(`<div class="sheet-gallery"></div>`);
   SHEET_GALLERY.filter((t) => t.type === "tool").forEach((tpl) => {
     const alreadyAdded = Object.values(state.customSheets).some((cs) => cs.templateKey === tpl.key);
@@ -3728,7 +3742,13 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
   const progress = challengeProgress(challengeId);
   if (!progress) return;
   const pct = Math.round((progress.doneCount / progress.total) * 100);
-  const paceLine = progress.paceLabel
+  // A fixedStartDate challenge (Dry January) joined ahead of its real
+  // start has nothing to report a pace on yet — say when it starts
+  // instead of a "finished/pace" line that doesn't mean anything before
+  // day 1 has actually arrived.
+  const paceLine = progress.notStartedYet
+    ? `Starts ${activityDateShort(progress.startDate)}`
+    : progress.paceLabel
     ? `${progress.doneCount} of ${progress.total} finished &middot; ${progress.paceLabel}`
     : `${progress.doneCount} of ${progress.total} finished`;
   panel.appendChild(el(`
@@ -3739,7 +3759,7 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
     </div>
   `));
 
-  if (progress.currentIndex != null) {
+  if (progress.currentIndex != null && !progress.notStartedYet) {
     const current = progress.books[progress.currentIndex];
     if (current && !current.done) {
       const cadenceLabel = progress.catalog.paceUnit === "day" ? "Today" : "This month";
@@ -3777,6 +3797,19 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
           scheduleSave();
           renderCustomSheet(id);
         });
+      } else if (progress.catalog.practiceTemplateKey === "sobriety") {
+        // Deliberately not a tap-to-toggle row: a sobriety day is only
+        // ever "done" through a real check-in (mood, an optional note —
+        // see buildSobrietyCheckInCard), never a bare checkbox someone
+        // could tap without meaning it. Only today's own row is
+        // actionable, and it goes to the real check-in flow rather than
+        // faking one from here; past/future days just show status.
+        if (b.book.date === todayStr && !b.done) {
+          row.style.cursor = "pointer";
+          row.addEventListener("click", () => activateTab("sobriety"));
+        } else {
+          row.style.cursor = "default";
+        }
       } else {
         // Other practices' Challenge items ARE the practice's own real
         // rows — no separate reading log to open, so tapping just
@@ -3801,14 +3834,22 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
     // the app. Swapped for the same confirmModal() every other
     // destructive action already uses (Remove person, Delete book, etc.)
     // so it looks and feels like it belongs here.
+    const isSobrietyChallenge = progress.catalog.practiceTemplateKey === "sobriety";
     confirmModal(
       `Leave "${progress.catalog.name}"?`,
       isBooksChallenge
         ? "Your books stay on your shelf — only the challenge link is removed."
+        : isSobrietyChallenge
+        ? "Your count and your check-ins stay exactly as they are — only the challenge link is removed."
         : "Your reading progress stays exactly as it is — only the challenge link is removed.",
       "Leave challenge",
       () => {
         leaveChallenge(challengeId);
+        if (isSobrietyChallenge) {
+          state.sobriety.focusedChallenge = null;
+          renderSobrietyPanel();
+          return;
+        }
         const sheet = state.customSheets[id];
         if (sheet) sheet.focusedChallenge = null;
         renderCustomSheet(id);
@@ -4044,6 +4085,21 @@ const BOOK_RATING_OPTIONS = [
 // plain "itemized" (Top 12 Self-Improvement — a fixed list, no
 // deadline, just X of 12).
 // ------------------------------------------------------------------
+
+// Dry January always starts on the real Jan 1 that's coming up — never
+// "31 days from whenever you happened to join" — so joining in December
+// (this launches then) just books your spot; the count itself starts
+// ticking the moment Jan 1 actually arrives. Already-mid-January still
+// resolves to THIS January (joining on the 10th means the first 9 days
+// show as unlogged, which is correct — she can back-fill check-ins for
+// them from the Sobriety screen same as any other day). Only rolls to
+// next year once January itself has passed.
+function dryJanuaryStartDate() {
+  const [y, m] = todayISO().split("-").map(Number);
+  const year = m === 1 ? y : y + 1;
+  return `${year}-01-01`;
+}
+
 const CHALLENGE_CATALOG = {
   classics12: {
     id: "classics12",
@@ -4145,6 +4201,40 @@ const CHALLENGE_CATALOG = {
       { label: "Juz 30", rangeStart: { surah: "An-Naba", verse: 1 }, rangeEnd: { surah: "An-Nas", verse: 6 } },
     ],
   },
+  dryJanuary: {
+    id: "dryJanuary",
+    practiceTemplateKey: "sobriety",
+    practiceLabel: "Sobriety",
+    unitLabel: "day",
+    icon: "❄️",
+    name: "Dry January",
+    // 2026-09 (Veronika): a deliberately gentle on-ramp — no public feed,
+    // no leaderboard, nothing anyone else ever sees. Joining doesn't
+    // require calling yourself anything; it just starts a private count.
+    tagline: "Thirty-one alcohol-free days, entirely private — no feed, no leaderboard, just your own count. A gentle way to try it on, whatever brought you here.",
+    type: "itemized-paced",
+    paceUnit: "day",
+    // Pinned to the real Jan 1–31 regardless of when she joins — joining
+    // in December (this launches then) means the count doesn't start
+    // ticking until Jan 1 actually arrives. See dryJanuaryStartDate().
+    fixedStartDate: dryJanuaryStartDate,
+    items: Array.from({ length: 31 }, (_, i) => ({ label: `Jan ${i + 1}`, offset: i })),
+  },
+  soberDays30: {
+    id: "soberDays30",
+    practiceTemplateKey: "sobriety",
+    practiceLabel: "Sobriety",
+    unitLabel: "day",
+    icon: "🕊️",
+    name: "30 Alcohol-Free Days",
+    tagline: "Thirty alcohol-free days, starting whenever you're ready — entirely private, no feed, no leaderboard. The evergreen version of Dry January, available any day of the year.",
+    type: "itemized-paced",
+    paceUnit: "day",
+    // No fixedStartDate — starts counting from whenever she actually
+    // joins, same as every other non-calendar-pinned itemized-paced
+    // challenge (Ramadan, 12 Classics).
+    items: Array.from({ length: 30 }, (_, i) => ({ label: `Day ${i + 1}`, offset: i })),
+  },
 };
 
 // Case/punctuation-insensitive so "The Great Gatsby" matches "the great
@@ -4232,6 +4322,24 @@ function toggleQuranRange(rangeItem, todayStr) {
   });
 }
 
+// A Dry January / 30 Alcohol-Free Days entry (see CHALLENGE_ITEM_ADAPTERS
+// .sobriety) has no sheet or item to link onto at all — Sobriety already
+// has exactly one real, dated record of "was this day alcohol-free":
+// state.sobriety.checkIns. This resolves a challenge slot's real calendar
+// date off the challenge's own startDate (fixed to Jan 1 for Dry January,
+// today for the evergreen one — see joinChallenge/CHALLENGE_CATALOG) and
+// reads that date through isAppDayPositiveWithGrace — the exact same
+// "positive day" definition every streak in the app already uses, Grace
+// Days included. That's deliberate here specifically: a single off night
+// during Dry January shouldn't read as a failed challenge any more than
+// it breaks a streak elsewhere in the app — Grace quietly covers it the
+// same way, rather than this challenge inventing its own harsher rule.
+function sobrietyChallengeDayItem(entry, c) {
+  if (!c?.startDate) return null;
+  const date = addDays(c.startDate, entry.offset);
+  return { date, done: isAppDayPositiveWithGrace("sobriety", date) };
+}
+
 const CHALLENGE_ITEM_ADAPTERS = {
   books: {
     findExisting: (sheet, entry) => findMatchingBook(sheet, entry.title),
@@ -4267,6 +4375,19 @@ const CHALLENGE_ITEM_ADAPTERS = {
     isDone: (item) => !!item?.done,
     displayTitle: (entry) => entry.label,
   },
+  sobriety: {
+    // No customSheets entry backs Sobriety at all (see
+    // sheetIdForTemplateKey) — noSheet tells joinChallenge/
+    // challengeProgress not to bail out for lack of one, and to route
+    // straight through resolve() below instead of the id-linking flow
+    // every sheet-backed practice uses.
+    noSheet: true,
+    findExisting: () => true,
+    create: () => null,
+    resolve: (sheet, entry, linkedId, c) => sobrietyChallengeDayItem(entry, c),
+    isDone: (item) => !!item?.done,
+    displayTitle: (entry) => entry.label,
+  },
 };
 
 // Links (or silently adds) every catalog entry onto the practice's real
@@ -4277,17 +4398,47 @@ const CHALLENGE_ITEM_ADAPTERS = {
 function joinChallenge(challengeId) {
   const catalog = CHALLENGE_CATALOG[challengeId];
   if (!catalog) return;
+  const adapter = CHALLENGE_ITEM_ADAPTERS[catalog.practiceTemplateKey];
+  if (!adapter) return;
   const sheetId = sheetIdForTemplateKey(catalog.practiceTemplateKey);
   const sheet = sheetId ? state.customSheets[sheetId] : null;
-  const adapter = CHALLENGE_ITEM_ADAPTERS[catalog.practiceTemplateKey];
-  if (!sheet || !adapter) return;
+  // Sobriety-backed challenges have no customSheets entry at all to
+  // resolve a sheet from (see CHALLENGE_ITEM_ADAPTERS.sobriety) — that's
+  // expected, not a missing-practice bail-out, so only require a sheet
+  // when the adapter actually needs one.
+  if (!sheet && !adapter.noSheet) return;
   state.challenges ||= {};
   state.challenges[challengeId] ||= { joined: false, bookIds: {} };
   const c = state.challenges[challengeId];
   c.joined = true;
   c.joinedDate ||= todayISO();
-  if (catalog.type === "itemized-paced") c.startDate ||= todayISO();
+  if (catalog.type === "itemized-paced") {
+    // fixedStartDate lets a challenge pin its pacing to a real calendar
+    // date (Dry January always starts Jan 1) instead of "whenever she
+    // happened to join" (every other itemized-paced challenge) — set
+    // once, on first join, same as the plain today() case.
+    c.startDate ||= catalog.fixedStartDate ? catalog.fixedStartDate() : todayISO();
+  }
   if (catalog.practiceTemplateKey === "books") ensureBookStatuses(sheet);
+  // Sobriety-backed challenges track real calendar days directly against
+  // state.sobriety.checkIns (see the adapter's resolve()) — there's
+  // nothing to link onto a sheet. Joining one is also the moment
+  // Sobriety itself turns on as a real Practice if it wasn't already,
+  // so there's somewhere to actually check in day to day beyond just
+  // the challenge screen — a gentle on-ramp, not a silent background
+  // tracker she can't see or use.
+  if (adapter.noSheet) {
+    state.extraTrackers ||= {};
+    if (!state.extraTrackers.sobriety) {
+      state.extraTrackers.sobriety = true;
+      state.sobriety ||= { checkIns: [], whyItems: [], allTimeBestDays: 0, milestonesAllTime: {}, milestonesCurrent: {} };
+      state.sobriety.startDate ||= todayISO();
+      recomputeRewardDollarPerLog();
+      rebuildNav();
+    }
+    scheduleSave();
+    return;
+  }
   catalog.items.forEach((entry, i) => {
     // Range-based entries (e.g. a Qur'an Juz) have no single row id to
     // remember — challengeProgress recomputes them live off the real
@@ -4326,6 +4477,13 @@ function isChallengeJoined(challengeId) {
 function joinedChallengesForPractice(practiceSheetId) {
   const templateKey = state.customSheets[practiceSheetId]?.templateKey;
   if (!templateKey) return [];
+  return Object.values(CHALLENGE_CATALOG).filter((c) => c.practiceTemplateKey === templateKey && isChallengeJoined(c.id));
+}
+
+// Same idea as joinedChallengesForPractice above, for a practice that
+// isn't sheet-backed at all (Sobriety) — matches straight on the
+// template key instead of resolving one through customSheets first.
+function joinedChallengesForTemplateKey(templateKey) {
   return Object.values(CHALLENGE_CATALOG).filter((c) => c.practiceTemplateKey === templateKey && isChallengeJoined(c.id));
 }
 
@@ -4386,7 +4544,7 @@ function challengeProgress(challengeId) {
   const adapter = CHALLENGE_ITEM_ADAPTERS[catalog.practiceTemplateKey];
   const books = catalog.items.map((entry, i) => {
     const item = adapter?.resolve
-      ? adapter.resolve(sheet, entry, c.bookIds[i])
+      ? adapter.resolve(sheet, entry, c.bookIds[i], c)
       : sheet?.items.find((b) => b.id === c.bookIds[i]);
     return {
       title: adapter ? adapter.displayTitle(entry) : entry.title,
@@ -4399,6 +4557,7 @@ function challengeProgress(challengeId) {
   const total = catalog.items.length;
   let currentIndex = null;
   let paceLabel = null;
+  let notStartedYet = false;
   if (catalog.type === "itemized-paced" && c.startDate) {
     const start = new Date(c.startDate + "T00:00:00");
     const now = new Date(todayISO() + "T00:00:00");
@@ -4408,13 +4567,26 @@ function challengeProgress(challengeId) {
     const elapsed = catalog.paceUnit === "day"
       ? Math.floor((now - start) / 86400000)
       : (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
-    currentIndex = Math.min(total - 1, Math.max(0, elapsed));
-    const expectedDone = Math.min(total, elapsed + 1);
-    if (doneCount > expectedDone) paceLabel = "ahead of pace";
-    else if (doneCount === expectedDone) paceLabel = "on pace";
-    else paceLabel = "behind pace";
+    // A fixedStartDate challenge (Dry January) can be joined well before
+    // its real start — elapsed goes negative rather than 0 in that
+    // window. Un-clamped, that read as "ahead of pace" the moment you
+    // joined in December, which is a confusing thing to tell someone
+    // about a challenge that hasn't started yet. currentIndex still
+    // clamps to the first item (nothing to point "current" at yet), but
+    // paceLabel is deliberately left null so the caller shows "Starts
+    // <date>" instead of a pace verdict that doesn't mean anything yet.
+    if (elapsed < 0) {
+      notStartedYet = true;
+      currentIndex = 0;
+    } else {
+      currentIndex = Math.min(total - 1, elapsed);
+      const expectedDone = Math.min(total, elapsed + 1);
+      if (doneCount > expectedDone) paceLabel = "ahead of pace";
+      else if (doneCount === expectedDone) paceLabel = "on pace";
+      else paceLabel = "behind pace";
+    }
   }
-  return { catalog, books, doneCount, total, currentIndex, paceLabel };
+  return { catalog, books, doneCount, total, currentIndex, paceLabel, notStartedYet, startDate: c.startDate };
 }
 
 function openBookItemModal(sheetId, itemId) {
@@ -10783,7 +10955,13 @@ function renderPulseChart(panel, today, restrictAppId) {
 // left out here on purpose: they never have a streak to show.
 const APP_TREND_COLOR_CYCLE = ["#A9804F", "#5B7A93", "#6E9B6A", "#B3543E", "#8A6A22", "#7C5C36"];
 function renderPillarStreakList(panel, today) {
-  const list = el(`<div class="streak-chip-list"></div>`);
+  // 2026-09 (Veronika): this sits directly under renderTrendMilestonesRow's
+  // badge grid inside the merged Milestones & Streaks card, and the two
+  // used to butt right up against each other with zero breathing room —
+  // the streak list is a distinct sub-section, not a continuation of the
+  // badge grid, so it needs its own top margin the same way any other
+  // stacked sub-section on Home gets one.
+  const list = el(`<div class="streak-chip-list" style="margin-top:16px;"></div>`);
   const last7 = [];
   for (let i = 6; i >= 0; i--) last7.push(addDays(today, -i));
   const practiceApps = currentAppEntries().filter((e) => e.type === "practice");
@@ -13421,8 +13599,14 @@ function renderChallengeLearnMore(panel, id) {
   panel.appendChild(back);
 
   const itemCount = catalog.items.length;
+  // paceUnit lets a challenge pace by day (Ramadan's 30-Juz plan) instead
+  // of by calendar month (12 books in 12 months) — see challengeProgress.
+  // This line used to always say "a month" regardless, which read as
+  // simply wrong on a day-paced challenge.
   const paceLine = catalog.type === "itemized-paced"
-    ? `${catalog.practiceLabel} &middot; one ${(catalog.unitLabel || "item").replace(/s$/, "")} a month &middot; ${itemCount} months`
+    ? catalog.paceUnit === "day"
+      ? `${catalog.practiceLabel} &middot; one a day &middot; ${itemCount} days`
+      : `${catalog.practiceLabel} &middot; one ${(catalog.unitLabel || "item").replace(/s$/, "")} a month &middot; ${itemCount} months`
     : `${catalog.practiceLabel} &middot; at your own pace &middot; no deadline`;
 
   panel.appendChild(el(`
@@ -13441,13 +13625,21 @@ function renderChallengeLearnMore(panel, id) {
   panel.appendChild(el(`<div class="challenge-hub-group-title">What's included</div>`));
   const list = el(`<div class="card" style="padding:2px 14px;"></div>`);
   const SHOWN_COUNT = 5;
+  // Bug fix (Veronika, 2026-09): this always read item.title/item.author
+  // straight off the catalog entry, which is Books' own shape — a Juz
+  // entry (Ramadan Challenge) has neither, only .label, so every row here
+  // showed just its number with nothing next to it. Goes through the same
+  // adapter renderChallengeDetail already uses instead of assuming one
+  // practice's item shape everywhere.
+  const learnMoreAdapter = CHALLENGE_ITEM_ADAPTERS[catalog.practiceTemplateKey];
   catalog.items.slice(0, SHOWN_COUNT).forEach((item, i) => {
+    const displayTitle = learnMoreAdapter ? learnMoreAdapter.displayTitle(item) : item.title;
     list.appendChild(el(`
       <div class="challenge-book-row" style="cursor:default;">
         <div class="challenge-book-status">${i + 1}</div>
         <div style="flex:1;min-width:0;">
-          <div class="challenge-book-title">${escapeHtml(item.title)}</div>
-          <div class="challenge-book-author">${escapeHtml(item.author)}</div>
+          <div class="challenge-book-title">${escapeHtml(displayTitle || "")}</div>
+          ${item.author ? `<div class="challenge-book-author">${escapeHtml(item.author)}</div>` : ""}
         </div>
       </div>
     `));
@@ -14849,15 +15041,21 @@ function renderSobrietyPanel() {
     box.innerHTML = "";
     box.appendChild(el(`<h2 class="section-title serif">Sobriety</h2>`));
 
-    box.appendChild(el(`
-      <div class="sob-hero">
-        <div class="sob-hero-icon">${iconSvg('<path d="M12 21c-4-3-7-6.5-7-10a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 3.5-3 7-7 10-1.5-.9-2.7-1.8-3.9-2.7"></path>').replace('class="tab-icon" width="20" height="20"', 'width="26" height="26" stroke="#fff"')}</div>
-        <div class="sob-count">${count}</div>
-        <div class="sob-count-label">day${count === 1 ? "" : "s"}</div>
+    // 2026-09 (Veronika): used to be a bespoke heart-in-a-circle hero —
+    // its own visual language, off-center to boot. Now it's the same
+    // buildStreakCard every other Practice's detail screen opens with
+    // (plant medallion + big number + label), so Sobriety reads as one
+    // more Practice rather than a special case. "Since <date>" and the
+    // affirmation ride along as buildStreakCard's extraHtml, same slot
+    // Activity Log uses for its weekly-minutes bar.
+    box.appendChild(buildStreakCard(
+      count,
+      `day${count === 1 ? "" : "s"} sober`,
+      `
         <div class="sob-since">Since ${activityDateShort(state.sobriety.startDate)}</div>
-      </div>
-      <div class="sob-affirmation">"${escapeHtml(sobrietyAffirmation(today))}"</div>
-    `));
+        <div class="sob-affirmation">"${escapeHtml(sobrietyAffirmation(today))}"</div>
+      `
+    ));
 
     if (checkedIn) {
       const done = el(`
@@ -14898,6 +15096,37 @@ function renderSobrietyPanel() {
     });
     strip.appendChild(chips);
     box.appendChild(strip);
+
+    // Challenges (Dry January, 30 Alcohol-Free Days) — shown alongside
+    // the check-in flow, never replacing it: unlike Books/Qur'an, the
+    // one real action here (a check-in) only ever happens through the
+    // card above, so hiding it behind a challenge tab would strand
+    // anyone viewing challenge progress with no way to actually check
+    // in. See renderChallengeDetail's sobriety branch for why its rows
+    // are read-only otherwise.
+    const sobrietyJoined = joinedChallengesForTemplateKey("sobriety");
+    if (state.sobriety.focusedChallenge && !sobrietyJoined.some((c) => c.id === state.sobriety.focusedChallenge)) {
+      state.sobriety.focusedChallenge = null;
+    }
+    if (sobrietyJoined.length) {
+      box.appendChild(el(`<div class="subsection-title" style="margin-top:18px;">Challenges</div>`));
+      if (sobrietyJoined.length > 1) {
+        const pillRow = el(`<div class="challenge-pill-row"></div>`);
+        sobrietyJoined.forEach((catalog, idx) => {
+          const isActive = state.sobriety.focusedChallenge ? state.sobriety.focusedChallenge === catalog.id : idx === 0;
+          const btn = el(`<button type="button" class="challenge-pill challenge-option ${isActive ? "active" : ""}">${catalog.icon} ${escapeHtml(catalog.name)}</button>`);
+          btn.addEventListener("click", () => {
+            state.sobriety.focusedChallenge = catalog.id;
+            scheduleSave();
+            render();
+          });
+          pillRow.appendChild(btn);
+        });
+        box.appendChild(pillRow);
+      }
+      const activeChallengeId = state.sobriety.focusedChallenge || sobrietyJoined[0].id;
+      renderChallengeDetail(box, "sobriety", activeChallengeId, today);
+    }
 
     box.appendChild(el(`<div class="milestone-section-title">Milestones</div>`));
     box.appendChild(el(`<div class="milestone-section-sub">Every one of these is earnable again, no matter how many times you've hit it before.</div>`));
@@ -16101,6 +16330,18 @@ async function bootInner() {
     });
     state.sheetLabelShortenV2Applied = true;
   }
+  // One-time (v3): "Quran Plan" -> "Quran" (Veronika's call, 2026-09,
+  // after the Qur'an rebuild) — now that it's a real surah-by-surah
+  // read-through rather than a fixed reading plan, "Plan" no longer
+  // describes it. Only touches a sheet still carrying the old default
+  // label; a sheet she's since renamed herself is left alone, same rule
+  // as v1/v2.
+  if (!state.sheetLabelShortenV3Applied) {
+    Object.values(state.customSheets).forEach((cs) => {
+      if (cs.label === "Quran Plan") cs.label = "Quran";
+    });
+    state.sheetLabelShortenV3Applied = true;
+  }
   // Pillar Mapping — which spaces auto-complete each pillar. Defaults to
   // Bible for Spiritual anchor once, the first time someone has a Bible
   // sheet, since that matched what was already in use; everything else
@@ -16361,9 +16602,12 @@ async function bootInner() {
   // Sobriety tracker data — a day count since startDate, a re-earnable
   // milestone grid that clears on reset (an all-time record never does),
   // a daily check-in log, and a short list of personal reasons ("Your
-  // why") shown during a craving and again before a reset. None of this
-  // feeds the reward mechanic — see awardRewardForPillarLog, which only
-  // ever fires from a real pillar log.
+  // why") shown during a craving and again before a reset. A real
+  // check-in DOES feed the reward mechanic, same as every other
+  // Practice — see currentPracticeAppIds/applyPracticeDepositsForToday,
+  // which folds Sobriety in as a real Practice (2026-09 apps
+  // rearchitecture). The line that used to say otherwise here was left
+  // over from the old pillar model and had gone stale.
   state.sobriety ||= {
     startDate: todayISO(),
     allTimeBestDays: 0,
@@ -16372,11 +16616,13 @@ async function bootInner() {
     checkIns: [],
     whyItems: [],
     lastResetDate: null,
+    focusedChallenge: null,
   };
   state.sobriety.milestonesAllTime ||= {};
   state.sobriety.milestonesCurrent ||= {};
   state.sobriety.checkIns ||= [];
   state.sobriety.whyItems ||= [];
+  state.sobriety.focusedChallenge ??= null;
 
   // Cycle tracker data — a list of logged periods (start date, optional
   // end date, optional flow) is the only real input; everything else
