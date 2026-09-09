@@ -15095,9 +15095,30 @@ function renderSobrietyPanel() {
       box.appendChild(buildSobrietyCheckInCard(today, null, render));
     }
 
-    const whyLink = el(`<button type="button" class="why-edit-link" style="margin-top:8px;">${state.sobriety.whyItems.length ? "Edit your why" : "+ Add your why"}</button>`);
-    whyLink.addEventListener("click", () => openSobrietyWhyEditor(render));
-    box.appendChild(whyLink);
+    // 2026-09 (Veronika): "Your why" used to only ever surface as an
+    // edit link, with the actual list only visible inside a Tempted
+    // check-in's craving branch — so once you'd written it, you'd
+    // basically never see it again unless you happened to pick
+    // "Tempted" on a later day. Now it's its own always-visible card
+    // right on the main screen, same why-card markup the craving
+    // branch already used, so it's front and center rather than
+    // buried behind one specific mood.
+    if (state.sobriety.whyItems.length) {
+      const why = el(`
+        <div class="why-card" style="margin-top:14px;">
+          <div class="why-title-row"><div class="why-title">Your why</div></div>
+        </div>
+      `);
+      state.sobriety.whyItems.forEach((w) => why.appendChild(el(`<div class="why-item"><span class="dot"></span>${escapeHtml(w)}</div>`)));
+      box.appendChild(why);
+      const whyLink = el(`<button type="button" class="why-edit-link" style="margin-top:4px;">Edit your why</button>`);
+      whyLink.addEventListener("click", () => openSobrietyWhyEditor(render));
+      box.appendChild(whyLink);
+    } else {
+      const whyLink = el(`<button type="button" class="why-edit-link" style="margin-top:8px;">+ Add your why</button>`);
+      whyLink.addEventListener("click", () => openSobrietyWhyEditor(render));
+      box.appendChild(whyLink);
+    }
 
     // ---- Your record — permanent, plus the re-earnable grid below ----
     box.appendChild(el(`<div class="alltime-title">Your record</div>`));
