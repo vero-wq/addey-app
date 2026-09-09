@@ -1524,13 +1524,53 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .ml-note-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; font-family: inherit; background: var(--bg); margin-bottom: 12px; }
 
 /* ---------- Workout Log ---------- */
-.workout-week-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-.workout-week-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+/* 2026-09 (Veronika): weeks pills used to wrap onto a second row once
+   there were more than a handful of weeks — this scrolls horizontally
+   instead, so the row height never grows and "+ New week" stays put on
+   the right. The active week's pill auto-scrolls into view on render
+   (see renderWorkoutSheet) so opening the page never leaves you looking
+   at a blank scrolled-away strip. */
+.workout-week-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: nowrap; }
+.workout-week-pills { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding: 2px 2px 4px; }
+.workout-week-pills::-webkit-scrollbar { display: none; }
 .workout-week-pills button {
   padding: 7px 14px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface);
-  font-size: 13px; color: var(--text); cursor: pointer;
+  font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; flex-shrink: 0;
 }
 .workout-week-pills button.active { background: var(--text); color: var(--text-inverse); border-color: var(--text); }
+.workout-week-row > .btn-ghost.small { flex-shrink: 0; }
+
+/* Drag-to-reorder days, and the split "Day N" (positional, computed) /
+   title (freeform, editable) header — see renderWorkoutSheet. */
+.workout-days-list { margin-top: 2px; }
+.workout-day-block { position: relative; touch-action: pan-y; }
+.workout-day-block.dragging { opacity: 0.6; box-shadow: 0 8px 20px rgba(0,0,0,0.16); border-radius: 8px; background: var(--surface); z-index: 5; }
+.workout-day-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.day-drag-handle { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; color: var(--muted); cursor: grab; touch-action: none; }
+.day-drag-handle:active { cursor: grabbing; }
+.workout-day-number { font-size: 10.5px; font-weight: 700; color: var(--accent-dark); background: #F1E7CF; border-radius: 5px; padding: 3px 7px; flex-shrink: 0; }
+.workout-day-title-text { font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-skip-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 100px; padding: 3px 9px; flex-shrink: 0; }
+.workout-day-block.day-skipped .workout-day-number,
+.workout-day-block.day-skipped .workout-day-title-text { color: var(--muted); }
+.workout-day-block.day-skipped .wardrobe-items { opacity: 0.55; }
+.workout-day-block.day-skipped .workout-ex-item { pointer-events: none; }
+.day-actions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.btn-ghost.skip-toggle { color: var(--accent-dark); }
+.btn-ghost.unskip-toggle { color: var(--good); border-color: #CFDBC7; background: #EEF2E9; }
+.add-day-tile {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; box-sizing: border-box;
+  padding: 14px 12px; border-radius: 14px; border: 1.5px dashed var(--accent); background: var(--bg);
+  font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--accent-dark); cursor: pointer; margin-top: 16px;
+}
+.add-day-tile:hover { background: #F1E7CF; }
+
+.workout-ex-item.ex-skipped .workout-ex-name { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
+.workout-ex-item.ex-skipped .workout-ex-hint { color: var(--muted); }
+.workout-ex-item.ex-skipped .workout-ex-code { background: var(--bg); color: var(--muted); }
+.ex-skip-chip { font-size: 10px; font-weight: 700; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 100px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0; }
+.ex-skip-link { font-size: 11.5px; font-weight: 700; color: var(--accent-dark); background: none; border: none; cursor: pointer; font-family: inherit; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; flex-shrink: 0; padding: 4px 2px; }
+.workout-ex-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 .progression-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .progression-summary { font-size: 13px; line-height: 1.5; }
