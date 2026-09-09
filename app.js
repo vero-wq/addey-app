@@ -11152,7 +11152,14 @@ function renderCooccurrenceCard(panel, today) {
 
   const sameDay = computeNotableAppCooccurrences(today);
   const nextDay = computeNextDayAppPatterns(today);
-  if (!sameDay.length && !nextDay.length) return;
+  if (!sameDay.length && !nextDay.length) {
+    // 2026-09 (Veronika): this used to just return with nothing — no
+    // pattern clearing COOCCUR_MIN_DAYS/COOCCUR_MIN_DIFF read as Trends
+    // being broken or empty rather than "not enough data yet," which is
+    // what was actually going on. One honest line instead of nothing.
+    panel.appendChild(el(`<div class="trend-pattern-note" style="margin-top:2px;">Not enough overlapping history yet to spot a pattern between Practices &mdash; check back once you've logged more across a few of them.</div>`));
+    return;
+  }
 
   const shownKeys = new Set([
     ...sameDay.map((r) => trendsPairKey(r, "same")),
@@ -13702,7 +13709,7 @@ function openChallengeFromHome(challengeId) {
 function renderHomeMilestonesStreaksSection(panel, today) {
   const details = el(`
     <details class="card" open>
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="home-section-icon">🏅</span><span class="subsection-title serif" style="margin:0;">Milestones &amp; Streaks</span></span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">Milestones &amp; Streaks</span></span></summary>
     </details>
   `);
   panel.appendChild(details);
@@ -13729,7 +13736,7 @@ function renderHomeMilestonesStreaksSection(panel, today) {
 function renderHomeTrendsSection(panel, today) {
   const section = el(`
     <details class="card" open>
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="home-section-icon">📈</span><span class="subsection-title serif" style="margin:0;">Trends</span></span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">Trends</span></span></summary>
     </details>
   `);
   panel.appendChild(section);
@@ -14885,6 +14892,17 @@ function renderCyclePanel() {
 // all: see awardRewardForPillarLog, which only ever fires from a real
 // pillar log, never from here.
 // ------------------------------------------------------------------
+// Maps a Sobriety tier's day count onto the nearest HOME_STREAK_MILESTONES
+// bloom stage, so its earned badge can reuse the exact same growing-plant
+// medallion (bloomBadgeMarkup) the streak hero and celebrations already
+// render, instead of a generic checkmark. Falls back to the smallest
+// bloom stage (3) for tiers below it, same as homeStreakPlantSvg's own
+// `|| 3` fallback.
+function sobrietyBloomTierFor(days) {
+  let picked = HOME_STREAK_MILESTONES[0];
+  HOME_STREAK_MILESTONES.forEach((t) => { if (days >= t) picked = t; });
+  return picked;
+}
 const SOBRIETY_TIERS = [
   { key: "24h", days: 1, label: "24 Hours", color: "var(--t-24h)" },
   { key: "1wk", days: 7, label: "1 Week", color: "var(--t-1wk)" },
@@ -14915,23 +14933,28 @@ const SOBRIETY_AFFIRMATIONS = [
 const sobrietyCallSvgPath = `<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .3 2 .7 3a2 2 0 0 1-.4 2.1L8 10.2a16 16 0 0 0 6 6l1.4-1.4a2 2 0 0 1 2.1-.4c1 .3 2 .5 3 .7a2 2 0 0 1 1.5 2z"></path>`;
 const sobrietyPersonAddSvgPath = `<circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path><path d="M19 8h4M21 6v4"></path>`;
 
+// 2026-09 (Veronika): this used to be pure calendar math — days since
+// startDate, whether or not you'd ever actually checked in. That read
+// as untrustworthy ("it says 7 days but I haven't logged 7 check-ins")
+// and didn't match how every other Practice's streak works. Now it's a
+// real streak over state.sobriety.checkIns, same rule as
+// appCurrentStreak/isAppDayPositiveWithGrace: a day counts if you
+// checked in (any mood — checking in itself is the practice, "Tempted"
+// and "Rough" still count) OR a Grace Day covers the gap, same grace
+// system Bible/Activity Log/Dry January already lean on so an honestly
+// forgotten day doesn't cost the whole streak. The walk back never
+// crosses startDate — a slip (openSobrietyResetSheet) moves startDate
+// to today, so old pre-slip check-ins can never bleed into the new
+// count even though they stay in history.
 function sobrietyDayCount(today) {
-  const start = new Date(state.sobriety.startDate + "T00:00:00");
-  const now = new Date(today + "T00:00:00");
-  return Math.max(1, daysBetween(start, now) + 1);
-}
-// Full 24-hour periods actually elapsed since startDate — 0 on the day
-// the tracker is started/reset, 1 the next day, and so on. Milestones
-// are checked against this, never against sobrietyDayCount's display
-// number: that display count is 1-indexed ("Day 1" the moment you
-// start) specifically so it reads well on screen, but it means "count
-// >= 1" is already true the instant the tracker is added, which used
-// to hand out the 24 Hours badge — and its celebration popup — before
-// any actual time had passed.
-function sobrietyElapsedDays(today) {
-  const start = new Date(state.sobriety.startDate + "T00:00:00");
-  const now = new Date(today + "T00:00:00");
-  return Math.max(0, daysBetween(start, now));
+  const start = state.sobriety.startDate;
+  let count = 0;
+  let cursor = isAppLoggedToday("sobriety", today) ? today : addDays(today, -1);
+  while (cursor >= start && isAppDayPositiveWithGrace("sobriety", cursor)) {
+    count++;
+    cursor = addDays(cursor, -1);
+  }
+  return count;
 }
 function sobrietyAffirmation(today) {
   return SOBRIETY_AFFIRMATIONS[sobrietyDayCount(today) % SOBRIETY_AFFIRMATIONS.length];
@@ -14941,16 +14964,19 @@ function sobrietyCheckInToday(today) {
 }
 
 // Recomputes which tiers are earned (current + all-time) against
-// today's count — safe to call on every render. Returns the highest
+// today's streak — safe to call on every render. Returns the highest
 // tier that just became newly earned THIS call (current-grid sense —
 // re-crossing an already-earned all-time tier doesn't count), or null.
+// Milestones already recorded under the old calendar-based count are
+// untouched by this change — these dictionaries only ever get a key
+// added, never removed or recomputed, so nothing she's already earned
+// is revoked by switching how new ones are earned.
 function sobrietyRecomputeMilestones(today) {
   const count = sobrietyDayCount(today);
-  const elapsed = sobrietyElapsedDays(today);
   state.sobriety.allTimeBestDays = Math.max(state.sobriety.allTimeBestDays, count);
   let newlyEarned = null;
   SOBRIETY_TIERS.forEach((t) => {
-    if (elapsed >= t.days) {
+    if (count >= t.days) {
       if (!state.sobriety.milestonesAllTime[t.key]) state.sobriety.milestonesAllTime[t.key] = today;
       if (!state.sobriety.milestonesCurrent[t.key]) {
         state.sobriety.milestonesCurrent[t.key] = today;
@@ -15133,10 +15159,20 @@ function renderSobrietyPanel() {
     const grid = el(`<div class="pr-badge-grid"></div>`);
     SOBRIETY_TIERS.forEach((t) => {
       const earnedDate = state.sobriety.milestonesCurrent[t.key];
+      // 2026-09 (Veronika): brought in line with buildMilestonesCard's
+      // pattern (Books/Bible/Activity Log) instead of its own one-off
+      // look — earned badges are the same bloom medallion the streak
+      // hero and celebrations already use (bloomBadgeMarkup), and
+      // unearned badges are a real fractional progress ring instead of
+      // a flat locked outline, so you can see how close a tier actually
+      // is. The per-tier color ramp stays — that's the same ramp
+      // HOME_STREAK_MILESTONE_COLORS deliberately shares with Sobriety
+      // on purpose, not the inconsistency.
+      const bloomTier = sobrietyBloomTierFor(t.days);
       const badge = earnedDate
         ? el(`
             <div class="pr-badge">
-              <div class="pr-badge-medal earned" style="background: radial-gradient(circle at 35% 30%, #fff, ${t.color} 75%);">${checkSvg}</div>
+              <div class="pr-badge-medal earned" style="background:none;padding:0;">${bloomBadgeMarkup(bloomTier, `sobriety-${t.key}`).replace('width="56" height="56"', 'width="48" height="48"')}</div>
               <div class="pr-badge-text">
                 <div class="lbl">${escapeHtml(t.label)}</div>
                 <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
@@ -15145,12 +15181,12 @@ function renderSobrietyPanel() {
           `)
         : el(`
             <div class="pr-badge">
-              <div class="pr-badge-medal locked" style="border-color:${t.color};color:${t.color};">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle></svg>
+              <div class="pr-badge-medal progress" style="background: conic-gradient(${t.color} 0% ${Math.round(Math.min(1, count / t.days) * 100)}%, var(--border) ${Math.round(Math.min(1, count / t.days) * 100)}% 100%);">
+                <div class="pr-badge-medal-inner" style="color:${t.color};"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><circle cx="12" cy="12" r="8"></circle></svg></div>
               </div>
               <div class="pr-badge-text">
                 <div class="lbl">${escapeHtml(t.label)}</div>
-                <div class="sub">Not yet</div>
+                <div class="sub">${count} of ${t.days}</div>
               </div>
             </div>
           `);
@@ -15159,22 +15195,40 @@ function renderSobrietyPanel() {
     box.appendChild(grid);
 
     // ---- Recent check-ins ----
+    // Now the ONE way to fix a gap in the streak: tap an existing entry
+    // to edit it, or use "+ Log a missed day" to backfill a day you
+    // forgot. It's an honor system either way — nothing stops someone
+    // from backfilling a day they weren't actually sober, same as
+    // nothing stopped that before — but that's a choice for the person
+    // using it, not something the app can verify.
     const recent = [...state.sobriety.checkIns].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 6);
     if (recent.length) {
       box.appendChild(el(`<div class="history-title">Recent check-ins</div>`));
       recent.forEach((c) => {
         const mood = SOBRIETY_MOODS.find((m) => m.key === c.mood);
-        box.appendChild(el(`
-          <div class="history-row">
+        const row = el(`
+          <button type="button" class="history-row history-row-btn">
             <div class="history-emoji">${mood?.emoji || "•"}</div>
             <div>
               <span class="history-day">${escapeHtml(c.date)}</span>
               ${c.note ? `<div class="history-note">${escapeHtml(c.note)}</div>` : ""}
             </div>
-          </div>
-        `));
+          </button>
+        `);
+        row.addEventListener("click", () => openSobrietyBackfillModal(c.date, c, render));
+        box.appendChild(row);
       });
     }
+    const backfillLink = el(`<button type="button" class="why-edit-link" style="margin-top:4px;">+ Log a missed day</button>`);
+    backfillLink.addEventListener("click", () => {
+      const start = state.sobriety.startDate;
+      const yesterday = addDays(today, -1);
+      let pick = yesterday;
+      while (pick >= start && sobrietyCheckInToday(pick)) pick = addDays(pick, -1);
+      if (pick < start) pick = yesterday; // every day's already logged — reopen the most recent for editing
+      openSobrietyBackfillModal(pick, sobrietyCheckInToday(pick), render);
+    });
+    box.appendChild(backfillLink);
 
     const resetLink = el(`<button type="button" class="sob-reset-link">Had a slip? Log it here</button>`);
     resetLink.addEventListener("click", () => openSobrietyResetSheet(render));
@@ -15195,13 +15249,22 @@ function openSobrietyCheckInCard(box, today, existing, onDone) {
 // The check-in itself: mood chips, an inline craving branch when
 // "Tempted" is picked (intensity + Your Why + a support contact or the
 // national hotline), and an optional journal line. Submitting is what
-// actually confirms the day — the count itself stays date-math-based
-// either way, this is what makes it trustworthy.
-function buildSobrietyCheckInCard(today, existing, onDone) {
+// actually confirms the day. `forDate` lets this same card back-fill an
+// earlier day you forgot to log (see openSobrietyBackfillModal) instead
+// of always writing to today — since the streak is now built from real
+// check-ins, filling in an honestly-missed day is how you keep it
+// intact rather than losing it.
+function buildSobrietyCheckInCard(today, existing, onDone, forDate) {
+  const entryDate = forDate || today;
+  const isPast = entryDate !== today;
   const card = el(`
     <div class="checkin-card">
-      <div class="checkin-title">How are you today?</div>
-      <div class="checkin-sub">This is what actually confirms Day ${sobrietyDayCount(today)} — a real check-in, not just the calendar.</div>
+      <div class="checkin-title">${isPast ? `Log ${activityDateShort(entryDate)}` : "How are you today?"}</div>
+      <div class="checkin-sub">${
+        isPast
+          ? `Backfilling a day you missed &mdash; this can keep your streak intact instead of breaking it.`
+          : `This is what actually confirms Day ${sobrietyDayCount(today)} &mdash; a real check-in, not just the calendar.`
+      }</div>
       <div class="checkin-mood-row"></div>
     </div>
   `);
@@ -15273,14 +15336,17 @@ function buildSobrietyCheckInCard(today, existing, onDone) {
   journal.value = existing?.note || "";
   card.appendChild(journal);
 
-  const btn = el(`<button type="button" class="checkin-btn">${existing ? "Save" : "Check in for today"}</button>`);
+  const btn = el(`<button type="button" class="checkin-btn">${existing ? "Save" : isPast ? `Log ${activityDateShort(entryDate)}` : "Check in for today"}</button>`);
   btn.addEventListener("click", () => {
     if (!selectedMood) return;
-    const entry = existing || { date: today };
+    const entry = existing || { date: entryDate };
     entry.mood = selectedMood;
     entry.cravingIntensity = selectedMood === "tempted" ? selectedIntensity : null;
     entry.note = journal.value.trim();
     if (!existing) state.sobriety.checkIns.push(entry);
+    // Milestones are always recomputed against real today, never
+    // entryDate — backfilling Tuesday doesn't let Friday's celebration
+    // fire early, it just repairs the streak that Friday's count reads.
     const newTier = sobrietyRecomputeMilestones(today);
     scheduleSave();
     onDone();
@@ -15288,6 +15354,30 @@ function buildSobrietyCheckInCard(today, existing, onDone) {
   });
   card.appendChild(btn);
   return card;
+}
+
+// A small modal for editing an existing check-in on a past day, or
+// adding one for a day that was honestly missed. Kept separate from
+// openSobrietyCheckInCard (which swaps the always-visible today card in
+// place) since a past day isn't the top-of-screen card — it's reached
+// from "Recent check-ins" or the "+ Log a missed day" picker below it.
+function openSobrietyBackfillModal(dateStr, existing, onRerender) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box wardrobe-modal-box" style="max-width:360px;">
+        <div class="info-modal-header">
+          <h3>${escapeHtml(existing ? "Edit check-in" : "Log a missed day")}</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  const card = buildSobrietyCheckInCard(todayISO(), existing, () => { close(); onRerender(); }, dateStr);
+  overlay.querySelector(".modal-box").appendChild(card);
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
 }
 
 // Picking (or adding) a support contact — reads and writes the same
@@ -15559,7 +15649,7 @@ function renderIdentityQuote(panel, wrapInCard = true) {
 function renderWellnessHistory(panel, today) {
   const section = el(`
     <details class="card">
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="home-section-icon">🗓️</span><span class="subsection-title serif" style="margin:0;">History</span></span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">History</span></span></summary>
     </details>
   `);
   panel.appendChild(section);
