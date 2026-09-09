@@ -2859,6 +2859,9 @@ function getItemSwatchHex(item) {
   return wardrobeSwatchHex(item.swatchKey || guessSwatchKey(item.color));
 }
 const linkSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5"></path><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.5-1.5"></path></svg>`;
+// Grip handle for drag-to-reorder rows (Workout Log's days) — six dots,
+// matching the weight/visual size of the other small icon buttons.
+const dragHandleSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="5" r="1.6"></circle><circle cx="8" cy="12" r="1.6"></circle><circle cx="8" cy="19" r="1.6"></circle><circle cx="16" cy="5" r="1.6"></circle><circle cx="16" cy="12" r="1.6"></circle><circle cx="16" cy="19" r="1.6"></circle></svg>`;
 const photoPlaceholderSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>`;
 const WARDROBE_SEASON_OPTIONS = ["All", "Spring", "Summer", "Fall", "Winter", "Spring/Summer", "Fall/Winter", "Spring/Fall"];
 const WARDROBE_PRIORITY_OPTIONS = ["High", "Medium", "Low", "Fixed"];
@@ -7252,7 +7255,7 @@ function openSocialEntryModal(sheetId, itemId, presetPersonId) {
 // ------------------------------------------------------------------
 const WORKOUT_SEED_DAYS = [
   {
-    label: "Day 1",
+    title: "",
     exercises: [
       {
         code: "A1",
@@ -7320,7 +7323,7 @@ function seedWorkoutSheetData() {
     label: weekLabelFromStart(startDate),
     days: WORKOUT_SEED_DAYS.map((day) => ({
       id: nextId(),
-      label: day.label,
+      title: day.title || "",
       exercises: day.exercises.map((ex) => ({
         id: nextId(),
         code: ex.code,
@@ -7389,6 +7392,40 @@ function suggestedWorkoutTarget(exercise, lastSet, settings) {
   return `${weightLabel}${suffix}`;
 }
 
+// "+ New week" only ever carries an exercise forward inside the day it
+// already lives in, matched by day position — that's normally right,
+// but it's exactly what left Day 2's exercises with no memory of
+// themselves the moment the day they'd been sitting in got removed or
+// re-added under a new id (see c025 — restoring Aug 31's Day 2). This
+// looks an exercise up by name across every week and day in the sheet
+// instead, most recent first, so re-adding "Assisted Pull-Up" to a
+// brand-new day still picks up right where it last left off, regardless
+// of which day it used to belong to.
+function findMostRecentExerciseByName(sheet, name) {
+  const key = (name || "").trim().toLowerCase();
+  if (!key) return null;
+  const weeksDesc = [...sheet.weeks].sort((a, b) => (a.startDate < b.startDate ? 1 : a.startDate > b.startDate ? -1 : 0));
+  for (const w of weeksDesc) {
+    for (const d of w.days) {
+      const match = d.exercises.find((e) => (e.name || "").trim().toLowerCase() === key);
+      if (match) return match;
+    }
+  }
+  return null;
+}
+// Builds a fresh set of sets from a matched historical exercise, using
+// the same "actual becomes next Previous, Target gets a fresh
+// suggestion" logic as a normal "+ New week" carry-forward.
+function seedSetsFromHistory(matchedExercise, settings) {
+  return matchedExercise.sets.map((s) => ({
+    id: nextId(),
+    setType: s.setType,
+    prev: s.actual && s.actual !== "✖️" ? s.actual : s.prev,
+    target: suggestedWorkoutTarget(matchedExercise, s, settings),
+    actual: "",
+  }));
+}
+
 function createNextWorkoutWeek(sheet, startDate) {
   const settings = sheet.progressionSettings;
   const fromWeek = sheet.weeks.find((w) => w.id === sheet.activeWeekId) || sheet.weeks[sheet.weeks.length - 1];
@@ -7396,9 +7433,13 @@ function createNextWorkoutWeek(sheet, startDate) {
     id: nextId(),
     startDate,
     label: weekLabelFromStart(startDate),
+    // Neither day.skipped nor ex.skipped carries forward — a skip is
+    // scoped to the one week it was set on. Everything else (including
+    // the day's title, but not its number, which is derived fresh from
+    // position every render) comes along as before.
     days: fromWeek.days.map((day) => ({
       id: nextId(),
-      label: day.label,
+      title: day.title || "",
       exercises: day.exercises.map((ex) => ({
         id: nextId(),
         code: ex.code,
@@ -7431,11 +7472,18 @@ function createNextWorkoutWeek(sheet, startDate) {
 function exerciseTouched(ex) {
   return ex.sets.some((s) => (s.actual || "").trim() !== "");
 }
+// A skipped day/exercise is "intentionally not this week," not a miss —
+// so it's read out of the denominator entirely rather than counted
+// against her. A day that's skipped outright (or every exercise in it
+// individually skipped) reads as "skipped", a tone of its own, so it
+// doesn't quietly count as "none" either.
 function dayWorkoutTone(day) {
-  if (!day.exercises.length) return "none";
-  const touched = day.exercises.filter(exerciseTouched).length;
+  if (day.skipped) return "skipped";
+  const counted = day.exercises.filter((ex) => !ex.skipped);
+  if (!counted.length) return day.exercises.length ? "skipped" : "none";
+  const touched = counted.filter(exerciseTouched).length;
   if (touched === 0) return "none";
-  return touched / day.exercises.length >= 0.8 ? "good" : "mixed";
+  return touched / counted.length >= 0.8 ? "good" : "mixed";
 }
 function flattenWorkoutDays(sheet) {
   const weeks = [...sheet.weeks].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0));
@@ -7448,8 +7496,9 @@ function flattenWorkoutDays(sheet) {
 function computeWorkoutProgressStats(sheet) {
   if (!sheet.weeks.length) return null;
   const activeWeek = sheet.weeks.find((w) => w.id === sheet.activeWeekId) || sheet.weeks[sheet.weeks.length - 1];
-  const weekTotal = activeWeek.days.length;
-  const weekDone = activeWeek.days.filter((d) => dayWorkoutTone(d) === "good").length;
+  const countedDays = activeWeek.days.filter((d) => !d.skipped);
+  const weekTotal = countedDays.length;
+  const weekDone = countedDays.filter((d) => dayWorkoutTone(d) === "good").length;
   const weekPct = weekTotal ? Math.round((weekDone / weekTotal) * 100) : 0;
   const tones = flattenWorkoutDays(sheet).slice(-14).map((d) => d.tone);
   while (tones.length < 14) tones.unshift("none");
@@ -7674,6 +7723,38 @@ function openWorkoutExerciseModal(sheetId, dayId, exerciseId) {
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
   });
+  // Adding an exercise that's already got history somewhere else in this
+  // sheet (a different day, an older week, a day that's since been
+  // removed and re-added) — autofill the rest of the form from that
+  // match once she names it, same as re-opening a day that was never
+  // gone. Only fills fields she hasn't already touched, and never
+  // overwrites anything she's typed.
+  if (isNew) {
+    const nameInput = overlay.querySelector('[name="name"]');
+    nameInput.addEventListener("blur", () => {
+      const match = findMostRecentExerciseByName(sheet, nameInput.value);
+      if (!match) return;
+      const set = (field, value) => {
+        const el2 = form.querySelector(`[name="${field}"]`);
+        if (!el2 || value == null) return;
+        if (el2.type === "checkbox") return; // handled below, has its own default-vs-touched read
+        if (!el2.value.trim()) el2.value = value;
+      };
+      const form = overlay.querySelector(".wardrobe-item-form");
+      set("code", match.code);
+      set("muscles", match.muscles);
+      if (!form.querySelector('[name="repMin"]').dataset.touched) form.querySelector('[name="repMin"]').value = match.repMin ?? 8;
+      if (!form.querySelector('[name="repMax"]').dataset.touched) form.querySelector('[name="repMax"]').value = match.repMax ?? 10;
+      form.querySelector('[name="direction"]').value = match.direction || "up";
+      form.querySelector('[name="autoSuggest"]').checked = match.autoSuggest !== false;
+      form.querySelector('[name="perSide"]').checked = !!match.perSide;
+      set("link", match.link);
+      set("notes", match.notes);
+    });
+    ["repMin", "repMax"].forEach((f) => {
+      overlay.querySelector(`[name="${f}"]`).addEventListener("input", (e) => { e.target.dataset.touched = "1"; });
+    });
+  }
   overlay.querySelector(".modal-confirm").addEventListener("click", () => {
     const form = overlay.querySelector(".wardrobe-item-form");
     const name = form.querySelector('[name="name"]').value.trim();
@@ -7691,11 +7772,12 @@ function openWorkoutExerciseModal(sheetId, dayId, exerciseId) {
       notes: form.querySelector('[name="notes"]').value.trim(),
     };
     if (isNew) {
-      day.exercises.push({
-        id: nextId(),
-        ...updated,
-        sets: [{ id: nextId(), setType: "Top", prev: "", target: "", actual: "" }],
-      });
+      // Pull the real Previous/Target from this same exercise's own last
+      // logged entry anywhere in the sheet, if it has one — not just a
+      // blank first set. See findMostRecentExerciseByName above.
+      const match = findMostRecentExerciseByName(sheet, name);
+      const sets = match ? seedSetsFromHistory(match, sheet.progressionSettings) : [{ id: nextId(), setType: "Top", prev: "", target: "", actual: "" }];
+      day.exercises.push({ id: nextId(), ...updated, sets });
     } else {
       Object.assign(exercise, updated);
     }
@@ -7717,11 +7799,21 @@ function openWorkoutExerciseModal(sheetId, dayId, exerciseId) {
   document.body.appendChild(overlay);
 }
 
-function renderWorkoutExercise(sheetId, dayId, exercise, day) {
+// Tracks which weeks have already nudged her about logging into a
+// non-current week this app load — in-memory only, deliberately not
+// persisted, so it resets naturally on refresh rather than needing its
+// own migration/cleanup.
+const workoutWrongWeekToastShown = {};
+function latestWorkoutWeek(sheet) {
+  return [...sheet.weeks].sort((a, b) => (a.startDate < b.startDate ? 1 : a.startDate > b.startDate ? -1 : 0))[0];
+}
+
+function renderWorkoutExercise(sheetId, dayId, exercise, day, week) {
   const sheet = state.customSheets[sheetId];
   const wasOpen = sheet.openExercises[exercise.id];
+  const skipped = !!exercise.skipped;
   const item = el(`
-    <details class="workout-ex-item" ${wasOpen ? "open" : ""}>
+    <details class="workout-ex-item ${skipped ? "ex-skipped" : ""}" ${wasOpen ? "open" : ""}>
       <summary class="workout-ex-row">
         <span class="workout-ex-code">${escapeHtml(exercise.code || "")}</span>
         <div class="workout-ex-row-body">
@@ -7736,7 +7828,11 @@ function renderWorkoutExercise(sheetId, dayId, exercise, day) {
       : ""
   }</div>
         </div>
-        <span class="wardrobe-chevron">${chevronSvg}</span>
+        <div class="workout-ex-row-actions">
+          ${skipped ? `<span class="ex-skip-chip">Skipped</span>` : ""}
+          <button type="button" class="ex-skip-link">${skipped ? "Undo" : "Skip"}</button>
+          <span class="wardrobe-chevron">${chevronSvg}</span>
+        </div>
       </summary>
       <div class="workout-ex-detail">
         <div class="workout-set-row workout-set-head">
@@ -7757,6 +7853,17 @@ function renderWorkoutExercise(sheetId, dayId, exercise, day) {
     </details>
   `);
   item.querySelector(".wi-link-icon")?.addEventListener("click", (e) => e.stopPropagation());
+  // "Skip" — a not-this-week flag, not a delete. Sets stay in place
+  // (just dimmed + locked) so nothing has to be rebuilt when it's
+  // un-skipped, and it never carries into the next "+ New week" (see
+  // createNextWorkoutWeek).
+  item.querySelector(".ex-skip-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    exercise.skipped = !exercise.skipped;
+    scheduleSave();
+    renderWorkoutSheet(sheetId);
+  });
   item.addEventListener("toggle", () => {
     sheet.openExercises[exercise.id] = item.open;
     scheduleSave();
@@ -7768,8 +7875,8 @@ function renderWorkoutExercise(sheetId, dayId, exercise, day) {
       <div class="workout-set-row">
         <div class="workout-set-type">${escapeHtml(set.setType)}</div>
         <div class="workout-set-prev ${missed ? "workout-miss" : ""}">${escapeHtml(set.prev || "—")}</div>
-        <input type="text" class="wset-target" value="${escapeHtml(set.target || "")}" placeholder="e.g. 65 lb" />
-        <input type="text" class="wset-actual" value="${escapeHtml(set.actual || "")}" placeholder="—" />
+        <input type="text" class="wset-target" value="${escapeHtml(set.target || "")}" placeholder="e.g. 65 lb" ${skipped ? "disabled" : ""} />
+        <input type="text" class="wset-actual" value="${escapeHtml(set.actual || "")}" placeholder="—" ${skipped ? "disabled" : ""} />
         <button type="button" class="icon-btn wset-remove" title="Remove set">&times;</button>
       </div>
     `);
@@ -7791,9 +7898,26 @@ function renderWorkoutExercise(sheetId, dayId, exercise, day) {
         scheduleSave();
         renderHome(); // runs pillar auto-detection first, so the Movement streak below reflects today
         renderWorkoutSheet(sheetId);
-        return;
+      } else {
+        scheduleSave();
       }
-      scheduleSave();
+      // Logging an Actual into any week but the most recent one usually
+      // means she's still sitting on last week's tab, not deliberately
+      // backfilling — nudge toward starting the current week instead of
+      // silently letting a workout land in a week that's already over.
+      // Once per week per app load, so it can't turn into a nag while
+      // she's genuinely backfilling several fields in an old week.
+      if (set.actual && week && sheet.weeks.length > 1) {
+        const latest = latestWorkoutWeek(sheet);
+        if (latest && latest.id !== week.id && !workoutWrongWeekToastShown[week.id]) {
+          workoutWrongWeekToastShown[week.id] = true;
+          showToast(`You're logging in ${week.label} — that week's over.`, {
+            actionLabel: "Start this week",
+            onAction: () => openNewWeekModal(sheetId),
+            duration: 5000,
+          });
+        }
+      }
     });
     row.querySelector(".wset-remove").addEventListener("click", () => {
       exercise.sets = exercise.sets.filter((s) => s.id !== set.id);
@@ -7836,8 +7960,10 @@ function renderWorkoutSheet(sheetId) {
 
   const weekRow = el(`<div class="workout-week-row"></div>`);
   const pills = el(`<div class="workout-week-pills"></div>`);
+  let activeBtn = null;
   sheet.weeks.forEach((w) => {
     const btn = el(`<button type="button" class="${w.id === sheet.activeWeekId ? "active" : ""}">${escapeHtml(w.label)}</button>`);
+    if (w.id === sheet.activeWeekId) activeBtn = btn;
     btn.addEventListener("click", () => {
       sheet.activeWeekId = w.id;
       scheduleSave();
@@ -7850,6 +7976,10 @@ function renderWorkoutSheet(sheetId) {
   newWeekBtn.addEventListener("click", () => openNewWeekModal(sheetId));
   weekRow.appendChild(newWeekBtn);
   panel.appendChild(weekRow);
+  // 2026-09 (Veronika): the pill row scrolls horizontally now instead of
+  // wrapping to a second row — bring the active week into view on open
+  // rather than leaving her looking at whichever end the scroll starts on.
+  if (activeBtn) requestAnimationFrame(() => activeBtn.scrollIntoView({ inline: "nearest", block: "nearest" }));
 
   if (!week) {
     panel.appendChild(el(`<div class="muted">No weeks yet — start one above.</div>`));
@@ -7858,11 +7988,25 @@ function renderWorkoutSheet(sheetId) {
 
   panel.appendChild(renderProgressionSettingsCard(sheet, sheetId));
 
-  week.days.forEach((day) => {
+  const daysList = el(`<div class="workout-days-list"></div>`);
+  panel.appendChild(daysList);
+
+  // "Day N" is never stored — it's always the day's position in
+  // week.days, recomputed on every render. Only the title after it
+  // ("Upper / Posture + Glutes") is real, editable data. That split is
+  // what lets drag-to-reorder (below) "just work": moving a day updates
+  // its number for free, and the title travels with it.
+  week.days.forEach((day, index) => {
+    const skipped = !!day.skipped;
     const details = el(`
-      <details class="wardrobe-group" ${sheet.openDays[day.id] !== false ? "open" : ""}>
+      <details class="wardrobe-group workout-day-block ${skipped ? "day-skipped" : ""}" data-day-id="${day.id}" ${sheet.openDays[day.id] !== false ? "open" : ""}>
         <summary class="wardrobe-summary">
-          <span class="wardrobe-cat-title workout-day-title-text">${escapeHtml(day.label)}</span>
+          <span class="workout-day-header-left">
+            <span class="day-drag-handle" title="Drag to reorder">${dragHandleSvg}</span>
+            <span class="workout-day-number">Day ${index + 1}</span>
+            <span class="wardrobe-cat-title workout-day-title-text">${escapeHtml(day.title || "")}</span>
+            ${skipped ? `<span class="day-skip-badge">↺ Skipped this week</span>` : ""}
+          </span>
           <span class="muted">${day.exercises.length} exercise${day.exercises.length === 1 ? "" : "s"}</span>
         </summary>
         <div class="wardrobe-items"></div>
@@ -7872,16 +8016,17 @@ function renderWorkoutSheet(sheetId) {
       sheet.openDays[day.id] = details.open;
       scheduleSave();
     });
-    details.querySelector(".workout-day-title-text").title = "Double-click to rename";
-    details.querySelector(".workout-day-title-text").addEventListener("dblclick", (e) => {
+    const titleEl = details.querySelector(".workout-day-title-text");
+    titleEl.title = "Double-click to rename";
+    titleEl.addEventListener("dblclick", (e) => {
       e.preventDefault();
-      const titleEl = details.querySelector(".workout-day-title-text");
-      const input = el(`<input type="text" value="${escapeHtml(day.label)}" style="font-weight:600;font-size:14px;" />`);
+      e.stopPropagation();
+      const input = el(`<input type="text" value="${escapeHtml(day.title || "")}" placeholder="e.g. Upper" style="font-weight:600;font-size:14px;min-width:70px;" />`);
       titleEl.replaceWith(input);
       input.focus();
       input.select();
       const commit = () => {
-        day.label = input.value.trim() || day.label;
+        day.title = input.value.trim();
         scheduleSave();
         renderWorkoutSheet(sheetId);
       };
@@ -7890,27 +8035,95 @@ function renderWorkoutSheet(sheetId) {
         if (e2.key === "Enter") input.blur();
         if (e2.key === "Escape") renderWorkoutSheet(sheetId);
       });
+      input.addEventListener("click", (e3) => e3.stopPropagation());
     });
     const itemsWrap = details.querySelector(".wardrobe-items");
-    day.exercises.forEach((ex) => itemsWrap.appendChild(renderWorkoutExercise(sheetId, day.id, ex, day)));
+    day.exercises.forEach((ex) => itemsWrap.appendChild(renderWorkoutExercise(sheetId, day.id, ex, day, week)));
     const addExBtn = el(`<button type="button" class="btn-ghost small" style="margin-top:10px;">+ Add exercise</button>`);
     addExBtn.addEventListener("click", () => openWorkoutExerciseModal(sheetId, day.id, null));
     itemsWrap.appendChild(addExBtn);
-    const removeDayBtn = el(`<button type="button" class="btn-ghost small danger" style="margin-top:10px;margin-left:8px;">Remove day</button>`);
+    const actionsRow = el(`<div class="day-actions-row"></div>`);
+    // "Skip this week" vs. "Remove day" — skip keeps every exercise and
+    // set exactly as they are (just dimmed + locked, and left out of the
+    // week's percentage/streak math below); Remove day is still there
+    // for when a day is genuinely gone for good, not just paused.
+    const skipBtn = el(`<button type="button" class="btn-ghost small ${skipped ? "unskip-toggle" : "skip-toggle"}">${skipped ? "Undo skip" : "Skip this week"}</button>`);
+    skipBtn.addEventListener("click", () => {
+      day.skipped = !day.skipped;
+      scheduleSave();
+      renderWorkoutSheet(sheetId);
+    });
+    actionsRow.appendChild(skipBtn);
+    const removeDayBtn = el(`<button type="button" class="btn-ghost small danger">Remove day</button>`);
     removeDayBtn.addEventListener("click", () => {
-      confirmModal("Remove this day?", `Remove "${day.label}" and all its exercises from this week?`, "Remove", () => {
+      confirmModal("Remove this day?", `Remove "Day ${index + 1}${day.title ? " — " + day.title : ""}" and all its exercises from this week?`, "Remove", () => {
         week.days = week.days.filter((d) => d.id !== day.id);
         scheduleSave();
         renderWorkoutSheet(sheetId);
       });
     });
-    itemsWrap.appendChild(removeDayBtn);
-    panel.appendChild(details);
+    actionsRow.appendChild(removeDayBtn);
+    itemsWrap.appendChild(actionsRow);
+
+    // ---- Drag-to-reorder, via Pointer Events so the same code handles
+    // mouse, touch and pen. Only the handle is draggable (touch-action:
+    // none in CSS keeps the page from scrolling while it's held), so
+    // tapping the rest of the header still opens/closes the day as
+    // normal. Dragging moves the day block live as the pointer passes
+    // each sibling's midpoint; pointerup reads the final DOM order back
+    // into week.days and re-renders, which recomputes every "Day N"
+    // fresh from the new positions. ----
+    const handle = details.querySelector(".day-drag-handle");
+    handle.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const blocks = Array.from(daysList.querySelectorAll(".workout-day-block"));
+      const myIndex = blocks.indexOf(details);
+      if (myIndex === -1) return;
+      const startY = e.clientY;
+      const startRects = blocks.map((b) => b.getBoundingClientRect());
+      handle.setPointerCapture(e.pointerId);
+      details.classList.add("dragging");
+      const onMove = (ev) => {
+        const dy = ev.clientY - startY;
+        details.style.transform = `translateY(${dy}px)`;
+        const myCenter = startRects[myIndex].top + startRects[myIndex].height / 2 + dy;
+        let target = myIndex;
+        blocks.forEach((b, i) => {
+          if (b === details) return;
+          const center = startRects[i].top + startRects[i].height / 2;
+          if (i < myIndex && myCenter < center) target = Math.min(target, i);
+          if (i > myIndex && myCenter > center) target = Math.max(target, i);
+        });
+        if (target < myIndex) daysList.insertBefore(details, blocks[target]);
+        else if (target > myIndex) daysList.insertBefore(details, blocks[target].nextSibling);
+      };
+      const onUp = (ev) => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        try { handle.releasePointerCapture(ev.pointerId); } catch {}
+        details.classList.remove("dragging");
+        details.style.transform = "";
+        const newOrder = Array.from(daysList.querySelectorAll(".workout-day-block")).map((b) => b.dataset.dayId);
+        week.days.sort((a, b) => newOrder.indexOf(String(a.id)) - newOrder.indexOf(String(b.id)));
+        scheduleSave();
+        renderWorkoutSheet(sheetId);
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+    });
+
+    daysList.appendChild(details);
   });
 
-  const addDayBtn = el(`<button type="button" class="btn-ghost small" style="margin-top:14px;">+ Add day</button>`);
+  // 2026-09 (Veronika): was a small ghost button easy to miss at the
+  // bottom of a long day list — matches the dashed "add" tile used
+  // elsewhere (Lists' "+ New list") so it reads as a real next action.
+  const addDayBtn = el(`<button type="button" class="add-day-tile">+ Add day</button>`);
   addDayBtn.addEventListener("click", () => {
-    week.days.push({ id: nextId(), label: `Day ${week.days.length + 1}`, exercises: [] });
+    week.days.push({ id: nextId(), title: "", exercises: [] });
     scheduleSave();
     renderWorkoutSheet(sheetId);
   });
@@ -12000,6 +12213,7 @@ const TRACKING_TONE_COLOR = {
   none: "var(--border)",
   mixed: "var(--accent)",
   good: "var(--accent-dark)",
+  skipped: "repeating-linear-gradient(135deg, var(--border), var(--border) 3px, var(--surface) 3px, var(--surface) 6px)",
 };
 
 // Renders the little 14-cell tone strip shared by the Wellness and Workout
@@ -16878,6 +17092,25 @@ async function bootInner() {
       });
     });
     sheet.workoutTargetSimplified = true;
+  });
+  // One-time schema split: a day's header used to be one combined string
+  // ("Day 2 — Upper / Posture + Glutes") — fine until drag-to-reorder,
+  // where the number has to come from the day's position and the title
+  // has to survive being moved. Split any leftover combined label into
+  // day.title alone; "Day N" itself is never stored again, it's computed
+  // fresh from position every render (see renderWorkoutSheet).
+  Object.values(state.customSheets).forEach((sheet) => {
+    if (sheet.templateKey !== "workout" || sheet.workoutDayTitlesSplit) return;
+    (sheet.weeks || []).forEach((week) => {
+      week.days.forEach((day) => {
+        if (day.title == null) {
+          const m = /^Day\s*\d+\s*(?:[—–-]\s*)?(.*)$/i.exec(day.label || "");
+          day.title = (m ? m[1] : day.label || "").trim();
+        }
+        delete day.label;
+      });
+    });
+    sheet.workoutDayTitlesSplit = true;
   });
   // One-time upgrade: Connections Log started as a flat list of entries
   // with a free-text "who" on each one — no shared identity between two
