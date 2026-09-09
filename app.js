@@ -6,7 +6,7 @@ const checkSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 // state.customSheets holds the data for the gallery-added ones.
 // ------------------------------------------------------------------
 const BUILTIN_SHEET_META = {
-  todo: { label: "Lists", icon: `<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path> },
+  todo: { label: "Lists", icon: `<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path>` },
   budget: { label: "Budget", icon: `<line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>` },
   investments: { label: "Investments", icon: `<polyline points="3 17 9 11 13 15 21 6"></polyline><polyline points="15 6 21 6 21 12"></polyline>` },
   bible: {
@@ -236,8 +236,141 @@ function seedWardrobeItems() {
   }));
 }
 
+// 2026-09 Qur'an rebuild (Veronika): real full-Bible-parity structure —
+// all 114 surahs (verified against a real chapter/verse reference, not
+// recalled from memory), each tracked at the individual ayah level, the
+// same way Bible tracks at the individual chapter level. Replaces the
+// old QURAN_SEED_ITEMS, which turned out to be an invented approximation
+// (its last "section" alone spanned 60 surahs — not how real Qur'an
+// divisions work) rather than a genuine structure.
+const QURAN_SURAHS = [
+  { name: 'Al-Fatiha', verses: 7, meccan: true },
+  { name: 'Al-Baqarah', verses: 286, meccan: false },
+  { name: 'Aal-E-Imran', verses: 200, meccan: false },
+  { name: 'An-Nisa', verses: 176, meccan: false },
+  { name: 'Al-Ma\'idah', verses: 120, meccan: false },
+  { name: 'Al-An\'am', verses: 165, meccan: true },
+  { name: 'Al-A\'raf', verses: 206, meccan: true },
+  { name: 'Al-Anfal', verses: 75, meccan: false },
+  { name: 'At-Tawbah', verses: 129, meccan: false },
+  { name: 'Yunus', verses: 109, meccan: true },
+  { name: 'Hud', verses: 123, meccan: true },
+  { name: 'Yusuf', verses: 111, meccan: true },
+  { name: 'Ar-Ra\'d', verses: 43, meccan: false },
+  { name: 'Ibrahim', verses: 52, meccan: true },
+  { name: 'Al-Hijr', verses: 99, meccan: true },
+  { name: 'An-Nahl', verses: 128, meccan: true },
+  { name: 'Al-Isra', verses: 111, meccan: true },
+  { name: 'Al-Kahf', verses: 110, meccan: true },
+  { name: 'Maryam', verses: 98, meccan: true },
+  { name: 'Ta-Ha', verses: 135, meccan: true },
+  { name: 'Al-Anbiya', verses: 112, meccan: true },
+  { name: 'Al-Hajj', verses: 78, meccan: false },
+  { name: 'Al-Mu\'minun', verses: 118, meccan: true },
+  { name: 'An-Nur', verses: 64, meccan: false },
+  { name: 'Al-Furqan', verses: 77, meccan: true },
+  { name: 'Ash-Shu\'ara', verses: 227, meccan: true },
+  { name: 'An-Naml', verses: 93, meccan: true },
+  { name: 'Al-Qasas', verses: 88, meccan: true },
+  { name: 'Al-Ankabut', verses: 69, meccan: true },
+  { name: 'Ar-Rum', verses: 60, meccan: true },
+  { name: 'Luqman', verses: 34, meccan: true },
+  { name: 'As-Sajda', verses: 30, meccan: true },
+  { name: 'Al-Ahzab', verses: 73, meccan: false },
+  { name: 'Saba', verses: 54, meccan: true },
+  { name: 'Fatir', verses: 45, meccan: true },
+  { name: 'Ya-Sin', verses: 83, meccan: true },
+  { name: 'As-Saffat', verses: 182, meccan: true },
+  { name: 'Sad', verses: 88, meccan: true },
+  { name: 'Az-Zumar', verses: 75, meccan: true },
+  { name: 'Ghafir', verses: 85, meccan: true },
+  { name: 'Fussilat', verses: 54, meccan: true },
+  { name: 'Ash-Shura', verses: 53, meccan: true },
+  { name: 'Az-Zukhruf', verses: 89, meccan: true },
+  { name: 'Ad-Dukhan', verses: 59, meccan: true },
+  { name: 'Al-Jathiya', verses: 37, meccan: true },
+  { name: 'Al-Ahqaf', verses: 35, meccan: true },
+  { name: 'Muhammad', verses: 38, meccan: false },
+  { name: 'Al-Fath', verses: 29, meccan: false },
+  { name: 'Al-Hujurat', verses: 18, meccan: false },
+  { name: 'Qaf', verses: 45, meccan: true },
+  { name: 'Adh-Dhariyat', verses: 60, meccan: true },
+  { name: 'At-Tur', verses: 49, meccan: true },
+  { name: 'An-Najm', verses: 62, meccan: true },
+  { name: 'Al-Qamar', verses: 55, meccan: true },
+  { name: 'Ar-Rahman', verses: 78, meccan: false },
+  { name: 'Al-Waqi\'a', verses: 96, meccan: true },
+  { name: 'Al-Hadid', verses: 29, meccan: false },
+  { name: 'Al-Mujadila', verses: 22, meccan: false },
+  { name: 'Al-Hashr', verses: 24, meccan: false },
+  { name: 'Al-Mumtahana', verses: 13, meccan: false },
+  { name: 'As-Saff', verses: 14, meccan: false },
+  { name: 'Al-Jumu\'a', verses: 11, meccan: false },
+  { name: 'Al-Munafiqun', verses: 11, meccan: false },
+  { name: 'At-Taghabun', verses: 18, meccan: false },
+  { name: 'At-Talaq', verses: 12, meccan: false },
+  { name: 'At-Tahrim', verses: 12, meccan: false },
+  { name: 'Al-Mulk', verses: 30, meccan: true },
+  { name: 'Al-Qalam', verses: 52, meccan: true },
+  { name: 'Al-Haqqa', verses: 52, meccan: true },
+  { name: 'Al-Ma\'arij', verses: 44, meccan: true },
+  { name: 'Nuh', verses: 28, meccan: true },
+  { name: 'Al-Jinn', verses: 28, meccan: true },
+  { name: 'Al-Muzzammil', verses: 20, meccan: true },
+  { name: 'Al-Muddaththir', verses: 56, meccan: true },
+  { name: 'Al-Qiyama', verses: 40, meccan: true },
+  { name: 'Al-Insan', verses: 31, meccan: false },
+  { name: 'Al-Mursalat', verses: 50, meccan: true },
+  { name: 'An-Naba', verses: 40, meccan: true },
+  { name: 'An-Nazi\'at', verses: 46, meccan: true },
+  { name: 'Abasa', verses: 42, meccan: true },
+  { name: 'At-Takwir', verses: 29, meccan: true },
+  { name: 'Al-Infitar', verses: 19, meccan: true },
+  { name: 'Al-Mutaffifin', verses: 36, meccan: true },
+  { name: 'Al-Inshiqaq', verses: 25, meccan: true },
+  { name: 'Al-Buruj', verses: 22, meccan: true },
+  { name: 'At-Tariq', verses: 17, meccan: true },
+  { name: 'Al-A\'la', verses: 19, meccan: true },
+  { name: 'Al-Ghashiya', verses: 26, meccan: true },
+  { name: 'Al-Fajr', verses: 30, meccan: true },
+  { name: 'Al-Balad', verses: 20, meccan: true },
+  { name: 'Ash-Shams', verses: 15, meccan: true },
+  { name: 'Al-Layl', verses: 21, meccan: true },
+  { name: 'Ad-Dhuha', verses: 11, meccan: true },
+  { name: 'Ash-Sharh', verses: 8, meccan: true },
+  { name: 'At-Tin', verses: 8, meccan: true },
+  { name: 'Al-\'Alaq', verses: 19, meccan: true },
+  { name: 'Al-Qadr', verses: 5, meccan: true },
+  { name: 'Al-Bayyina', verses: 8, meccan: false },
+  { name: 'Az-Zalzala', verses: 8, meccan: false },
+  { name: 'Al-\'Adiyat', verses: 11, meccan: true },
+  { name: 'Al-Qari\'a', verses: 11, meccan: true },
+  { name: 'At-Takathur', verses: 8, meccan: true },
+  { name: 'Al-\'Asr', verses: 3, meccan: true },
+  { name: 'Al-Humaza', verses: 9, meccan: true },
+  { name: 'Al-Fil', verses: 5, meccan: true },
+  { name: 'Quraysh', verses: 4, meccan: true },
+  { name: 'Al-Ma\'un', verses: 7, meccan: true },
+  { name: 'Al-Kawthar', verses: 3, meccan: true },
+  { name: 'Al-Kafirun', verses: 6, meccan: true },
+  { name: 'An-Nasr', verses: 3, meccan: false },
+  { name: 'Al-Masad', verses: 5, meccan: true },
+  { name: 'Al-Ikhlas', verses: 4, meccan: true },
+  { name: 'Al-Falaq', verses: 5, meccan: true },
+  { name: 'An-Nas', verses: 6, meccan: true },
+];
+const QURAN_SURAH_COUNT = QURAN_SURAHS.length; // 114
+const QURAN_MECCAN_COUNT = QURAN_SURAHS.filter((s) => s.meccan).length; // 86
+const QURAN_MEDINAN_COUNT = QURAN_SURAH_COUNT - QURAN_MECCAN_COUNT; // 28
+
 function seedQuranItems() {
-  return QURAN_SEED_ITEMS.map((it) => ({ id: nextId(), ...it }));
+  const items = [];
+  QURAN_SURAHS.forEach((s) => {
+    for (let v = 1; v <= s.verses; v++) {
+      items.push({ id: nextId(), reading: `${s.name} ${v}`, done: false, completedDate: null });
+    }
+  });
+  return items;
 }
 
 function seedBookItems() {
@@ -246,7 +379,6 @@ function seedBookItems() {
 
 const BOOK_SEED_ITEMS = [{"title": "Atomic Habits", "author": "James Clear", "category": "Personal Growth", "link": "", "read": true, "format": "read", "onlineRating": 5, "myRating": 4, "notes": "A good example of how notes show up here."}, {"title": "Add your own book", "author": "", "category": "To Read", "link": "", "read": false, "format": "read", "onlineRating": null, "myRating": null, "notes": ""}];
 
-const QURAN_SEED_ITEMS = [{"reading": "Surah Al-Fatiha (1:1–7) to Surah Al-Baqarah (2:1–141)", "done": false}, {"reading": "Surah Al-Baqarah (2:142–252)", "done": false}, {"reading": "Surah Al-Baqarah (2:253–286) to Surah Aal-E-Imran (3:1–92)", "done": false}, {"reading": "Surah Aal-E-Imran (3:93–200) to Surah An-Nisa (4:1–23)", "done": false}, {"reading": "Surah An-Nisa (4:24–147)", "done": false}, {"reading": "Surah An-Nisa (4:148–176) to Surah Al-Ma’idah (5:1–81)", "done": false}, {"reading": "Surah Al-Ma’idah (5:82–120) to Surah Al-An’am (6:1–110)", "done": false}, {"reading": "Surah Al-An’am (6:111–165) to Surah Al-A’raf (7:1–87)", "done": false}, {"reading": "Surah Al-A’raf (7:88–206) to Surah Al-Anfal (8:1–40)", "done": false}, {"reading": "Surah Al-Anfal (8:41–75) to Surah At-Tawbah (9:1–129)", "done": false}, {"reading": "Surah Yunus (10:1–109) to Surah Hud (11:1–5)", "done": false}, {"reading": "Surah Hud (11:6–123) to Surah Yusuf (12:1–52)", "done": false}, {"reading": "Surah Yusuf (12:53–111) to Surah Ar-Ra’d (13:1–43)", "done": false}, {"reading": "Surah Ibrahim (14:1–52) to Surah Al-Hijr (15:1–99)", "done": false}, {"reading": "Surah An-Nahl (16:1–128)", "done": false}, {"reading": "Surah Al-Isra (17:1–111) to Surah Al-Kahf (18:1–74)", "done": false}, {"reading": "Surah Al-Kahf (18:75–110) to Surah Maryam (19:1–98)", "done": false}, {"reading": "Surah Taha (20:1–135) to Surah Al-Anbiya (21:1–50)", "done": false}, {"reading": "Surah Al-Anbiya (21:51–112) to Surah Al-Hajj (22:1–78)", "done": false}, {"reading": "Surah Al-Mu’minun (23:1–118) to Surah An-Nur (24:1–64)", "done": false}, {"reading": "Surah Al-Furqan (25:1–77) to Surah Ash-Shu’ara (26:1–227)", "done": false}, {"reading": "Surah An-Naml (27:1–93) to Surah Al-Qasas (28:1–44)", "done": false}, {"reading": "Surah Al-Qasas (28:45–88) to Surah Al-Ankabut (29:1–69)", "done": false}, {"reading": "Surah Ar-Rum (30:1–60) to Surah Luqman (31:1–34)", "done": false}, {"reading": "Surah As-Sajda (32:1–30) to Surah Ya-Sin (36:1–83)", "done": false}, {"reading": "Surah As-Saffat (37:1–182) to Surah Sad (38:1–88)", "done": false}, {"reading": "Surah Az-Zumar (39:1–75) to Surah Ghafir (40:1–85)", "done": false}, {"reading": "Surah Fussilat (41:1–54) to Surah Ash-Shura (42:1–53)", "done": false}, {"reading": "Surah Az-Zukhruf (43:1–89) to Surah Ad-Dukhan (44:1–59)", "done": false}, {"reading": "Surah Al-Jathiya (45:1–37) to Surah Al-Qamar (54:1–55)", "done": false}, {"reading": "Surah Ar-Rahman (55:1–78) to Surah An-Nas (114:1–6)", "done": false}];
 
 let state = null;
 let saveTimer = null;
@@ -1856,7 +1988,7 @@ function createSheetFromTemplateUnchecked(tpl) {
       ? []
       : tpl.starterItems.map((text) => ({ id: nextId(), text, done: false })),
     ...(isWardrobe ? { wardrobeSchemaV: 2, openCategories: {}, activeSeason: null } : {}),
-    ...(isQuran ? { quranSchemaV: 1, quranSettings: { startDate: todayISO() } } : {}),
+    ...(isQuran ? { quranSchemaV: 2, quranSettings: { startDate: todayISO() }, surahsEverFinished: [], quranOpenSurahs: {} } : {}),
     ...(isBooks ? { booksSchemaV: 1, openCategories: {}, activeStatus: "toread" } : {}),
     ...(isWorkout ? seedWorkoutSheetData() : {}),
     ...(isSocial ? { socialSchemaV: 2, people: [] } : {}),
@@ -1882,7 +2014,7 @@ function renderCustomSheet(id) {
   const sheet = state.customSheets[id];
   if (sheet && sheet.templateKey === "wardrobe" && sheet.wardrobeSchemaV === 2) {
     renderWardrobeSheet(id);
-  } else if (sheet && sheet.templateKey === "quran" && sheet.quranSchemaV === 1) {
+  } else if (sheet && sheet.templateKey === "quran" && sheet.quranSchemaV >= 1) {
     renderQuranSheet(id);
   } else if (sheet && sheet.templateKey === "books" && sheet.booksSchemaV === 1) {
     renderBookSheet(id);
@@ -3030,11 +3162,69 @@ function openWardrobeItemModal(sheetId, itemId) {
 }
 
 // ------------------------------------------------------------------
-// Quran Reading Plan — mirrors the Bible sheet's pace-card + progress
-// design exactly (per her request), but as a flat checklist since the
-// 31 segments already span multiple surahs each and don't group into
-// anything smaller the way Bible chapters group into books.
+// Qur'an Reading Plan — 2026-09 full rebuild (Veronika): now genuinely
+// mirrors the Bible sheet's structure rather than approximating it —
+// same pace ring + streak, an All/Meccan/Medinan toggle standing in for
+// Bible's All/OT/NT, collapsible surah groups with an ayah-chip grid
+// (mirrors Bible's book groups with chapter-chip grids), and lifetime
+// Milestones tracked the same way. Also wired into the Challenges
+// system (challenge-pill-row + focusedChallenge), same pattern Books
+// uses, so a Qur'an-based Challenge (e.g. Ramadan) can sit on top of it.
 // ------------------------------------------------------------------
+const QURAN_MILESTONES = [
+  {
+    key: "firstSurahFinished",
+    label: "First surah finished",
+    icon: "📗",
+    progress: (sheet) => {
+      const n = (sheet.surahsEverFinished || []).length;
+      return { earned: n >= 1, frac: Math.min(1, n / 1), caption: n >= 1 ? sheet.surahsEverFinished[0] : "0 of 1" };
+    },
+  },
+  {
+    key: "tenSurahsFinished",
+    label: "10 surahs finished",
+    icon: "📚",
+    progress: (sheet) => {
+      const n = (sheet.surahsEverFinished || []).length;
+      return { earned: n >= 10, frac: Math.min(1, n / 10), caption: `${n} of 10` };
+    },
+  },
+  {
+    key: "meccanFinished",
+    label: "Meccan surahs finished",
+    icon: "🕋",
+    progress: (sheet) => {
+      const meccanNames = new Set(QURAN_SURAHS.filter((s) => s.meccan).map((s) => s.name));
+      const n = (sheet.surahsEverFinished || []).filter((s) => meccanNames.has(s)).length;
+      return { earned: n >= QURAN_MECCAN_COUNT, frac: Math.min(1, n / QURAN_MECCAN_COUNT), caption: `${n} of ${QURAN_MECCAN_COUNT} surahs` };
+    },
+  },
+  {
+    key: "medinanFinished",
+    label: "Medinan surahs finished",
+    icon: "🕌",
+    progress: (sheet) => {
+      const meccanNames = new Set(QURAN_SURAHS.filter((s) => s.meccan).map((s) => s.name));
+      const n = (sheet.surahsEverFinished || []).filter((s) => !meccanNames.has(s)).length;
+      return { earned: n >= QURAN_MEDINAN_COUNT, frac: Math.min(1, n / QURAN_MEDINAN_COUNT), caption: `${n} of ${QURAN_MEDINAN_COUNT} surahs` };
+    },
+  },
+  {
+    key: "wholeQuranFinished",
+    label: "Whole Qur'an finished",
+    icon: "🏆",
+    progress: (sheet) => {
+      const n = (sheet.surahsEverFinished || []).length;
+      return { earned: n >= QURAN_SURAH_COUNT, frac: Math.min(1, n / QURAN_SURAH_COUNT), caption: `${n} of ${QURAN_SURAH_COUNT} surahs` };
+    },
+  },
+];
+
+// "all" | "meccan" | "medinan" — synced from state.quranRevelation at boot,
+// same pattern as bibleTestament.
+let quranRevelation = "all";
+
 function renderQuranPace(panel, sheet, doneCount, total) {
   const settings = sheet.quranSettings;
   const today = new Date();
@@ -3053,16 +3243,13 @@ function renderQuranPace(panel, sheet, doneCount, total) {
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
   const finishLabel = remaining <= 0 ? "Finished!" : projectedEnd ? fmt(projectedEnd) : "—";
 
-  // Ring only (2026-09 practice-header consistency pass) — mirrors the
-  // Bible sheet's fix exactly: drop the duplicate bar that repeated the
-  // same percentage the ring already shows.
   const card = el(`
     <div class="card bible-pace-card">
       <div class="bible-ring-row">
         <div class="bible-ring" style="background:conic-gradient(var(--accent) ${pct}%, var(--border) ${pct}% 100%);">
           <div class="bible-ring-inner"><div class="bible-ring-pct">${pct}%</div></div>
         </div>
-        <div class="bible-ring-caption"><strong>${doneCount} of ${total}</strong> readings done<br/>Projected finish: <strong>${finishLabel}</strong></div>
+        <div class="bible-ring-caption"><strong>${doneCount} of ${total}</strong> ayahs read<br/>Projected finish: <strong>${finishLabel}</strong></div>
       </div>
       <div class="bible-pace-mini-row">
         <label class="muted">Start date</label>
@@ -3080,10 +3267,11 @@ function renderQuranPace(panel, sheet, doneCount, total) {
   });
   card.querySelector(".quran-start-over-btn").addEventListener("click", () => {
     // Mirrors the Bible sheet's "Start over" exactly — resets the live
-    // reading progress and pace, nothing else.
+    // reading progress and pace, nothing else. Lifetime Milestones below
+    // are untouched, same as Bible's.
     confirmModal(
       "Start the reading plan over?",
-      "Every reading goes back to unread and the pace resets from today.",
+      "Every ayah goes back to unread and the pace resets from today. Your Milestones below are permanent and won't be affected.",
       "Start over",
       () => {
         sheet.items.forEach((item) => {
@@ -3104,30 +3292,130 @@ function renderQuranSheet(id) {
   const sheet = state.customSheets[id];
   if (!panel || !sheet) return;
   sheet.__id = id; // so the pace card's date-change handler can re-render without threading id through
+  sheet.surahsEverFinished ||= [];
+  sheet.quranOpenSurahs ||= {};
   const total = sheet.items.length;
   const doneCount = sheet.items.filter((r) => r.done).length;
+  const todayStr = todayISO();
 
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">${escapeHtml(sheet.label)}</h2>`));
+  panel.appendChild(buildStreakCard(appCurrentStreak(id, todayStr), "day Qur'an streak"));
   renderQuranPace(panel, sheet, doneCount, total);
 
-  const list = el(`<div class="quran-list"></div>`);
-  sheet.items.forEach((item) => {
-    const row = el(`
-      <div class="quran-row">
-        <div class="checkbox ${item.done ? "checked" : ""}">${checkSvg}</div>
-        <div class="quran-text ${item.done ? "done" : ""}">${escapeHtml(item.reading)}</div>
-      </div>
-    `);
-    row.querySelector(".checkbox").addEventListener("click", () => {
-      item.done = !item.done;
-      if (item.done) item.completedDate = todayISO();
+  // Challenges — same pill-row pattern Books uses: only shown once
+  // something's actually joined against this practice (e.g. a Ramadan
+  // Challenge), narrowing the view below to that challenge's own list.
+  const joined = joinedChallengesForPractice(id);
+  if (sheet.focusedChallenge && !joined.some((c) => c.id === sheet.focusedChallenge)) {
+    sheet.focusedChallenge = null;
+  }
+  if (joined.length) {
+    const pillRow = el(`<div class="challenge-pill-row"></div>`);
+    const baseBtn = el(`<button type="button" class="challenge-pill base-pill ${!sheet.focusedChallenge ? "active" : ""}">${escapeHtml(sheet.label)}</button>`);
+    baseBtn.addEventListener("click", () => {
+      sheet.focusedChallenge = null;
       scheduleSave();
       renderQuranSheet(id);
     });
-    list.appendChild(row);
+    pillRow.appendChild(baseBtn);
+    joined.forEach((catalog) => {
+      const btn = el(`<button type="button" class="challenge-pill challenge-option ${sheet.focusedChallenge === catalog.id ? "active" : ""}">${catalog.icon} ${escapeHtml(catalog.name)}</button>`);
+      btn.addEventListener("click", () => {
+        sheet.focusedChallenge = catalog.id;
+        scheduleSave();
+        renderQuranSheet(id);
+      });
+      pillRow.appendChild(btn);
+    });
+    panel.appendChild(pillRow);
+  }
+
+  if (sheet.focusedChallenge) {
+    renderChallengeDetail(panel, id, sheet.focusedChallenge, todayStr);
+    panel.appendChild(buildMilestonesCard(sheet, QURAN_MILESTONES, todayStr));
+    return;
+  }
+
+  const toolbarRow = el(`
+    <div class="view-toggle-row">
+      <div class="view-toggle">
+        <button data-rev="all" class="${quranRevelation === "all" ? "active" : ""}">All</button>
+        <button data-rev="meccan" class="${quranRevelation === "meccan" ? "active" : ""}">Meccan</button>
+        <button data-rev="medinan" class="${quranRevelation === "medinan" ? "active" : ""}">Medinan</button>
+      </div>
+    </div>
+  `);
+  toolbarRow.querySelectorAll("button").forEach((b) => {
+    b.addEventListener("click", () => {
+      quranRevelation = b.dataset.rev;
+      state.quranRevelation = quranRevelation;
+      scheduleSave();
+      renderQuranSheet(id);
+    });
   });
-  panel.appendChild(list);
+  panel.appendChild(toolbarRow);
+
+  const surahs = [];
+  const bySurah = new Map();
+  sheet.items.forEach((r) => {
+    const { book: surah, chapter: ayah } = parseBookAndChapter(r.reading);
+    if (!bySurah.has(surah)) {
+      bySurah.set(surah, []);
+      surahs.push(surah);
+    }
+    bySurah.get(surah).push({ ...r, ayah });
+  });
+  const meccanNames = new Set(QURAN_SURAHS.filter((s) => s.meccan).map((s) => s.name));
+
+  const visibleSurahs = surahs.filter((surah) => {
+    if (quranRevelation === "all") return true;
+    const isMeccan = meccanNames.has(surah);
+    return quranRevelation === "meccan" ? isMeccan : !isMeccan;
+  });
+
+  visibleSurahs.forEach((surah) => {
+    const ayahs = bySurah.get(surah);
+    const surahDone = ayahs.filter((a) => a.done).length;
+    const inProgress = surahDone > 0 && surahDone < ayahs.length;
+    const remembered = sheet.quranOpenSurahs[surah];
+    const shouldOpen = remembered !== undefined ? remembered : inProgress;
+    const details = el(`
+      <details class="book-group" data-surah="${escapeHtml(surah)}" ${shouldOpen ? "open" : ""}>
+        <summary class="book-summary">
+          <span class="book-title">${escapeHtml(surah)}</span>
+          <span class="muted">${surahDone}/${ayahs.length}</span>
+        </summary>
+        <div class="chapter-grid"></div>
+      </details>
+    `);
+    details.addEventListener("toggle", () => {
+      sheet.quranOpenSurahs[surah] = details.open;
+      scheduleSave();
+    });
+    const grid = details.querySelector(".chapter-grid");
+    ayahs.forEach((a) => {
+      const chip = el(`<div class="chapter-chip ${a.done ? "done" : ""}">${a.ayah ?? ""}</div>`);
+      chip.addEventListener("click", () => {
+        const original = sheet.items.find((x) => x.id === a.id);
+        original.done = !original.done;
+        if (original.done) original.completedDate = todayStr;
+        // Lifetime Milestones tracking, same principle as Bible's:
+        // record a surah as ever-finished the moment every ayah in it is
+        // done, independent of the toggle above so un-toggling one ayah
+        // later doesn't un-record it.
+        if (ayahs.every((row) => (sheet.items.find((x) => x.id === row.id) || {}).done)) {
+          if (!sheet.surahsEverFinished.includes(surah)) sheet.surahsEverFinished.push(surah);
+        }
+        scheduleSave();
+        renderQuranSheet(id);
+      });
+      grid.appendChild(chip);
+    });
+    panel.appendChild(details);
+  });
+
+  panel.appendChild(buildMilestonesCard(sheet, QURAN_MILESTONES, todayStr));
 }
 
 // ------------------------------------------------------------------
@@ -3454,12 +3742,14 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
   if (progress.currentIndex != null) {
     const current = progress.books[progress.currentIndex];
     if (current && !current.done) {
+      const cadenceLabel = progress.catalog.paceUnit === "day" ? "Today" : "This month";
       panel.appendChild(el(`
-        <div class="muted" style="font-size:12px;margin:-6px 0 14px;">This month: <b style="color:var(--text);">${escapeHtml(current.title)}</b> by ${escapeHtml(current.author)}</div>
+        <div class="muted" style="font-size:12px;margin:-6px 0 14px;">${cadenceLabel}: <b style="color:var(--text);">${escapeHtml(current.title)}</b>${current.author ? ` by ${escapeHtml(current.author)}` : ""}</div>
       `));
     }
   }
 
+  const isBooksChallenge = progress.catalog.practiceTemplateKey === "books";
   const list = el(`<div class="card" style="padding:2px 14px;"></div>`);
   progress.books.forEach((b, i) => {
     const isCurrent = i === progress.currentIndex && !b.done;
@@ -3468,22 +3758,62 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
         <div class="challenge-book-status ${b.done ? "done" : isCurrent ? "current" : ""}">${b.done ? checkSvg : i + 1}</div>
         <div style="flex:1;min-width:0;">
           <div class="challenge-book-title">${escapeHtml(b.title)}</div>
-          <div class="challenge-book-author">${escapeHtml(b.author)}</div>
+          ${b.author ? `<div class="challenge-book-author">${escapeHtml(b.author)}</div>` : ""}
         </div>
       </div>
     `);
-    if (b.book) row.addEventListener("click", () => openReadingLogModal(id, b.book.id));
+    if (b.book) {
+      if (isBooksChallenge) {
+        // Books' items are real library entries with their own reading
+        // log — tapping opens that, same as everywhere else on Books.
+        row.addEventListener("click", () => openReadingLogModal(id, b.book.id));
+      } else if (progress.catalog.itemKind === "range") {
+        // A Juz-range item isn't one row — it's a live summary over
+        // every ayah row the range covers (see quranRangeItem). Tapping
+        // toggles the whole Juz together, the same as tapping every one
+        // of its ayahs individually on the Qur'an sheet.
+        row.addEventListener("click", () => {
+          toggleQuranRange(b.book, todayStr);
+          scheduleSave();
+          renderCustomSheet(id);
+        });
+      } else {
+        // Other practices' Challenge items ARE the practice's own real
+        // rows — no separate reading log to open, so tapping just
+        // toggles it done the same way the base practice screen does.
+        row.addEventListener("click", () => {
+          b.book.done = !b.book.done;
+          if (b.book.done) b.book.completedDate = todayStr;
+          scheduleSave();
+          renderCustomSheet(id);
+        });
+      }
+    }
     list.appendChild(row);
   });
   panel.appendChild(list);
 
   const leaveLink = el(`<button type="button" class="challenge-leave-link">Leave this challenge</button>`);
   leaveLink.addEventListener("click", () => {
-    if (!window.confirm(`Leave "${progress.catalog.name}"? Your books stay on your shelf — only the challenge link is removed.`)) return;
-    leaveChallenge(challengeId);
-    const sheet = state.customSheets[id];
-    if (sheet) sheet.focusedChallenge = null;
-    renderBookSheet(id);
+    // 2026-09 (Veronika): this used to be a bare window.confirm() — the
+    // browser's own native dialog, styled by the OS, not Addley — which
+    // read as completely off-brand next to every other confirmation in
+    // the app. Swapped for the same confirmModal() every other
+    // destructive action already uses (Remove person, Delete book, etc.)
+    // so it looks and feels like it belongs here.
+    confirmModal(
+      `Leave "${progress.catalog.name}"?`,
+      isBooksChallenge
+        ? "Your books stay on your shelf — only the challenge link is removed."
+        : "Your reading progress stays exactly as it is — only the challenge link is removed.",
+      "Leave challenge",
+      () => {
+        leaveChallenge(challengeId);
+        const sheet = state.customSheets[id];
+        if (sheet) sheet.focusedChallenge = null;
+        renderCustomSheet(id);
+      }
+    );
   });
   panel.appendChild(leaveLink);
 }
@@ -3763,6 +4093,58 @@ const CHALLENGE_CATALOG = {
       { title: "Feel-Good Productivity", author: "Ali Abdaal" },
     ],
   },
+  ramadanQuran30: {
+    id: "ramadanQuran30",
+    practiceTemplateKey: "quran",
+    practiceLabel: "Qur'an",
+    unitLabel: "read",
+    icon: "🌙",
+    name: "Read the Qur'an in Ramadan",
+    // Ramadan itself runs 29 or 30 days depending on the moon sighting —
+    // this challenge paces against the Qur'an's own 30-Juz division
+    // either way, one Juz a day, the traditional way to complete a full
+    // reading over the month regardless of its exact length this year.
+    tagline: "One Juz a day, all 30 — the traditional pace for finishing the whole Qur'an during Ramadan, however many days it runs this year.",
+    type: "itemized-paced",
+    paceUnit: "day",
+    itemKind: "range",
+    // Each entry is a real Juz boundary (verified against the standard
+    // 30-Juz division), not a single linkable row — see
+    // CHALLENGE_ITEM_ADAPTERS.quran / quranRangeRows below for how
+    // "done" is computed across every ayah row the range covers.
+    items: [
+      { label: "Juz 1", rangeStart: { surah: "Al-Fatiha", verse: 1 }, rangeEnd: { surah: "Al-Baqarah", verse: 141 } },
+      { label: "Juz 2", rangeStart: { surah: "Al-Baqarah", verse: 142 }, rangeEnd: { surah: "Al-Baqarah", verse: 252 } },
+      { label: "Juz 3", rangeStart: { surah: "Al-Baqarah", verse: 253 }, rangeEnd: { surah: "Aal-E-Imran", verse: 92 } },
+      { label: "Juz 4", rangeStart: { surah: "Aal-E-Imran", verse: 93 }, rangeEnd: { surah: "An-Nisa", verse: 23 } },
+      { label: "Juz 5", rangeStart: { surah: "An-Nisa", verse: 24 }, rangeEnd: { surah: "An-Nisa", verse: 147 } },
+      { label: "Juz 6", rangeStart: { surah: "An-Nisa", verse: 148 }, rangeEnd: { surah: "Al-Ma'idah", verse: 81 } },
+      { label: "Juz 7", rangeStart: { surah: "Al-Ma'idah", verse: 82 }, rangeEnd: { surah: "Al-An'am", verse: 110 } },
+      { label: "Juz 8", rangeStart: { surah: "Al-An'am", verse: 111 }, rangeEnd: { surah: "Al-A'raf", verse: 87 } },
+      { label: "Juz 9", rangeStart: { surah: "Al-A'raf", verse: 88 }, rangeEnd: { surah: "Al-Anfal", verse: 40 } },
+      { label: "Juz 10", rangeStart: { surah: "Al-Anfal", verse: 41 }, rangeEnd: { surah: "At-Tawbah", verse: 92 } },
+      { label: "Juz 11", rangeStart: { surah: "At-Tawbah", verse: 93 }, rangeEnd: { surah: "Hud", verse: 5 } },
+      { label: "Juz 12", rangeStart: { surah: "Hud", verse: 6 }, rangeEnd: { surah: "Yusuf", verse: 52 } },
+      { label: "Juz 13", rangeStart: { surah: "Yusuf", verse: 53 }, rangeEnd: { surah: "Al-Hijr", verse: 1 } },
+      { label: "Juz 14", rangeStart: { surah: "Al-Hijr", verse: 2 }, rangeEnd: { surah: "An-Nahl", verse: 128 } },
+      { label: "Juz 15", rangeStart: { surah: "Al-Isra", verse: 1 }, rangeEnd: { surah: "Al-Kahf", verse: 74 } },
+      { label: "Juz 16", rangeStart: { surah: "Al-Kahf", verse: 75 }, rangeEnd: { surah: "Ta-Ha", verse: 135 } },
+      { label: "Juz 17", rangeStart: { surah: "Al-Anbiya", verse: 1 }, rangeEnd: { surah: "Al-Hajj", verse: 78 } },
+      { label: "Juz 18", rangeStart: { surah: "Al-Mu'minun", verse: 1 }, rangeEnd: { surah: "Al-Furqan", verse: 20 } },
+      { label: "Juz 19", rangeStart: { surah: "Al-Furqan", verse: 21 }, rangeEnd: { surah: "An-Naml", verse: 55 } },
+      { label: "Juz 20", rangeStart: { surah: "An-Naml", verse: 56 }, rangeEnd: { surah: "Al-Ankabut", verse: 45 } },
+      { label: "Juz 21", rangeStart: { surah: "Al-Ankabut", verse: 46 }, rangeEnd: { surah: "Al-Ahzab", verse: 30 } },
+      { label: "Juz 22", rangeStart: { surah: "Al-Ahzab", verse: 31 }, rangeEnd: { surah: "Ya-Sin", verse: 27 } },
+      { label: "Juz 23", rangeStart: { surah: "Ya-Sin", verse: 28 }, rangeEnd: { surah: "Az-Zumar", verse: 31 } },
+      { label: "Juz 24", rangeStart: { surah: "Az-Zumar", verse: 32 }, rangeEnd: { surah: "Fussilat", verse: 46 } },
+      { label: "Juz 25", rangeStart: { surah: "Fussilat", verse: 47 }, rangeEnd: { surah: "Al-Jathiya", verse: 37 } },
+      { label: "Juz 26", rangeStart: { surah: "Al-Ahqaf", verse: 1 }, rangeEnd: { surah: "Adh-Dhariyat", verse: 30 } },
+      { label: "Juz 27", rangeStart: { surah: "Adh-Dhariyat", verse: 31 }, rangeEnd: { surah: "Al-Hadid", verse: 29 } },
+      { label: "Juz 28", rangeStart: { surah: "Al-Mujadila", verse: 1 }, rangeEnd: { surah: "At-Tahrim", verse: 12 } },
+      { label: "Juz 29", rangeStart: { surah: "Al-Mulk", verse: 1 }, rangeEnd: { surah: "Al-Mursalat", verse: 50 } },
+      { label: "Juz 30", rangeStart: { surah: "An-Naba", verse: 1 }, rangeEnd: { surah: "An-Nas", verse: 6 } },
+    ],
+  },
 };
 
 // Case/punctuation-insensitive so "The Great Gatsby" matches "the great
@@ -3793,9 +4175,103 @@ function sheetIdForTemplateKey(templateKey) {
   return entry ? entry[0] : null;
 }
 
-// Links (or silently adds) every catalog title on the practice's real
-// shelf, then remembers the book id for each slot so progress can always
-// be read straight off that book's real status — never a separate
+// How a Challenge links its catalog entries onto a practice's real
+// items — different practices shape their items differently (Books:
+// title/author, added fresh if missing; Qur'an: a real ayah range that
+// must already exist from seedQuranItems, matched by its exact reading
+// string, never created). Keeps joinChallenge/challengeProgress generic
+// instead of hardcoding "book" shape everywhere.
+// Resolves a Qur'an surah name to its position in the canonical 114-surah
+// order (used to tell whether an ayah row falls inside a Juz range).
+function quranSurahIndex(name) {
+  return QURAN_SURAHS.findIndex((s) => s.name === name);
+}
+
+// A Ramadan/Juz-style catalog entry spans many real ayah rows (its
+// rangeStart/rangeEnd, each {surah, verse}) — not the one row a Books
+// challenge entry links to. This finds every seeded ayah row that falls
+// inside the range, in canonical surah order, verse-bounded on the
+// first/last surah of the range.
+function quranRangeRows(sheet, entry) {
+  const startIdx = quranSurahIndex(entry.rangeStart.surah);
+  const endIdx = quranSurahIndex(entry.rangeEnd.surah);
+  if (startIdx < 0 || endIdx < 0) return [];
+  return sheet.items.filter((r) => {
+    const parsed = parseBookAndChapter(r.reading);
+    if (!parsed) return false;
+    const idx = quranSurahIndex(parsed.book);
+    if (idx < startIdx || idx > endIdx) return false;
+    const verse = Number(parsed.chapter);
+    if (idx === startIdx && verse < entry.rangeStart.verse) return false;
+    if (idx === endIdx && verse > entry.rangeEnd.verse) return false;
+    return true;
+  });
+}
+
+// The "item" a Juz-range entry resolves to isn't a real row — it's a
+// live summary ("done" only once every ayah in the range is done) that
+// challengeProgress and renderChallengeDetail can treat the same way
+// they'd treat a single linked item. Recomputed on every read, never
+// cached, so it always reflects whatever's actually marked done on the
+// Qur'an sheet itself.
+function quranRangeItem(sheet, entry) {
+  if (!sheet) return null;
+  const rows = quranRangeRows(sheet, entry);
+  if (!rows.length) return null;
+  return { done: rows.every((r) => r.done), rows };
+}
+
+// Flips every ayah row in a Juz range together — toggling a Juz on the
+// Challenge screen toggles the whole Juz, the same as if each ayah were
+// tapped individually on the Qur'an sheet itself.
+function toggleQuranRange(rangeItem, todayStr) {
+  const target = !rangeItem.done;
+  rangeItem.rows.forEach((r) => {
+    r.done = target;
+    r.completedDate = target ? todayStr : null;
+  });
+}
+
+const CHALLENGE_ITEM_ADAPTERS = {
+  books: {
+    findExisting: (sheet, entry) => findMatchingBook(sheet, entry.title),
+    create: (entry, catalog) => ({
+      id: nextId(),
+      title: entry.title,
+      author: entry.author,
+      category: catalog.name,
+      format: "listen or read",
+      status: "to_read",
+      read: false,
+      onlineRating: null,
+      myRating: null,
+      notes: "",
+      totalChapters: null,
+      currentChapter: 0,
+      link: "",
+    }),
+    resolve: (sheet, entry, linkedId) => sheet?.items.find((b) => b.id === linkedId),
+    isDone: (item) => !!item?.read,
+    displayTitle: (entry) => entry.title,
+  },
+  quran: {
+    // A Juz range already exists in full (seeded by seedQuranItems) —
+    // a Qur'an Challenge tracks the same real ayah rows the base
+    // practice has, never a second disconnected copy, so there's
+    // nothing to create or link by id; findExisting just confirms the
+    // range resolves to real rows, and resolve() recomputes the live
+    // range summary on every read (see quranRangeItem above).
+    findExisting: (sheet, entry) => quranRangeItem(sheet, entry),
+    create: () => null,
+    resolve: (sheet, entry) => quranRangeItem(sheet, entry),
+    isDone: (item) => !!item?.done,
+    displayTitle: (entry) => entry.label,
+  },
+};
+
+// Links (or silently adds) every catalog entry onto the practice's real
+// items, then remembers the item id for each slot so progress can always
+// be read straight off that item's real status — never a separate
 // ledger. Safe to call again (e.g. re-joining after leaving): already
 // -linked slots are left alone.
 function joinChallenge(challengeId) {
@@ -3803,36 +4279,31 @@ function joinChallenge(challengeId) {
   if (!catalog) return;
   const sheetId = sheetIdForTemplateKey(catalog.practiceTemplateKey);
   const sheet = sheetId ? state.customSheets[sheetId] : null;
-  if (!sheet) return;
+  const adapter = CHALLENGE_ITEM_ADAPTERS[catalog.practiceTemplateKey];
+  if (!sheet || !adapter) return;
   state.challenges ||= {};
   state.challenges[challengeId] ||= { joined: false, bookIds: {} };
   const c = state.challenges[challengeId];
   c.joined = true;
   c.joinedDate ||= todayISO();
   if (catalog.type === "itemized-paced") c.startDate ||= todayISO();
-  ensureBookStatuses(sheet);
+  if (catalog.practiceTemplateKey === "books") ensureBookStatuses(sheet);
   catalog.items.forEach((entry, i) => {
-    if (c.bookIds[i] && sheet.items.some((b) => b.id === c.bookIds[i])) return;
-    let book = findMatchingBook(sheet, entry.title);
-    if (!book) {
-      book = {
-        id: nextId(),
-        title: entry.title,
-        author: entry.author,
-        category: catalog.name,
-        format: "listen or read",
-        status: "to_read",
-        read: false,
-        onlineRating: null,
-        myRating: null,
-        notes: "",
-        totalChapters: null,
-        currentChapter: 0,
-        link: "",
-      };
-      sheet.items.push(book);
+    // Range-based entries (e.g. a Qur'an Juz) have no single row id to
+    // remember — challengeProgress recomputes them live off the real
+    // ayah rows every time via adapter.resolve(), so linking here is
+    // just a "does this range exist at all" check, not an id to store.
+    if (catalog.itemKind === "range") {
+      adapter.findExisting(sheet, entry);
+      return;
     }
-    c.bookIds[i] = book.id;
+    if (c.bookIds[i] && sheet.items.some((b) => b.id === c.bookIds[i])) return;
+    let item = adapter.findExisting(sheet, entry);
+    if (!item) {
+      item = adapter.create(entry, catalog);
+      if (item) sheet.items.push(item);
+    }
+    if (item) c.bookIds[i] = item.id;
   });
   scheduleSave();
 }
@@ -3912,9 +4383,17 @@ function challengeProgress(challengeId) {
   if (!catalog || !c || !c.joined) return null;
   const sheetId = sheetIdForTemplateKey(catalog.practiceTemplateKey);
   const sheet = sheetId ? state.customSheets[sheetId] : null;
+  const adapter = CHALLENGE_ITEM_ADAPTERS[catalog.practiceTemplateKey];
   const books = catalog.items.map((entry, i) => {
-    const book = sheet?.items.find((b) => b.id === c.bookIds[i]);
-    return { title: entry.title, author: entry.author, book, done: !!book?.read };
+    const item = adapter?.resolve
+      ? adapter.resolve(sheet, entry, c.bookIds[i])
+      : sheet?.items.find((b) => b.id === c.bookIds[i]);
+    return {
+      title: adapter ? adapter.displayTitle(entry) : entry.title,
+      author: entry.author || "",
+      book: item,
+      done: !!item && (adapter ? adapter.isDone(item) : !!item.read),
+    };
   });
   const doneCount = books.filter((b) => b.done).length;
   const total = catalog.items.length;
@@ -3923,9 +4402,14 @@ function challengeProgress(challengeId) {
   if (catalog.type === "itemized-paced" && c.startDate) {
     const start = new Date(c.startDate + "T00:00:00");
     const now = new Date(todayISO() + "T00:00:00");
-    const monthsElapsed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
-    currentIndex = Math.min(total - 1, Math.max(0, monthsElapsed));
-    const expectedDone = Math.min(total, monthsElapsed + 1);
+    // paceUnit lets a challenge pace by day (e.g. a 30-day Ramadan Juz
+    // plan) instead of by calendar month (e.g. 12 books in 12 months) —
+    // defaults to month when unset, matching the original behavior.
+    const elapsed = catalog.paceUnit === "day"
+      ? Math.floor((now - start) / 86400000)
+      : (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+    currentIndex = Math.min(total - 1, Math.max(0, elapsed));
+    const expectedDone = Math.min(total, elapsed + 1);
     if (doneCount > expectedDone) paceLabel = "ahead of pace";
     else if (doneCount === expectedDone) paceLabel = "on pace";
     else paceLabel = "behind pace";
@@ -8743,6 +9227,49 @@ function parseBookAndChapter(reading) {
   return { book: m[1].trim(), chapter: parseInt(m[2], 10) };
 }
 
+// 2026-09 bug fix (found while building the Qur'an rebuild, unrelated to
+// it): state.bible was only ever initialized as an empty array — nothing
+// anywhere actually populated it with the real 66 books/1189 chapters,
+// so on a fresh account the whole Bible reading plan silently rendered
+// as zero books, zero chapters, forever, despite the streak/pace/
+// Milestones machinery around it being fully built. This table (verified
+// against a real chapter-count reference, not recalled from memory) plus
+// seedBibleReadings() below actually populates it.
+const BIBLE_BOOKS = [
+  { name: "Genesis", chapters: 50 }, { name: "Exodus", chapters: 40 }, { name: "Leviticus", chapters: 27 },
+  { name: "Numbers", chapters: 36 }, { name: "Deuteronomy", chapters: 34 }, { name: "Joshua", chapters: 24 },
+  { name: "Judges", chapters: 21 }, { name: "Ruth", chapters: 4 }, { name: "1 Samuel", chapters: 31 },
+  { name: "2 Samuel", chapters: 24 }, { name: "1 Kings", chapters: 22 }, { name: "2 Kings", chapters: 25 },
+  { name: "1 Chronicles", chapters: 29 }, { name: "2 Chronicles", chapters: 36 }, { name: "Ezra", chapters: 10 },
+  { name: "Nehemiah", chapters: 13 }, { name: "Esther", chapters: 10 }, { name: "Job", chapters: 42 },
+  { name: "Psalms", chapters: 150 }, { name: "Proverbs", chapters: 31 }, { name: "Ecclesiastes", chapters: 12 },
+  { name: "Song of Solomon", chapters: 8 }, { name: "Isaiah", chapters: 66 }, { name: "Jeremiah", chapters: 52 },
+  { name: "Lamentations", chapters: 5 }, { name: "Ezekiel", chapters: 48 }, { name: "Daniel", chapters: 12 },
+  { name: "Hosea", chapters: 14 }, { name: "Joel", chapters: 3 }, { name: "Amos", chapters: 9 },
+  { name: "Obadiah", chapters: 1 }, { name: "Jonah", chapters: 4 }, { name: "Micah", chapters: 7 },
+  { name: "Nahum", chapters: 3 }, { name: "Habakkuk", chapters: 3 }, { name: "Zephaniah", chapters: 3 },
+  { name: "Haggai", chapters: 2 }, { name: "Zechariah", chapters: 14 }, { name: "Malachi", chapters: 4 },
+  { name: "Matthew", chapters: 28 }, { name: "Mark", chapters: 16 }, { name: "Luke", chapters: 24 },
+  { name: "John", chapters: 21 }, { name: "Acts", chapters: 28 }, { name: "Romans", chapters: 16 },
+  { name: "1 Corinthians", chapters: 16 }, { name: "2 Corinthians", chapters: 13 }, { name: "Galatians", chapters: 6 },
+  { name: "Ephesians", chapters: 6 }, { name: "Philippians", chapters: 4 }, { name: "Colossians", chapters: 4 },
+  { name: "1 Thessalonians", chapters: 5 }, { name: "2 Thessalonians", chapters: 3 }, { name: "1 Timothy", chapters: 6 },
+  { name: "2 Timothy", chapters: 4 }, { name: "Titus", chapters: 3 }, { name: "Philemon", chapters: 1 },
+  { name: "Hebrews", chapters: 13 }, { name: "James", chapters: 5 }, { name: "1 Peter", chapters: 5 },
+  { name: "2 Peter", chapters: 3 }, { name: "1 John", chapters: 5 }, { name: "2 John", chapters: 1 },
+  { name: "3 John", chapters: 1 }, { name: "Jude", chapters: 1 }, { name: "Revelation", chapters: 22 },
+];
+
+function seedBibleReadings() {
+  const rows = [];
+  BIBLE_BOOKS.forEach((b) => {
+    for (let ch = 1; ch <= b.chapters; ch++) {
+      rows.push({ id: nextId(), reading: `${b.name} ${ch}`, done: false, completedDate: null });
+    }
+  });
+  return rows;
+}
+
 const OT_BOOKS = new Set([
   "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua", "Judges", "Ruth",
   "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra",
@@ -11842,7 +12369,11 @@ function renderHomeAppsGrid(today, isColdOpen) {
     });
 
   const card = el(`<div class="card"></div>`);
-  card.appendChild(el(`<div class="home-hero-pillars-label">Today</div>`));
+  // 2026-09 (Veronika): "Today" alone only named the caption's timeframe,
+  // not what it was labeling — "Today's Practices" names both, matching
+  // how the rest of the app already calls these apps "Practices"
+  // (Trends scopes to a Practice, Challenges group by Practice, etc.).
+  card.appendChild(el(`<div class="home-hero-pillars-label">Today's Practices</div>`));
 
   const nudges = renderExtraTrackersSection(today, () => renderHome());
   if (nudges) card.appendChild(nudges);
@@ -12670,8 +13201,12 @@ function collectEarnedMilestones() {
 function renderTrendMilestonesRow(panel, today) {
   const earned = collectEarnedMilestones();
   if (!earned.length) return;
-  panel.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Milestones</div>`));
-  panel.appendChild(el(`<div class="al-note-line" style="margin:-4px 0 12px;">Real things you've actually done, not the day-streak &mdash; that's the plant next to each app above.</div>`));
+  // 2026-09 (Veronika, Home header consistency pass): the "Milestones"
+  // mini-header used to live here; now the merged Milestones & Streaks
+  // section (renderHomeMilestonesStreaksSection) supplies one shared
+  // header for both this and the streak list below, so this only needs
+  // its explanatory note line, not its own title.
+  panel.appendChild(el(`<div class="al-note-line" style="margin:0 0 12px;">Real things you've actually done, not the day-streak &mdash; that's the plant next to each app above.</div>`));
   const grid = el(`<div class="pr-badge-grid"></div>`);
   earned.slice(0, 6).forEach((m) => {
     grid.appendChild(el(`
@@ -12963,12 +13498,24 @@ function openChallengeFromHome(challengeId) {
 // these are about what each app itself has done (a real achievement, a
 // day-streak), not a pattern or correlation, so they don't belong under
 // an analysis heading.
+// 2026-09 (Veronika, Home header consistency pass): Milestones and
+// Streaks used to be two separately-headered mini-sections stacked back
+// to back — one plain "Milestones" mini-header, then a second plain
+// "Streaks right now" mini-header, neither matching Trends' bigger
+// serif+emoji+collapsible treatment right below them. They're really one
+// topic ("how am I actually doing"), so this merges them into a single
+// collapsible section given the exact style Trends already established,
+// rather than inventing a fourth header language. Mocked and confirmed
+// in the Challenges Journey artifact before shipping.
 function renderHomeMilestonesStreaksSection(panel, today) {
-  const section = el(`<div class="card"></div>`);
-  panel.appendChild(section);
-  renderTrendMilestonesRow(section, today);
-  section.appendChild(el(`<div class="trend-title" style="margin:10px 0 8px;">Streaks right now</div>`));
-  renderPillarStreakList(section, today);
+  const details = el(`
+    <details class="card" open>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="home-section-icon">🏅</span><span class="subsection-title serif" style="margin:0;">Milestones &amp; Streaks</span></span></summary>
+    </details>
+  `);
+  panel.appendChild(details);
+  renderTrendMilestonesRow(details, today);
+  renderPillarStreakList(details, today);
 }
 
 // Trends — every correlation/pattern insight in one place: the
@@ -15378,6 +15925,11 @@ async function boot() {
     delete state.investments;
   }
   state.bible ||= [];
+  // The actual bug fix: state.bible used to just stay [] forever — nothing
+  // ever seeded the real 66 books/1189 chapters into it. Seed once, only
+  // when genuinely empty, so this never overwrites real reading progress
+  // on an account that already has rows (however that happened).
+  if (!state.bible.length) state.bible = seedBibleReadings();
   state.bibleSettings ||= { startDate: "2026-01-01" };
   // Lifetime Bible Milestones — permanent, survive a "Start over" of the
   // live reading plan above. See BIBLE_MILESTONES.
@@ -15427,6 +15979,7 @@ async function boot() {
   state.budgetShowHidden ||= false;
   state.theme ||= "cream";
   state.bibleTestament ||= "all";
+  state.quranRevelation ||= "all";
   state.bibleOpenBooks ||= {};
   // Starts unset; the over/under flags just don't show anything meaningful
   // until this is filled in from the Budget tab.
@@ -15569,6 +16122,22 @@ async function boot() {
       sheet.wardrobeSchemaV = 2;
       sheet.openCategories ||= {};
       sheet.activeSeason ??= null;
+    }
+  });
+  // 2026-09 Qur'an rebuild: the old items shape (31 invented, inaccurate
+  // "reading range" segments) is replaced with the real 114-surah,
+  // 6236-ayah structure — an unavoidable one-time reset of live progress
+  // on that sheet, same as any other structural schema bump here. Any
+  // Challenge already joined against this practice gets re-linked fresh
+  // on next render since challengeProgress resolves ids live.
+  Object.values(state.customSheets).forEach((sheet) => {
+    if (sheet.templateKey === "quran" && sheet.quranSchemaV !== 2) {
+      sheet.items = seedQuranItems();
+      sheet.quranSchemaV = 2;
+      sheet.quranSettings = { startDate: todayISO() };
+      sheet.surahsEverFinished = [];
+      sheet.quranOpenSurahs = {};
+      sheet.milestonesEarned = {};
     }
   });
   // One-time backfill: the real product links she'd had in her original
@@ -15816,6 +16385,7 @@ async function boot() {
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
   bibleTestament = state.bibleTestament;
+  quranRevelation = state.quranRevelation;
   portfolioChoice = state.portfolioChoice;
 
   // Capture this device's live IANA timezone on every boot (not just
