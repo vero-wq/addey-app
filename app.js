@@ -3713,7 +3713,7 @@ const BOOK_RATING_OPTIONS = [
 const CHALLENGE_CATALOG = {
   classics12: {
     id: "classics12",
-    practice: "books1",
+    practiceTemplateKey: "books",
     practiceLabel: "Books",
     unitLabel: "read",
     icon: "📚",
@@ -3737,7 +3737,7 @@ const CHALLENGE_CATALOG = {
   },
   selfimprove12: {
     id: "selfimprove12",
-    practice: "books1",
+    practiceTemplateKey: "books",
     practiceLabel: "Books",
     unitLabel: "read",
     icon: "🌱",
@@ -3775,6 +3775,20 @@ function findMatchingBook(sheet, title) {
   return sheet.items.find((b) => normalizeBookKey(b.title) === key);
 }
 
+// Challenges are defined against a practice TEMPLATE (catalog.
+// practiceTemplateKey, e.g. "books"), never a specific sheet instance id.
+// Sheet ids are generated at add-time (sheet_<n>, from nextId()) rather
+// than fixed — an earlier pass hardcoded "books1" as if that were always
+// Books' real id, which happened to match the test fixture but silently
+// failed to find anything on a real account, since a real Books sheet's
+// id depends on when it was added relative to everything else. This
+// resolves a template key to whichever real sheet currently carries it
+// (or null if that practice hasn't been added at all).
+function sheetIdForTemplateKey(templateKey) {
+  const entry = Object.entries(state.customSheets).find(([, s]) => s.templateKey === templateKey);
+  return entry ? entry[0] : null;
+}
+
 // Links (or silently adds) every catalog title on the practice's real
 // shelf, then remembers the book id for each slot so progress can always
 // be read straight off that book's real status — never a separate
@@ -3783,7 +3797,8 @@ function findMatchingBook(sheet, title) {
 function joinChallenge(challengeId) {
   const catalog = CHALLENGE_CATALOG[challengeId];
   if (!catalog) return;
-  const sheet = state.customSheets[catalog.practice];
+  const sheetId = sheetIdForTemplateKey(catalog.practiceTemplateKey);
+  const sheet = sheetId ? state.customSheets[sheetId] : null;
   if (!sheet) return;
   state.challenges ||= {};
   state.challenges[challengeId] ||= { joined: false, bookIds: {} };
@@ -3829,8 +3844,14 @@ function isChallengeJoined(challengeId) {
   return !!state.challenges?.[challengeId]?.joined;
 }
 
-function joinedChallengesForPractice(practiceId) {
-  return Object.values(CHALLENGE_CATALOG).filter((c) => c.practice === practiceId && isChallengeJoined(c.id));
+// Called from within a specific practice's own sheet render (e.g. Books'
+// renderBookTodayScreen passes its own real sheet id) — resolves that
+// sheet's template key and matches catalog entries against it, rather
+// than against the id itself.
+function joinedChallengesForPractice(practiceSheetId) {
+  const templateKey = state.customSheets[practiceSheetId]?.templateKey;
+  if (!templateKey) return [];
+  return Object.values(CHALLENGE_CATALOG).filter((c) => c.practiceTemplateKey === templateKey && isChallengeJoined(c.id));
 }
 
 // Free accounts can run one challenge at a time (any practice); Paid and
@@ -3885,7 +3906,8 @@ function challengeProgress(challengeId) {
   const catalog = CHALLENGE_CATALOG[challengeId];
   const c = state.challenges?.[challengeId];
   if (!catalog || !c || !c.joined) return null;
-  const sheet = state.customSheets[catalog.practice];
+  const sheetId = sheetIdForTemplateKey(catalog.practiceTemplateKey);
+  const sheet = sheetId ? state.customSheets[sheetId] : null;
   const books = catalog.items.map((entry, i) => {
     const book = sheet?.items.find((b) => b.id === c.bookIds[i]);
     return { title: entry.title, author: entry.author, book, done: !!book?.read };
@@ -12668,41 +12690,53 @@ function renderTrendMilestonesRow(panel, today) {
 // openYourRewardScreen). This single card summarizes state at a glance —
 // nothing joined yet, or the lead joined challenge's own progress — and
 // always opens the real hub, openChallengesHubScreen().
+// Gold-hybrid Home card, confirmed with Veronika 2026-09: the gold
+// gradient from mockup direction A (Medallion) combined with the
+// copy/layout structure from direction B (Spotlight Banner) — eyebrow
+// label, bold headline, "[name] · X of Y read" subtitle, an explicit
+// "View challenge ›" text link — and a BARE oversized ghost-trophy
+// watermark instead of a boxed medallion tile, since a boxed emoji
+// pretending to be a nav icon was exactly the icon-consistency problem
+// she flagged. No separate "🏆 Challenges" label above the card anymore
+// — the card carries its own eyebrow, so that line was pure redundancy.
 function renderHomeChallengesSection(panel, today) {
   const ids = Object.keys(CHALLENGE_CATALOG);
   if (!ids.length) return;
-  panel.appendChild(el(`
-    <div class="home-section-title-group" style="margin:22px 0 10px;">
-      <span class="home-section-icon">🏆</span><span class="subsection-title serif" style="margin:0;">Challenges</span>
-    </div>
-  `));
   const joinedIds = ids.filter((id) => isChallengeJoined(id));
   const joinedCatalogs = joinedIds.map((id) => CHALLENGE_CATALOG[id]);
   const joinedProgresses = joinedIds.map((id) => challengeProgress(id)).filter(Boolean);
 
-  let title, subLine, avgPct;
+  let eyebrow, title, subLine, avgPct, linkLabel;
   if (joinedCatalogs.length) {
+    eyebrow = "Challenges";
     title = `${joinedCatalogs.length} active challenge${joinedCatalogs.length === 1 ? "" : "s"}`;
-    subLine = joinedCatalogs.map((c) => escapeHtml(c.name)).join(" &middot; ");
+    if (joinedCatalogs.length === 1) {
+      const p = joinedProgresses[0];
+      subLine = `${escapeHtml(joinedCatalogs[0].name)} &middot; ${p ? `${p.doneCount} of ${p.total} ${escapeHtml(joinedCatalogs[0].unitLabel)}` : ""}`;
+    } else {
+      subLine = joinedCatalogs.map((c) => escapeHtml(c.name)).join(" &middot; ");
+    }
     avgPct = Math.round(
       joinedProgresses.reduce((sum, p) => sum + p.doneCount / p.total, 0) / joinedProgresses.length * 100
     );
+    linkLabel = "View challenge &rsaquo;";
   } else {
-    title = "Challenges";
+    eyebrow = "Challenges";
+    title = "Ready when you are";
     subLine = `${ids.length} challenge${ids.length === 1 ? "" : "s"} to try &mdash; one book a month, or read at your own pace`;
+    linkLabel = "Browse challenges &rsaquo;";
   }
 
   const card = el(`
     <div class="card home-challenge-card">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:38px;height:38px;border-radius:10px;background:${joinedCatalogs.length ? "var(--accent)" : "var(--bg)"};${joinedCatalogs.length ? "color:#fff;" : "border:1px solid var(--border);"}display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏆</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13.5px;font-weight:700;color:var(--text);">${title}</div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${subLine}</div>
-        </div>
-        <div style="color:var(--muted);font-size:15px;">&rsaquo;</div>
+      <div class="home-challenge-watermark">🏆</div>
+      <div class="home-challenge-body">
+        <div class="home-challenge-eyebrow">${eyebrow}</div>
+        <div class="home-challenge-headline">${title}</div>
+        <div class="home-challenge-sub">${subLine}</div>
+        ${joinedCatalogs.length ? `<div class="progress-track home-challenge-progress"><div class="progress-fill" style="width:${avgPct}%;"></div></div>` : ""}
+        <div class="home-challenge-link">${linkLabel}</div>
       </div>
-      ${joinedCatalogs.length ? `<div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${avgPct}%;"></div></div>` : ""}
     </div>
   `);
   card.addEventListener("click", () => activateTab("challenges"));
@@ -12738,9 +12772,9 @@ function renderChallengesPage() {
       ? `${catalog.practiceLabel} &middot; ${progress.doneCount} of ${progress.total} ${unit} &middot; ${progress.paceLabel}`
       : `${catalog.practiceLabel} &middot; ${progress.doneCount} of ${progress.total} ${unit}`;
     const card = el(`
-      <div class="card home-challenge-card">
+      <div class="card challenge-progress-card">
         <div style="display:flex;align-items:center;gap:12px;">
-          <div style="width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
+          <div class="challenge-icon-bare">${catalog.icon}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${paceLine}</div>
@@ -12757,10 +12791,10 @@ function renderChallengesPage() {
   function joinCard(id) {
     const catalog = CHALLENGE_CATALOG[id];
     const card = el(`
-      <div class="card home-challenge-card">
+      <div class="card challenge-join-card">
         <div class="challenge-join-row">
           <div style="display:flex;align-items:center;gap:12px;min-width:0;">
-            <div style="width:38px;height:38px;border-radius:10px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">${catalog.icon}</div>
+            <div class="challenge-icon-bare">${catalog.icon}</div>
             <div style="min-width:0;">
               <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
               <div style="font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.4;">${escapeHtml(catalog.tagline)}</div>
@@ -12815,13 +12849,15 @@ function renderChallengesPage() {
 function openChallengeFromHome(challengeId) {
   const catalog = CHALLENGE_CATALOG[challengeId];
   if (!catalog) return;
-  const sheet = state.customSheets[catalog.practice];
+  const sheetId = sheetIdForTemplateKey(catalog.practiceTemplateKey);
+  if (!sheetId) return; // practice was removed after joining — nothing to jump to
+  const sheet = state.customSheets[sheetId];
   if (sheet) {
     sheet.focusedChallenge = challengeId;
     scheduleSave();
-    renderCustomSheet(catalog.practice);
+    renderCustomSheet(sheetId);
   }
-  activateTab(catalog.practice);
+  activateTab(sheetId);
 }
 
 // Trends — open by default (per Veronika's call, this is one of the more
