@@ -8121,7 +8121,7 @@ function renderWorkoutSheet(sheetId) {
   // 2026-09 (Veronika): was a small ghost button easy to miss at the
   // bottom of a long day list — matches the dashed "add" tile used
   // elsewhere (Lists' "+ New list") so it reads as a real next action.
-  const addDayBtn = el(`<button type="button" class="add-day-tile">+ Add day</button>`);
+  const addDayBtn = el(`<button type="button" class="add-day-btn">+ Add day</button>`);
   addDayBtn.addEventListener("click", () => {
     week.days.push({ id: nextId(), title: "", exercises: [] });
     scheduleSave();
@@ -17111,6 +17111,88 @@ async function bootInner() {
       });
     });
     sheet.workoutDayTitlesSplit = true;
+  });
+  // One-time recovery (Veronika, c025): "Upper / Posture + Glutes" (Day
+  // 2) got accidentally deleted from the Aug 31 week, which meant every
+  // week created from it since — including Sep 7 — never had it either.
+  // Restoring it once via a direct database edit didn't stick (an
+  // already-open tab's next autosave overwrote it with its stale,
+  // Day-2-less copy) — a code-level fix like this one is immune to that,
+  // since it re-applies from scratch on every load until the flag below
+  // is set, regardless of whatever a given browser tab happened to have
+  // cached. Runs on any week that's down to 2 days and doesn't already
+  // have this day, and inserts it as the middle day — matching what
+  // Aug 24's week (the last week that still had it intact) looked like.
+  const DAY2_RECOVERY_TITLE = "Upper / Posture + Glutes";
+  const DAY2_RECOVERY_EXERCISES = [
+    {
+      code: "A1", name: "Assisted Pull-Up", muscles: "Lats / Upper Back / Pulling Strength",
+      repMin: 6, repMax: 8, perSide: false, direction: "down", autoSuggest: true, link: "",
+      notes: "Can pair with assisted dips if timing/equipment works. Less assist over time = harder, so this one gets lighter, not heavier.",
+      sets: [
+        { setType: "Primer", prev: "25 x 8", target: "25 assist", actual: "" },
+        { setType: "Build", prev: "25 x 6", target: "25 assist", actual: "" },
+        { setType: "Top", prev: "25 x 6", target: "25 assist", actual: "" },
+      ],
+    },
+    {
+      code: "A2", name: "Assisted Dip", muscles: "Chest / Triceps / Shoulder Control",
+      repMin: 6, repMax: 8, perSide: false, direction: "down", autoSuggest: true, link: "",
+      notes: "Can pair with assisted pull-ups if timing/equipment works.",
+      sets: [
+        { setType: "Build", prev: "25 x 8", target: "25 assist", actual: "" },
+        { setType: "Top", prev: "25 x 6", target: "25 assist", actual: "" },
+        { setType: "Top", prev: "25 x 6", target: "25 assist", actual: "" },
+      ],
+    },
+    {
+      code: "B1", name: "Rope Face Pull", muscles: "Rear Delts / Mid-Back / Posture",
+      repMin: 12, repMax: 15, perSide: false, direction: "up", autoSuggest: true, link: "",
+      notes: "Use overhand rope grip. Posture-focused.",
+      sets: [
+        { setType: "Primer", prev: "90 x 15", target: "90 lb", actual: "" },
+        { setType: "Build", prev: "90 x 15", target: "90 lb", actual: "" },
+        { setType: "Top", prev: "90 x 15", target: "90 lb", actual: "" },
+      ],
+    },
+    {
+      code: "B2", name: "Single-Leg Hip Extension with Dumbbell", muscles: "Glutes / Hamstrings / Hip Extension",
+      repMin: 15, repMax: 20, perSide: true, direction: "up", autoSuggest: true, link: "https://youtu.be/C2SCkVk4Atc",
+      notes: "If too easy, tell Matt. One side at a time; no required superset pair.",
+      sets: [
+        { setType: "Primer", prev: "25 x 15", target: "25 lb/side", actual: "" },
+        { setType: "Build", prev: "25 x 15", target: "25 lb/side", actual: "" },
+        { setType: "Top", prev: "25 x 15", target: "25 lb/side", actual: "" },
+      ],
+    },
+    {
+      code: "C", name: "Cable Kickback", muscles: "Glute Max / Glute Isolation",
+      repMin: 12, repMax: 15, perSide: true, direction: "up", autoSuggest: false, link: "",
+      notes: "Alternate legs with no rest between legs. Felt faint again — omitted, matching last week.",
+      sets: [
+        { setType: "Primer", prev: "30 x 12/side", target: "TBD/side", actual: "" },
+        { setType: "Build", prev: "✖️", target: "TBD/side", actual: "" },
+        { setType: "Top", prev: "✖️", target: "TBD/side", actual: "" },
+      ],
+    },
+  ];
+  Object.values(state.customSheets).forEach((sheet) => {
+    if (sheet.templateKey !== "workout" || sheet.workoutDay2Restored) return;
+    (sheet.weeks || []).forEach((week) => {
+      const hasDay2 = week.days.some((d) => (d.title || "").trim().toLowerCase() === DAY2_RECOVERY_TITLE.toLowerCase());
+      if (week.days.length === 2 && !hasDay2) {
+        week.days.splice(1, 0, {
+          id: nextId(),
+          title: DAY2_RECOVERY_TITLE,
+          exercises: DAY2_RECOVERY_EXERCISES.map((ex) => ({
+            id: nextId(),
+            ...ex,
+            sets: ex.sets.map((s) => ({ id: nextId(), ...s })),
+          })),
+        });
+      }
+    });
+    sheet.workoutDay2Restored = true;
   });
   // One-time upgrade: Connections Log started as a flat list of entries
   // with a free-text "who" on each one — no shared identity between two
