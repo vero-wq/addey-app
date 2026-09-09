@@ -15819,7 +15819,15 @@ function showOnboardingFlow() {
   renderStep();
 }
 
-async function boot() {
+// 2026-09: boot() used to run bare — any uncaught error anywhere in it
+// (a migration, a render call, anything after the sign-in gate) just
+// silently stopped execution, leaving the boot-loading spinner animating
+// forever with nothing on screen to explain why and nothing in reach for
+// either Veronika or a future debugging pass to go on. bootInner() is
+// the real boot sequence, unchanged; boot() below is a thin wrapper that
+// actually surfaces a crash — on screen, and to the console — instead of
+// a silent freeze.
+async function bootInner() {
   // Sign-in gate first — nothing below runs until someone's identity is
   // known, since the data itself lives behind that identity now.
   const session = await requireAuth();
@@ -16508,5 +16516,51 @@ async function healOversizedPhotos() {
     renderAll();
   }
 }
+
+// Shows whatever actually broke, right on the loading screen — a name and
+// message, not a full stack trace (this is not a dev console) — plus a
+// button to reload. Reused by both the boot() crash handler below and the
+// global fallback in case something throws after boot() has already
+// resolved (a stray unhandled rejection from a later, unawaited call).
+function showBootCrash(err) {
+  const overlay = document.getElementById("boot-loading");
+  if (!overlay) return; // boot already finished and removed it — not a boot-time crash
+  overlay.classList.remove("hide");
+  const message = err && err.message ? err.message : String(err || "Unknown error");
+  overlay.innerHTML = `
+    <div class="boot-loading-grid"><div></div><div></div><div></div><div></div></div>
+    <div class="boot-loading-text" style="max-width:280px; text-align:center; line-height:1.5;">
+      Something went wrong loading the app.
+    </div>
+    <div class="muted" style="max-width:280px; text-align:center; font-size:11.5px; word-break:break-word; margin:-6px 0 4px;">${escapeHtml(message)}</div>
+    <button type="button" class="btn-primary" id="boot-retry-btn">Try again</button>
+  `;
+  document.getElementById("boot-retry-btn").addEventListener("click", () => {
+    location.reload();
+  });
+}
+
+async function boot() {
+  try {
+    await bootInner();
+  } catch (err) {
+    console.error("boot() crashed:", err);
+    showBootCrash(err);
+  }
+}
+
+// Fallback for anything that throws AFTER boot() already resolved
+// successfully and removed the loading overlay — showBootCrash() no-ops
+// in that case (nothing to do; the app is already up), so this is purely
+// a console breadcrumb for a future debugging session, never a user-
+// facing screen once real content is showing.
+window.addEventListener("error", (e) => {
+  console.error("Uncaught error:", e.error || e.message);
+  showBootCrash(e.error || e.message);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("Unhandled promise rejection:", e.reason);
+  showBootCrash(e.reason);
+});
 
 boot();
