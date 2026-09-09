@@ -1541,14 +1541,20 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .workout-week-row > .btn-ghost.small { flex-shrink: 0; }
 
 /* Drag-to-reorder days, and the split "Day N" (positional, computed) /
-   title (freeform, editable) header — see renderWorkoutSheet. */
+   title (freeform, editable) header — see renderWorkoutSheet.
+   2026-09 (Veronika): each day is now its own white card instead of a
+   plain divider row — the old style blended straight into the page
+   background. The "Day N" pill got bigger per her feedback; the title
+   text next to it (e.g. "Lower") stays at its original size. */
 .workout-days-list { margin-top: 2px; }
-.workout-day-block { position: relative; touch-action: pan-y; }
-.workout-day-block.dragging { opacity: 0.6; box-shadow: 0 8px 20px rgba(0,0,0,0.16); border-radius: 8px; background: var(--surface); z-index: 5; }
-.workout-day-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.workout-day-block { position: relative; touch-action: pan-y; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+.workout-day-block.dragging { opacity: 0.6; box-shadow: 0 8px 20px rgba(0,0,0,0.16); z-index: 5; }
+.workout-day-block .wardrobe-summary { padding: 13px 14px; }
+.workout-day-block .wardrobe-items { padding: 0 14px 14px; margin-top: 0; }
+.workout-day-header-left { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; }
 .day-drag-handle { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; color: var(--muted); cursor: grab; touch-action: none; }
 .day-drag-handle:active { cursor: grabbing; }
-.workout-day-number { font-size: 10.5px; font-weight: 700; color: var(--accent-dark); background: #F1E7CF; border-radius: 5px; padding: 3px 7px; flex-shrink: 0; }
+.workout-day-number { font-size: 12.5px; font-weight: 700; color: var(--accent-dark); background: #F1E7CF; border-radius: 6px; padding: 4px 9px; flex-shrink: 0; }
 .workout-day-title-text { font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .day-skip-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; color: var(--muted); background: var(--bg); border: 1px dashed var(--border); border-radius: 100px; padding: 3px 9px; flex-shrink: 0; }
 .workout-day-block.day-skipped .workout-day-number,
@@ -1558,12 +1564,12 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .day-actions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .btn-ghost.skip-toggle { color: var(--accent-dark); }
 .btn-ghost.unskip-toggle { color: var(--good); border-color: #CFDBC7; background: #EEF2E9; }
-.add-day-tile {
+.add-day-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; box-sizing: border-box;
-  padding: 14px 12px; border-radius: 14px; border: 1.5px dashed var(--accent); background: var(--bg);
-  font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--accent-dark); cursor: pointer; margin-top: 16px;
+  padding: 14px; border-radius: 12px; border: none; background: var(--accent-dark); color: #fff;
+  font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; margin: 18px 0 22px;
 }
-.add-day-tile:hover { background: #F1E7CF; }
+.add-day-btn:hover { background: #6a4d2c; }
 
 .workout-ex-item.ex-skipped .workout-ex-name { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
 .workout-ex-item.ex-skipped .workout-ex-hint { color: var(--muted); }
