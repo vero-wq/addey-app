@@ -1186,6 +1186,26 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .challenge-leave-link { display: block; width: 100%; text-align: center; background: none; border: none; padding: 14px 0 4px; font-size: 12px; color: var(--muted); text-decoration: underline; cursor: pointer; }
 .challenge-hub-group-title { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 18px 2px 8px; }
 .challenge-hub-group-title:first-of-type { margin-top: 4px; }
+
+/* Gold-hybrid Home entry card — confirmed 2026-09 (see
+   renderHomeChallengesSection): gold gradient + banner-style copy +
+   a bare ghost-trophy watermark, no boxed icon tile. */
+.home-challenge-card { position: relative; overflow: hidden; background: linear-gradient(135deg, #F4E1B8, #CE9F5F 65%, #B37F3E); border: none; box-shadow: 0 8px 24px rgba(139,98,45,.28); cursor: pointer; }
+.home-challenge-watermark { position: absolute; right: -16px; top: -20px; font-size: 110px; line-height: 1; opacity: .16; transform: rotate(12deg); pointer-events: none; }
+.home-challenge-body { position: relative; }
+.home-challenge-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #7C5C22; }
+.home-challenge-headline { font-size: 17px; font-weight: 800; margin-top: 4px; color: #4A3016; }
+.home-challenge-sub { font-size: 12.5px; color: #6B4A22; margin-top: 2px; }
+.home-challenge-progress { margin-top: 12px; background: rgba(255,255,255,.45); }
+.home-challenge-progress .progress-fill { background: #7A4E1E; }
+.home-challenge-link { margin-top: 12px; font-size: 12px; font-weight: 700; color: #6B3F14; }
+
+/* Challenge icons, de-boxed 2026-09: a colored square behind an emoji
+   read as a third, competing icon language against the nav bar's line
+   icons and the Milestones medallions — so every Challenge icon (here
+   and on the Learn More screen) shows bare, sized up in place, instead
+   of tiled. */
+.challenge-icon-bare { font-size: 30px; line-height: 1; width: 40px; text-align: center; flex-shrink: 0; }
 /* 2026-09 Books redesign: the Currently Reading shelf surfaces whatever's
    actively being read at the top of the screen (before search), capped at
    two slots, so continuing what you're already in the middle of is one tap
