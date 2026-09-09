@@ -8722,7 +8722,7 @@ function renderFinancialGoals(panel) {
   const section = el(`
     <details class="goals-section" ${state.goalsOpen === false ? "" : "open"}>
       <summary class="goals-section-summary">
-        <h3 class="subsection-title serif" style="margin:0;">Financial Goals</h3>
+        <h3 class="subsection-title" style="margin:0;">Financial Goals</h3>
         <span class="wardrobe-chevron">${chevronSvg}</span>
       </summary>
       <div class="goals-section-body"></div>
@@ -13709,7 +13709,7 @@ function openChallengeFromHome(challengeId) {
 function renderHomeMilestonesStreaksSection(panel, today) {
   const details = el(`
     <details class="card" open>
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">Milestones &amp; Streaks</span></span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title" style="margin:0;">Milestones &amp; Streaks</span></span></summary>
     </details>
   `);
   panel.appendChild(details);
@@ -13736,7 +13736,7 @@ function renderHomeMilestonesStreaksSection(panel, today) {
 function renderHomeTrendsSection(panel, today) {
   const section = el(`
     <details class="card" open>
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">Trends</span></span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title" style="margin:0;">Trends</span></span></summary>
     </details>
   `);
   panel.appendChild(section);
@@ -14231,7 +14231,7 @@ function renderCycleHistorySection(box, onDone) {
   const details = el(`
     <details class="card cyc-recent-details" open>
       <summary class="book-summary">
-        <span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">History</span></span>
+        <span class="home-section-title-group"><span class="subsection-title" style="margin:0;">History</span></span>
         <span class="wardrobe-chevron">${iconSvg('<polyline points="6 9 12 15 18 9"></polyline>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')}</span>
       </summary>
     </details>
@@ -15131,10 +15131,14 @@ function renderSobrietyPanel() {
       <div class="alltime-divider"></div>
     `));
     const chips = el(`<div class="alltime-chips"></div>`);
+    // 2026-09 (Veronika): missed this one in the badge-grid pass below —
+    // same old checkmark-on-a-color-circle look, just smaller. Matching
+    // it to the grid's gold-circle-plus-emoji treatment now too, so
+    // every sobriety medal on this screen is the same graphic.
     SOBRIETY_TIERS.forEach((t) => {
       if (!state.sobriety.milestonesAllTime[t.key]) return;
       chips.appendChild(el(`
-        <div class="alltime-medal-mini" style="background: radial-gradient(circle at 35% 30%, #fff, ${t.color} 75%);" title="${escapeHtml(t.label)}">${checkSvg}</div>
+        <div class="alltime-medal-mini" title="${escapeHtml(t.label)}">${t.icon}</div>
       `));
     });
     strip.appendChild(chips);
@@ -15666,7 +15670,7 @@ function renderIdentityQuote(panel, wrapInCard = true) {
 function renderWellnessHistory(panel, today) {
   const section = el(`
     <details class="card">
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title serif" style="margin:0;">History</span></span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title" style="margin:0;">History</span></span></summary>
     </details>
   `);
   panel.appendChild(section);
