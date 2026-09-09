@@ -950,11 +950,18 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
    odd one left stranded alone on its own row. */
 .streak-chip-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
 .streak-chip { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
-.sc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.sc-label { font-size: 13px; font-weight: 500; width: 108px; flex-shrink: 0; }
-.sc-mini { display: flex; gap: 2.5px; flex: 1; }
-.sc-mini i { width: 100%; height: 14px; border-radius: 3px; background: var(--bg); border: 1px solid var(--border); display: block; }
-.sc-mini i.on { border: none; }
+/* 2026-09 (Veronika): the chip's own leading icon well, replacing the old
+   flat color-cycle dot — reuses the app's real icon, same as its Today's
+   Practices tile, so the two rows visibly refer to the same app. */
+.sc-icon { width: 28px; height: 28px; border-radius: 9px; background: var(--bg); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sc-icon svg { width: 15px; height: 15px; }
+.sc-label { font-size: 13px; font-weight: 500; width: 84px; flex-shrink: 0; }
+.sc-mini { display: flex; gap: 3px; flex: 1; align-items: center; }
+/* Plain circular pellets, one per day of the trailing week, replacing the
+   old bar-segment mini chart — several lit in a row used to blur into one
+   solid strip; discrete dots keep every day legible at a glance. */
+.sc-mini i { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: 0 0 auto; display: block; }
+.sc-mini i.on { background: var(--good); }
 .sc-streak { font-size: 12.5px; font-weight: 600; color: var(--accent-dark); white-space: nowrap; width: 30px; text-align: right; }
 
 /* Between-pillar pattern card, styled as a quiet aside rather than a data table. */
@@ -1904,6 +1911,13 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .home-link-line { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 9px 12px; border: 1.5px dashed var(--border); border-radius: 10px; font-size: 12px; font-weight: 600; color: var(--accent-dark); cursor: pointer; background: transparent; }
 .home-link-line-icon { width: 16px; height: 16px; flex-shrink: 0; display: flex; }
 .home-link-line-icon svg { width: 100%; height: 100%; }
+/* 2026-09 (Veronika): the Sobriety check-in nudge reuses .home-link-line
+   wholesale but needs its text to actually wrap (the reward line is
+   always one short phrase) and a small dismiss control on the end. */
+.sob-reminder-line { justify-content: space-between; }
+.home-link-line-text { flex: 1; min-width: 0; }
+.home-link-line-dismiss { flex-shrink: 0; width: 20px; height: 20px; border: none; background: none; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.home-link-line-dismiss svg { width: 12px; height: 12px; }
 
 /* Multiple reward goals (2026-09, Veronika's call) — a swipeable carousel
    when there's more than one active goal. Each .home-reward-slide holds
