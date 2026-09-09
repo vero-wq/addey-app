@@ -14892,27 +14892,23 @@ function renderCyclePanel() {
 // all: see awardRewardForPillarLog, which only ever fires from a real
 // pillar log, never from here.
 // ------------------------------------------------------------------
-// Maps a Sobriety tier's day count onto the nearest HOME_STREAK_MILESTONES
-// bloom stage, so its earned badge can reuse the exact same growing-plant
-// medallion (bloomBadgeMarkup) the streak hero and celebrations already
-// render, instead of a generic checkmark. Falls back to the smallest
-// bloom stage (3) for tiers below it, same as homeStreakPlantSvg's own
-// `|| 3` fallback.
-function sobrietyBloomTierFor(days) {
-  let picked = HOME_STREAK_MILESTONES[0];
-  HOME_STREAK_MILESTONES.forEach((t) => { if (days >= t) picked = t; });
-  return picked;
-}
+// `color` still feeds the celebration badge (openSobrietyCelebration) and
+// the small "Your record" medal chips — those keep the per-tier color
+// ramp. `icon` is new (2026-09): after Veronika's call that the badge
+// grid should be the literal white-circle/gold-ring/emoji-in-the-middle
+// look every other Practice's buildMilestonesCard uses, not a lookalike,
+// the grid below (SOBRIETY_TIERS.forEach) renders these with the exact
+// same markup and the shared #C6883F ring color — see buildMilestonesCard.
 const SOBRIETY_TIERS = [
-  { key: "24h", days: 1, label: "24 Hours", color: "var(--t-24h)" },
-  { key: "1wk", days: 7, label: "1 Week", color: "var(--t-1wk)" },
-  { key: "30d", days: 30, label: "30 Days", color: "var(--t-30d)" },
-  { key: "60d", days: 60, label: "60 Days", color: "var(--t-60d)" },
-  { key: "90d", days: 90, label: "90 Days", color: "var(--t-90d)" },
-  { key: "6mo", days: 182, label: "6 Months", color: "var(--t-6mo)" },
-  { key: "1yr", days: 365, label: "1 Year", color: "var(--t-1yr)" },
-  { key: "2yr", days: 730, label: "2 Years", color: "var(--t-2yr)" },
-  { key: "3yr", days: 1095, label: "3 Years", color: "var(--t-3yr)" },
+  { key: "24h", days: 1, label: "24 Hours", color: "var(--t-24h)", icon: "🌱" },
+  { key: "1wk", days: 7, label: "1 Week", color: "var(--t-1wk)", icon: "🌿" },
+  { key: "30d", days: 30, label: "30 Days", color: "var(--t-30d)", icon: "🍀" },
+  { key: "60d", days: 60, label: "60 Days", color: "var(--t-60d)", icon: "🌳" },
+  { key: "90d", days: 90, label: "90 Days", color: "var(--t-90d)", icon: "🌻" },
+  { key: "6mo", days: 182, label: "6 Months", color: "var(--t-6mo)", icon: "🌸" },
+  { key: "1yr", days: 365, label: "1 Year", color: "var(--t-1yr)", icon: "🏆" },
+  { key: "2yr", days: 730, label: "2 Years", color: "var(--t-2yr)", icon: "💎" },
+  { key: "3yr", days: 1095, label: "3 Years", color: "var(--t-3yr)", icon: "👑" },
 ];
 const SOBRIETY_MOODS = [
   { key: "steady", emoji: "😌", label: "Steady" },
@@ -15159,20 +15155,20 @@ function renderSobrietyPanel() {
     const grid = el(`<div class="pr-badge-grid"></div>`);
     SOBRIETY_TIERS.forEach((t) => {
       const earnedDate = state.sobriety.milestonesCurrent[t.key];
-      // 2026-09 (Veronika): brought in line with buildMilestonesCard's
-      // pattern (Books/Bible/Activity Log) instead of its own one-off
-      // look — earned badges are the same bloom medallion the streak
-      // hero and celebrations already use (bloomBadgeMarkup), and
-      // unearned badges are a real fractional progress ring instead of
-      // a flat locked outline, so you can see how close a tier actually
-      // is. The per-tier color ramp stays — that's the same ramp
-      // HOME_STREAK_MILESTONE_COLORS deliberately shares with Sobriety
-      // on purpose, not the inconsistency.
-      const bloomTier = sobrietyBloomTierFor(t.days);
+      // 2026-09 (Veronika): the bloom-medallion version still looked
+      // like its own thing next to Books/Bible/Activity Log — she was
+      // right that "close, but still different" isn't the same as
+      // consistent. This is now the literal same markup
+      // buildMilestonesCard renders (white circle, single gold ring,
+      // tier's own emoji dead center), just with SOBRIETY_TIERS'
+      // `icon`/`progress()`-equivalent in place of a milestoneDefs
+      // entry. `color` still lives on each tier for the celebration
+      // badge and the "Your record" medal chips — just not used here.
+      const frac = Math.round(Math.min(1, count / t.days) * 100);
       const badge = earnedDate
         ? el(`
             <div class="pr-badge">
-              <div class="pr-badge-medal earned" style="background:none;padding:0;">${bloomBadgeMarkup(bloomTier, `sobriety-${t.key}`).replace('width="56" height="56"', 'width="48" height="48"')}</div>
+              <div class="pr-badge-medal earned">${t.icon}</div>
               <div class="pr-badge-text">
                 <div class="lbl">${escapeHtml(t.label)}</div>
                 <div class="sub earned-date">Earned ${activityDateShort(earnedDate)}</div>
@@ -15181,8 +15177,8 @@ function renderSobrietyPanel() {
           `)
         : el(`
             <div class="pr-badge">
-              <div class="pr-badge-medal progress" style="background: conic-gradient(${t.color} 0% ${Math.round(Math.min(1, count / t.days) * 100)}%, var(--border) ${Math.round(Math.min(1, count / t.days) * 100)}% 100%);">
-                <div class="pr-badge-medal-inner" style="color:${t.color};"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><circle cx="12" cy="12" r="8"></circle></svg></div>
+              <div class="pr-badge-medal progress" style="background: conic-gradient(#C6883F 0% ${frac}%, var(--border) ${frac}% 100%);">
+                <div class="pr-badge-medal-inner">${t.icon}</div>
               </div>
               <div class="pr-badge-text">
                 <div class="lbl">${escapeHtml(t.label)}</div>
