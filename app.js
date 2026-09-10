@@ -10040,12 +10040,31 @@ function renderBible() {
   renderBiblePace(panel, doneCount, total);
 
   const { books, byBook } = bibleBooksGrouped(rows);
-  // The "current" book is the first one (canonical order) with any unread
-  // chapter — same definition as Books' Currently Reading. Once it's
-  // fully done, this naturally rolls to the next book with nothing extra
-  // to track. If every book is finished, fall back to the last one so the
-  // card still shows something rather than disappearing.
-  const currentBook = books.find((book) => byBook.get(book).some((c) => !c.done)) || books[books.length - 1];
+  // The "current" book defaults to the first one (canonical order) with
+  // any unread chapter — same definition as Books' Currently Reading.
+  // Once it's fully done, this naturally rolls to the next book with
+  // nothing extra to track. If every book is finished, fall back to the
+  // last one so the card still shows something rather than disappearing.
+  //
+  // 2026-09-10 (Veronika bug report): that auto-pick meant there was no
+  // way to jump ahead — tapping a chapter in a later book from Browse
+  // (say, starting 2 Corinthians while Joshua still has unread chapters)
+  // logged the chapter fine but the entry screen kept snapping back to
+  // Joshua, since it's still the earliest incomplete book. bibleActiveBook
+  // is an explicit override, set the moment a chapter is tapped in Browse
+  // (see renderBibleBrowseScreen) — it wins over the auto-pick until that
+  // book itself is fully finished, at which point it's cleared and the
+  // entry screen rolls back to auto-picking the earliest incomplete book.
+  const autoBook = books.find((book) => byBook.get(book).some((c) => !c.done)) || books[books.length - 1];
+  let currentBook = autoBook;
+  if (state.bibleActiveBook && byBook.has(state.bibleActiveBook)) {
+    const activeChapters = byBook.get(state.bibleActiveBook);
+    if (activeChapters.some((c) => !c.done)) {
+      currentBook = state.bibleActiveBook;
+    } else {
+      state.bibleActiveBook = null;
+    }
+  }
 
   if (currentBook) {
     const chapters = byBook.get(currentBook);
@@ -10179,6 +10198,11 @@ function renderBibleBrowseScreen(panel, rows, total, doneCount) {
         if (chapters.every((row) => (state.bible.find((x) => x.id === row.id) || {}).done)) {
           if (!state.bibleBooksEverFinished.includes(book)) state.bibleBooksEverFinished.push(book);
         }
+        // Tapping any chapter from Browse — jumping ahead, or picking
+        // back up an old book — makes that book the entry screen's
+        // "current" book (see bibleActiveBook in renderBible) instead of
+        // silently staying on whatever book is earliest-incomplete.
+        state.bibleActiveBook = book;
         scheduleSave();
         renderBible();
       });
@@ -10650,6 +10674,34 @@ function computeLongestSleepProtectedStreak() {
   });
   return longest;
 }
+// 2026-09-10 (Veronika): Sleep was the one Practice besides Bible with no
+// live streak chip — flagged as a real gap when the plant/streak treatment
+// got standardized everywhere else, and she called it out directly: "sleep
+// is protected" wasn't landing without something up top matching every
+// other Practice. This is that streak, but it measures something
+// different on purpose. Every other Practice's streak asks "did you show
+// up" and forgives a day you simply haven't logged yet (today isn't over).
+// This one asks "did last night hold up" — the same one free grace night
+// for whichever night hasn't been reviewed yet (this morning's AM entry,
+// if she hasn't opened Sleep yet today), but every earlier night has to
+// have actually been both logged AND protected (good quality, met target
+// hours) or the streak is over right there. A logged-but-rough night
+// breaks it same as a night never reviewed at all — that's deliberate:
+// this is a streak about protecting sleep, not just opening the app.
+function computeCurrentSleepProtectedStreak(today) {
+  const lastNight = addDays(today, -1);
+  const lastNightEntry = state.sleepLogs.find((e) => e.date === lastNight);
+  const lastNightReviewed = !!(lastNightEntry && lastNightEntry.am && lastNightEntry.am.completedDate != null);
+  let cursor = lastNightReviewed ? lastNight : addDays(lastNight, -1);
+  let streak = 0;
+  while (true) {
+    const entry = state.sleepLogs.find((e) => e.date === cursor);
+    if (!sleepNightProtected(entry)) break;
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
+}
 const SLEEP_MILESTONES = [
   {
     key: "nights10",
@@ -11009,12 +11061,53 @@ function renderSleepTrendCard(trend) {
 // app-wide instead of Sleep alone having its own copy. Same underlying
 // computeSleepTrend() (still gated at SLEEP_NIGHTS_TO_UNLOCK nights,
 // since a real correlation claim needs an actual sample — unlike the
-// week strip, which never gates). Silent when there's not enough data
-// or nothing worth flagging yet, same restraint every other Trends card
-// already uses.
+// week strip, which never gates).
+//
+// 2026-09-10 (Veronika): used to just return silently below the gate —
+// which is exactly why Trends could feel sparse to someone logging
+// plenty elsewhere in the app: a card with real data behind it eventually
+// just never appears, with nothing telling you why. Now shows an honest
+// "still growing" progress card instead, same fix already applied once
+// to the cross-Practice co-occurrence card. This only ever renders for
+// whichever plan tier already calls renderSleepPatternsCard at all — Plus
+// (every card, unblurred) or Free locked specifically to Sleep — so a
+// Free account locked to a different Practice never sees this; that's
+// still the existing paid-tier blur's job, untouched here.
+function buildTrendProgressCard(icon, label, current, target, subtext) {
+  const dots = Array.from({ length: target }, (_, i) => `<span class="${i < current ? "done" : ""}"></span>`).join("");
+  return el(`
+    <div class="trend-progress-card">
+      <div class="tpc-head"><span class="tpc-icon">${icon}</span><span class="tpc-label">${escapeHtml(label)}</span></div>
+      <div class="tpc-dots">${dots}</div>
+      <div class="tpc-sub">${subtext}</div>
+    </div>
+  `);
+}
 function renderSleepPatternsCard(section, today) {
   const trend = computeSleepTrend();
-  if (!trend || !trend.insights.length) return;
+  if (!trend) {
+    const count = sleepLoggedNights().length;
+    const remaining = SLEEP_NIGHTS_TO_UNLOCK - count;
+    section.appendChild(
+      buildTrendProgressCard(
+        "🌙",
+        "Sleep patterns",
+        count,
+        SLEEP_NIGHTS_TO_UNLOCK,
+        `${count} of ${SLEEP_NIGHTS_TO_UNLOCK} nights logged &mdash; ${remaining} more night${remaining === 1 ? "" : "s"} and your sleep insights unlock`
+      )
+    );
+    return;
+  }
+  // Enough nights logged, but none of the specific correlations
+  // (caffeine, movement, mood) cleared their own threshold this window —
+  // a real, if less common, case worth a word rather than nothing.
+  if (!trend.insights.length) {
+    section.appendChild(
+      el(`<div class="trend-pattern-note" style="margin-top:10px;">Not enough variety in your recent nights yet to spot a pattern (caffeine, movement, mood) &mdash; keep logging and one should turn up.</div>`)
+    );
+    return;
+  }
   section.appendChild(el(`<div class="subsection-title" style="margin-top:10px;">Sleep patterns</div>`));
   trend.insights.forEach((ins) => {
     section.appendChild(
@@ -11247,6 +11340,12 @@ function renderSleep() {
   const today = todayISO();
   const yesterday = addDays(today, -1);
   panel.appendChild(el(`<h2 class="section-title serif">Sleep</h2>`));
+  // 2026-09-10 (Veronika): standardized streak-with-plant treatment, same
+  // as every other Practice — see computeCurrentSleepProtectedStreak for
+  // why this one measures "nights actually protected" rather than "nights
+  // logged." Leads the tab now instead of jumping straight to the target
+  // control, matching where the streak card sits everywhere else.
+  panel.appendChild(buildStreakCard(computeCurrentSleepProtectedStreak(today), "night sleep streak protected"));
   panel.appendChild(renderSleepTargetControl());
 
   // Last night leads — it's the pending thing waiting on you when you open
@@ -11269,16 +11368,12 @@ function renderSleep() {
     panel.appendChild(renderSleepWindDownCard(today));
   }
   // 2026-09 header decluttering (Veronika): dropped the 7-day week-strip
-  // here too (see Books/Activity Log/Journal/Workout for the same call).
-  // Note this leaves Sleep with no consistency indicator at all above
-  // Milestones — by design Sleep has no live streak chip either (see
-  // computeLongestSleepProtectedStreak above: a missed night shouldn't
-  // reset anything), so the week-strip had been Sleep's only at-a-glance
-  // "how am I doing this week" signal. Flagged for Veronika rather than
-  // silently leaving a gap — worth a look once the declutter pass across
-  // every Practice settles.
-  // Best-ever protected-streak badges — no live streak chip on Sleep by
-  // design (see computeLongestSleepProtectedStreak comment), just this.
+  // here too (see Books/Activity Log/Journal/Workout for the same call) —
+  // no longer leaves a consistency-signal gap now that the streak card
+  // above covers that job.
+  // Best-ever protected-streak badges — distinct from the live streak
+  // above: that one can reset on a bad night, this one never does once
+  // earned. Both are "protected sleep," just current vs. all-time.
   const sleepMilestonesSheet = { milestonesEarned: state.sleepMilestonesEarned };
   panel.appendChild(buildMilestonesCard(sleepMilestonesSheet, SLEEP_MILESTONES, today));
   renderSleepHistory(panel);
@@ -11478,16 +11573,22 @@ function renderPillarStreakList(panel, today) {
   // icon-well + pellet-dot pairing. The per-app color cycle is dropped
   // here (still used elsewhere) since a uniform "on" color reads more like
   // a calendar of logged days and less like a legend to decode.
-  practiceApps.forEach((app) => {
+  // 2026-09-10 (Veronika): day-initial header sits once, above the first
+  // row only — every row's dots line up under the same S M T W T F S
+  // columns, so repeating it per row would just be noise.
+  const dayInitials = last7.map((d) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" })[0]);
+  practiceApps.forEach((app, i) => {
     const streak = appCurrentStreak(app.id, today);
     const dots = last7
       .map((d) => `<i class="${isAppLoggedToday(app.id, d) ? "on" : ""}"></i>`)
       .join("");
+    const daylabelsHtml =
+      i === 0 ? `<div class="sc-daylabels">${dayInitials.map((c) => `<span>${c}</span>`).join("")}</div>` : "";
     list.appendChild(el(`
       <div class="streak-chip">
         <span class="sc-icon">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}</span>
         <span class="sc-label">${escapeHtml(app.label)}</span>
-        <span class="sc-mini">${dots}</span>
+        <span class="sc-col">${daylabelsHtml}<span class="sc-mini">${dots}</span></span>
         <span class="sc-streak">${streak ? `${streak}d` : "&mdash;"}</span>
       </div>
     `));
@@ -12778,7 +12879,14 @@ function graceStreakRunEndingAt(key, endDate) {
 // alive) and spends a banked token to cover it, oldest gap first so a
 // short bank empties in the order the days actually happened.
 function reconcileGraceDays(today) {
-  state.grace ||= { banked: 0, lastGrantMonthKey: "", coveredDates: {}, bonusAwardedAt: {} };
+  // 2026-09-10 (Veronika): new accounts used to start at 0 banked and wait
+  // for the first monthly grant — up to ~30 days before a first missed day
+  // had any cushion at all, right when someone's still deciding whether
+  // this app sticks. Starting with 1 already banked means day one's first
+  // slip doesn't have to feel like a broken streak. This only ever fires
+  // via the `||=` below, i.e. the very first time this account has ever
+  // booted — an existing account's real state.grace is left untouched.
+  state.grace ||= { banked: 1, lastGrantMonthKey: "", coveredDates: {}, bonusAwardedAt: {} };
   const g = state.grace;
   g.coveredDates ||= {};
   g.bonusAwardedAt ||= {};
@@ -12933,9 +13041,20 @@ function renderHome() {
   const isColdOpen = pendingColdOpen;
   pendingColdOpen = false;
 
-  panel.appendChild(
+  // 2026-09-10 (Veronika): the grace balance used to only ever surface
+  // as a one-off toast right after a grace day saved a streak — easy to
+  // miss, and otherwise grace days lived only inside Settings → Grace
+  // Days, a place people didn't reliably know to look. A plain always-on
+  // pill next to the greeting keeps the balance visible every time Home
+  // opens; tapping it opens the same Grace Days modal Settings does.
+  const greetingRow = el(`<div class="home-greeting-row"></div>`);
+  greetingRow.appendChild(
     el(`<div class="home-greeting${isColdOpen ? " home-greeting-cold" : ""}">Good ${homeGreetingTime()}${currentUserFirstName ? `, ${escapeHtml(currentUserFirstName)}` : ""}</div>`)
   );
+  const gracePill = el(`<button type="button" class="grace-pill">🪶 <span>${(state.grace?.banked) || 0}</span> banked</button>`);
+  gracePill.addEventListener("click", () => openGraceDaysModal());
+  greetingRow.appendChild(gracePill);
+  panel.appendChild(greetingRow);
 
   // A grace bonus can only ever be granted during boot's once-per-open
   // reconciliation (see reconcileGraceDays/pendingGraceToastCount) — so
@@ -12948,15 +13067,22 @@ function renderHome() {
   }
 
   // One page now, not two — Wellness's unique content (today's
-  // pillars/reflection, trends, history) lives here. The reward — if one's
-  // even set up — is deliberately NOT a card on Home anymore: per
-  // Veronika's 2026-09 call, it was taking up too much room and mixing a
-  // real-dollar goal with the habit surface. All it gets here is the slim
-  // pill inside renderHomeHero; the photo, quote, and full progress live
-  // in Settings → Your Reward.
+  // pillars/reflection, trends, history) lives here. The reward, when one's
+  // set up, gets its full photo-banner treatment right here via
+  // renderHomeHero/renderHomeRewardBanner — it's the first thing under the
+  // greeting, ahead of the Practices strip, since Veronika's call (2026-09)
+  // was that it's what actually leads Home, not the apps grid.
   const hero = renderHomeHero(today, isColdOpen);
   if (hero) panel.appendChild(hero);
-  panel.appendChild(renderHomeAppsGrid(today, isColdOpen));
+  // 2026-09-10 (Veronika): the apps grid and the Milestones & Streaks
+  // streak-chip list below used to do the same job — show every app and
+  // how it's doing today — in two different visual languages, one grid of
+  // square tiles and one separate list of rows further down the page.
+  // renderHomePracticesStrip merges them into a single draggable list,
+  // reusing the exact reorder machinery (state.appOrder/reorderAppOrder)
+  // that already drives the bottom bar, so reordering here IS reordering
+  // the bar, not a second "Home order" to keep in sync with it.
+  panel.appendChild(renderHomePracticesStrip(today, isColdOpen));
 
   // 2026-09 (Veronika): now that Sobriety's count depends on actually
   // checking in, a forgotten day has a real cost, not just a cosmetic
@@ -13376,14 +13502,29 @@ function practiceRecomputeMilestone(appId, today) {
 }
 
 // ------------------------------------------------------------------
-// Home's unified apps grid (2026-09 rearchitecture) — replaces the old
-// six-pillar tap grid entirely. One grid, every added Practice + Tracker
-// (never Tools) as same-style tiles, a small checkmark on anything
-// logged today, an "Add / remove" tile at the end opening the
-// Marketplace. Empty state (zero Practices) shows a plain prompt instead
-// — Trackers/Tools still show normally even then.
+// Home's consolidated Practices strip (2026-09-10 rearchitecture,
+// Veronika) — replaces both the old square-tile apps grid AND the
+// separate streak-chip list that used to live down inside Milestones &
+// Streaks. Those two were the same information (every added app, how
+// it's doing today) in two different visual languages; this is one
+// draggable list of rows, reusing the exact reorder state and functions
+// (state.appOrder/reorderAppOrder/appRowDescriptor) that already drive
+// the bottom bar's order in Settings → My Apps — dragging a row here
+// really is editing the bar's order, not a second copy of it to keep in
+// sync. Rows show the same 7-day dot strip + current streak the old
+// streak-chip list did for Practices; Trackers/Tools (no daily
+// logged/not-logged concept) show a plain type tag instead, same as My
+// Apps. Opens showing the first homePracticesTopN rows with a plain
+// "Show N more" link below (per Veronika: not another boxed button,
+// since that read as a second dashed-box control right next to the
+// "Add or remove practices" row) — that row itself is pinned outside
+// the collapse, always reachable, same job as the old grid's "+ Add /
+// remove" tile.
 // ------------------------------------------------------------------
-function renderHomeAppsGrid(today, isColdOpen) {
+const HOME_PRACTICES_TOP_N = 6;
+let homePracticesExpanded = false;
+
+function renderHomePracticesStrip(today, isColdOpen) {
   // Sobriety's milestone check runs here now that its own Home row is
   // gone — this is still the first place a new day's crossing gets
   // noticed, same as before.
@@ -13414,17 +13555,14 @@ function renderHomeAppsGrid(today, isColdOpen) {
   checkEarnedTrialEligibility(today);
 
   const card = el(`<div class="card"></div>`);
-  // 2026-09 (Veronika): "Today" alone only named the caption's timeframe,
-  // not what it was labeling — "Today's Practices" names both, matching
-  // how the rest of the app already calls these apps "Practices"
-  // (Trends scopes to a Practice, Challenges group by Practice, etc.).
-  card.appendChild(el(`<div class="home-hero-pillars-label">Today's Practices</div>`));
+  card.appendChild(el(`<div class="home-hero-pillars-label">Practices</div>`));
 
   const nudges = renderExtraTrackersSection(today, () => renderHome());
   if (nudges) card.appendChild(nudges);
 
-  const apps = currentAppEntries();
-  const hasPractice = apps.some((a) => a.type === "practice");
+  ensureAppOrder();
+  const rows = state.appOrder.map((id) => appRowDescriptor(id)).filter((d) => d && d.visible);
+  const hasPractice = rows.some((d) => d.type === "practice");
 
   if (!hasPractice) {
     const empty = el(`
@@ -13439,43 +13577,113 @@ function renderHomeAppsGrid(today, isColdOpen) {
     });
     card.appendChild(empty);
     // Trackers/Tools still show normally even with zero Practices — the
-    // grid below just won't have any Practice tiles in it.
-    if (!apps.length) return card;
+    // list below just won't have any Practice rows in it.
+    if (!rows.length) return card;
   }
 
-  const grid = el(`<div class="home-yourspaces-grid home-apps-grid"></div>`);
-  apps.forEach((app, i) => {
-    const loggedToday = isAppLoggedToday(app.id, today);
-    const tile = el(`
-      <button type="button" class="home-yourspaces-tile home-app-tile${app.type === "tracker" ? " is-tracker" : ""}${app.type === "practice" && !loggedToday ? " home-app-tile-nudge" : ""}${isColdOpen ? " home-app-tile-cold" : ""}">
-        <span class="home-yourspaces-tile-icon ${appIconWellClass(app.type)}">${iconSvg(app.icon || `<circle cx="12" cy="12" r="9"></circle>`)}${
-      loggedToday ? `<span class="home-app-tile-check${justCreditedAppIds.includes(app.id) ? " pop" : ""}">${checkSvg}</span>` : ""
-    }</span>
-        <span class="home-yourspaces-tile-label">${escapeHtml(app.label)}</span>
+  const visibleRows = homePracticesExpanded ? rows : rows.slice(0, HOME_PRACTICES_TOP_N);
+  const hiddenCount = rows.length - visibleRows.length;
+
+  const last7 = [];
+  for (let i = 6; i >= 0; i--) last7.push(addDays(today, -i));
+  const dayInitials = last7.map((d) => new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" })[0]);
+  const dragHandleSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>`;
+
+  const list = el(`<div class="streak-chip-list home-practices-list"></div>`);
+  visibleRows.forEach((d, i) => {
+    const loggedToday = d.type === "practice" ? isAppLoggedToday(d.id, today) : null;
+    const streak = d.type === "practice" ? appCurrentStreak(d.id, today) : null;
+    const dotsHtml =
+      d.type === "practice"
+        ? `<span class="sc-col">${
+            i === 0 ? `<div class="sc-daylabels">${dayInitials.map((c) => `<span>${c}</span>`).join("")}</div>` : ""
+          }<span class="sc-mini">${last7.map((dt) => `<i class="${isAppLoggedToday(d.id, dt) ? "on" : ""}"></i>`).join("")}</span></span>`
+        : `<span class="sc-col sc-col-nondot"><span class="app-type-tag app-type-tag-${d.type}">${APP_TYPE_LABEL[d.type]}</span></span>`;
+    const row = el(`
+      <div class="streak-chip home-practice-row${isColdOpen ? " home-app-tile-cold" : ""}" draggable="true" data-app-id="${d.id}">
+        <span class="row-drag-handle sc-drag">${dragHandleSvg}</span>
+        <span class="sc-icon ${appIconWellClass(d.type)}${d.type === "practice" && !loggedToday ? " sc-icon-nudge" : ""}">${iconSvg(
+      d.icon || `<circle cx="12" cy="12" r="9"></circle>`
+    )}${loggedToday ? `<span class="home-app-tile-check${justCreditedAppIds.includes(d.id) ? " pop" : ""}">${checkSvg}</span>` : ""}</span>
+        <span class="sc-label">${escapeHtml(d.label)}</span>
+        ${dotsHtml}
+        <span class="sc-streak">${d.type === "practice" ? (streak ? `${streak}d` : "&mdash;") : ""}</span>
+      </div>
+    `);
+    if (isColdOpen) row.style.animationDelay = `${0.05 + Math.min(i, 8) * 0.045}s`;
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".sc-drag")) return;
+      // Sobriety and Cycle are real tabs now, same as everything else on
+      // this strip — no more modal popup for just these two.
+      activateTab(d.id);
+    });
+    row.addEventListener("dragstart", (e) => {
+      draggedAppId = d.id;
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try {
+        e.dataTransfer.setData("text/plain", d.id);
+      } catch (err) {
+        // Some browsers require this call to not throw even if unused.
+      }
+    });
+    row.addEventListener("dragend", () => {
+      draggedAppId = null;
+      document.querySelectorAll(".home-practice-row").forEach((r) => r.classList.remove("dragging", "drag-over-above", "drag-over-below"));
+    });
+    row.addEventListener("dragover", (e) => {
+      if (!draggedAppId || draggedAppId === d.id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const rect = row.getBoundingClientRect();
+      const above = e.clientY - rect.top < rect.height / 2;
+      row.classList.toggle("drag-over-above", above);
+      row.classList.toggle("drag-over-below", !above);
+    });
+    row.addEventListener("dragleave", () => {
+      row.classList.remove("drag-over-above", "drag-over-below");
+    });
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (!draggedAppId || draggedAppId === d.id) return;
+      const rect = row.getBoundingClientRect();
+      const above = e.clientY - rect.top < rect.height / 2;
+      reorderAppOrder(draggedAppId, d.id, above);
+      renderHome();
+    });
+    list.appendChild(row);
+  });
+  card.appendChild(list);
+
+  if (hiddenCount > 0 || homePracticesExpanded) {
+    const showMoreBtn = el(`
+      <button type="button" class="show-more-link${homePracticesExpanded ? " expanded" : ""}">
+        <span>${homePracticesExpanded ? "Show fewer" : `Show ${hiddenCount} more`}</span>
+        <span class="chev">▾</span>
       </button>
     `);
-    // Staggered fade-in on cold open only, capped so a big apps list
-    // doesn't leave the last tiles waiting a visibly long time.
-    if (isColdOpen) tile.style.animationDelay = `${0.05 + Math.min(i, 8) * 0.045}s`;
-    tile.addEventListener("click", () => {
-      // Sobriety and Cycle are real tabs now, same as everything else on
-      // this grid — no more modal popup for just these two.
-      activateTab(app.id);
+    showMoreBtn.addEventListener("click", () => {
+      homePracticesExpanded = !homePracticesExpanded;
+      renderHome();
     });
-    grid.appendChild(tile);
-  });
-  const addTile = el(`
-    <button type="button" class="home-yourspaces-tile manage">
-      <span class="home-yourspaces-tile-icon">+</span>
-      <span class="home-yourspaces-tile-label">Add / remove</span>
+    card.appendChild(showMoreBtn);
+  }
+
+  const manageRow = el(`
+    <button type="button" class="practices-manage-row">
+      <span class="m-icon">+</span>
+      <span class="m-text">
+        <span class="m-title">Add or remove practices</span>
+        <span class="m-sub">Open the Marketplace to show or hide what's tracked</span>
+      </span>
+      <span class="m-chevron">›</span>
     </button>
   `);
-  addTile.addEventListener("click", () => {
+  manageRow.addEventListener("click", () => {
     settingsSubTab = "gallery";
     activateTab("settings");
   });
-  grid.appendChild(addTile);
-  card.appendChild(grid);
+  card.appendChild(manageRow);
 
   return card;
 }
@@ -14548,15 +14756,21 @@ function openChallengeFromHome(challengeId) {
 // collapsible section given the exact style Trends already established,
 // rather than inventing a fourth header language. Mocked and confirmed
 // in the Challenges Journey artifact before shipping.
+// 2026-09-10 (Veronika): the streak-chip list that used to live in this
+// card moved up into the new consolidated Practices strip on Home (see
+// renderHomePracticesStrip) — every row there already carries its own
+// 7-day dots and current streak figure, so repeating that same list a
+// second time down here was pure duplication. This card is Milestones
+// only now; renderPillarStreakList stays defined (unused) in case a
+// streaks-only list is wanted somewhere else later.
 function renderHomeMilestonesStreaksSection(panel, today) {
   const details = el(`
     <details class="card" open>
-      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title" style="margin:0;">Milestones &amp; Streaks</span></span></summary>
+      <summary class="book-summary" style="margin-bottom:2px;"><span class="home-section-title-group"><span class="subsection-title" style="margin:0;">Milestones</span></span></summary>
     </details>
   `);
   panel.appendChild(details);
   renderTrendMilestonesRow(details, today);
-  renderPillarStreakList(details, today);
 }
 
 // Trends — every correlation/pattern insight in one place: the
@@ -14729,8 +14943,24 @@ function pickCyclePhaseCompletionApp(today) {
 // one Practice specifically, bypassing the normal "widest spread wins"
 // search across every Practice — see renderHomeTrendsSection.
 function renderCyclePhaseCompletionCard(panel, today, restrictAppId) {
+  // Not tracked at all is a feature choice, not a data gap — stays silent,
+  // same as before. Only the "tracked but not enough history yet" cases
+  // below get the honest progress card (2026-09-10, Veronika).
   if (!state.extraTrackers?.cycle) return;
-  if (cycleSortedPeriods().length < 2) return; // needs real logged history, not just the manual fallback numbers
+  const periodsLogged = cycleSortedPeriods().length;
+  if (periodsLogged < 2) {
+    // needs real logged history, not just the manual fallback numbers
+    panel.appendChild(
+      buildTrendProgressCard(
+        "🌸",
+        "Completion by cycle phase",
+        periodsLogged,
+        2,
+        `${periodsLogged} of 2 periods logged &mdash; one more full cycle and this unlocks`
+      )
+    );
+    return;
+  }
   let best;
   if (restrictAppId) {
     const buckets = computeAppCompletionByCyclePhase(restrictAppId, today);
@@ -14741,7 +14971,15 @@ function renderCyclePhaseCompletionCard(panel, today, restrictAppId) {
   } else {
     best = pickCyclePhaseCompletionApp(today);
   }
-  if (!best) return;
+  if (!best) {
+    // Enough periods logged, but no Practice has cleared the per-phase
+    // day minimum yet (needs a spread of logged days across at least 2
+    // phases) — real progress, just not a clean single countdown to show.
+    panel.appendChild(
+      el(`<div class="trend-pattern-note" style="margin-top:10px;">Not enough days logged across your cycle phases yet to spot a completion pattern &mdash; keep logging and one should turn up.</div>`)
+    );
+    return;
+  }
   const label = appLabelLookup()[best.appId] || best.appId;
   const maxRate = Math.max(...best.rates.map((r) => r.rate), 0.01);
 
@@ -16835,7 +17073,7 @@ function showOnboardingFlow() {
         <div class="onboarding-lock-note"><span style="flex-shrink:0;">${rewardPiggyBankSvg()}</span><div><strong>Saving toward ${escapeHtml(rewardName)}.</strong> $${rewardGoalDollars.toLocaleString()} by ${activityDateShort(addDays(todayISO(), rewardTargetDays))} — every log chips in.</div></div>
         ` : ""}
         <div class="onboarding-lock-note">🔓 <div><strong>${freeCap} active practices, always free.</strong> Sobriety and Cycle are always free too, whatever plan you're on. Want more practices later? The Marketplace has the rest — upgrading unlocks up to 15 active at once.</div></div>
-        <div class="onboarding-lock-note"><span style="flex-shrink:0;">${graceFeatherSvg()}</span><div><strong>A missed day doesn't have to break a streak.</strong> You earn a grace day every month, plus another every time a streak hits a 30-day milestone — bank up to ${GRACE_BANK_CAP}, and one quietly covers you the next time you miss.</div></div>
+        <div class="onboarding-lock-note"><span style="flex-shrink:0;">${graceFeatherSvg()}</span><div><strong>A missed day doesn't have to break a streak.</strong> You're starting with 1 grace day already banked, plus one more every month and another every time a streak hits a 30-day milestone — bank up to ${GRACE_BANK_CAP}, and one quietly covers you the next time you miss.</div></div>
         <div class="closing-beat">You're all set. <b>Day one starts now.</b></div>
         <button type="button" class="sheet-primary-btn" id="onbFinish">Continue</button>
       `);
@@ -17231,6 +17469,7 @@ async function bootInner() {
   state.quranRevelation ||= "all";
   state.bibleOpenBooks ||= {};
   state.bibleScreen ||= "today";
+  state.bibleActiveBook ||= null;
   // Starts unset; the over/under flags just don't show anything meaningful
   // until this is filled in from the Budget tab.
   state.paycheckSettings ||= { amount: 0, frequency: "semimonthly" };
