@@ -3717,6 +3717,104 @@ function ensureBookStatuses(sheet) {
   });
 }
 
+// 2026-09 (Veronika): finishing a book now gets its own moment instead
+// of marking read being a silent checkbox flip — a quick, skippable
+// star rating, then a celebration reusing the app's existing confetti
+// pattern (see confettiBurstHtml/openMilestoneCelebration). Split into
+// two functions so the Edit Book modal — which already has its own
+// rating field — can skip straight to the celebration instead of
+// asking for a rating twice.
+function openBookFinishRating(sheetId, book, previousStatus) {
+  let picked = book.myRating || 0;
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box" style="width:300px;text-align:center;">
+        <div style="font-size:34px;line-height:1;">📖</div>
+        <div class="celebrate-title" style="margin-top:8px;">${escapeHtml(book.title)}</div>
+        ${book.author ? `<div class="celebrate-sub">by ${escapeHtml(book.author)}</div>` : ""}
+        <div class="celebrate-sub" style="margin-top:10px;">You just finished it — how was it?</div>
+        <div class="book-finish-stars" style="display:flex;justify-content:center;gap:8px;margin-top:12px;"></div>
+        <button type="button" class="sheet-primary-btn book-finish-save">Save rating</button>
+        <button type="button" class="rate-skip" style="display:block;width:100%;text-align:center;background:none;border:none;font-size:12px;font-weight:700;color:var(--muted);margin-top:10px;padding:4px;">Skip for now</button>
+        <button type="button" class="rate-undo" style="display:block;width:100%;text-align:center;background:none;border:none;font-size:11px;color:var(--muted);margin-top:2px;padding:4px;">Not read yet? Undo</button>
+      </div>
+    </div>
+  `);
+  const starsWrap = overlay.querySelector(".book-finish-stars");
+  const starEls = [1, 2, 3, 4, 5].map((n) => {
+    const s = el(`<button type="button" style="background:none;border:none;font-size:28px;line-height:1;color:var(--border);cursor:pointer;">&#9733;</button>`);
+    s.dataset.n = n;
+    starsWrap.appendChild(s);
+    return s;
+  });
+  function paintStars() {
+    starEls.forEach((s) => { s.style.color = Number(s.dataset.n) <= picked ? "var(--accent)" : "var(--border)"; });
+  }
+  paintStars();
+  starEls.forEach((s) => s.addEventListener("click", () => { picked = Number(s.dataset.n); paintStars(); }));
+
+  function proceed() {
+    overlay.remove();
+    openBookFinishCelebration(sheetId, book);
+  }
+  overlay.querySelector(".book-finish-save").addEventListener("click", () => {
+    book.myRating = picked || null;
+    scheduleSave();
+    proceed();
+  });
+  overlay.querySelector(".rate-skip").addEventListener("click", proceed);
+  overlay.querySelector(".rate-undo").addEventListener("click", () => {
+    setBookStatus(book, previousStatus);
+    scheduleSave();
+    renderBookSheet(sheetId);
+    overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+function openBookFinishCelebration(sheetId, book) {
+  const sheet = state.customSheets[sheetId];
+  const finishedCount = sheet ? sheet.items.filter((b) => b.read).length : 0;
+  // If this book is linked into a joined Books challenge, fold that
+  // challenge's own progress into the celebration — finishing a title
+  // that's part of "12 Classics" is a more meaningful frame than a
+  // generic book count when one applies.
+  let challengeInfo = null;
+  Object.keys(state.challenges || {}).forEach((cid) => {
+    if (challengeInfo) return;
+    const c = state.challenges[cid];
+    const catalog = CHALLENGE_CATALOG[cid];
+    if (!c?.joined || !catalog || catalog.practiceTemplateKey !== "books") return;
+    const linked = Object.values(c.bookIds || {}).includes(book.id);
+    if (linked) challengeInfo = { catalog, progress: challengeProgress(cid) };
+  });
+
+  const statRow = challengeInfo
+    ? `<div class="celebrate-stat"><div class="num">${challengeInfo.progress.doneCount}</div><div class="lbl">of ${challengeInfo.progress.total}</div></div>`
+    : `<div class="celebrate-stat"><div class="num">${finishedCount}</div><div class="lbl">books finished</div></div>`;
+  const ratingStat = book.myRating ? `<div class="celebrate-stat"><div class="num">${"&#9733;".repeat(book.myRating)}</div><div class="lbl">your rating</div></div>` : "";
+
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box" style="width:340px;text-align:center;">
+        <div class="milestone-celebrate-card">
+          ${confettiBurstHtml(["#C9A24A", "#B3543E", "#7C5C36", "#3E7A54", "#A9804F"], 10)}
+          <div class="celebrate-badge" style="background:var(--accent-dark);width:56px;height:56px;margin:0 auto 14px;font-size:24px;">📖</div>
+          ${challengeInfo ? `<div class="milestone-celebrate-eyebrow">${escapeHtml(challengeInfo.catalog.name)}</div>` : ""}
+          <div class="celebrate-title">${escapeHtml(book.title)}, finished!</div>
+          <div class="celebrate-sub">${book.author ? `by ${escapeHtml(book.author)} — ` : ""}nice work seeing it through.</div>
+          <div class="celebrate-stats">${statRow}${ratingStat}</div>
+        </div>
+        <button type="button" class="sheet-primary-btn book-finish-continue">Keep going</button>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".book-finish-continue").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
 function currentlyReadingBooks(sheet, excludeId) {
   return sheet.items.filter((b) => b.status === "reading" && b.id !== excludeId);
 }
@@ -3955,37 +4053,60 @@ function renderBookTodayScreen(panel, id, sheet, todayStr) {
 function renderChallengeDetail(panel, id, challengeId, todayStr) {
   const progress = challengeProgress(challengeId);
   if (!progress) return;
-  const pct = Math.round((progress.doneCount / progress.total) * 100);
-  // A fixedStartDate challenge (Dry January) joined ahead of its real
-  // start has nothing to report a pace on yet — say when it starts
-  // instead of a "finished/pace" line that doesn't mean anything before
-  // day 1 has actually arrived.
-  const paceLine = progress.notStartedYet
-    ? `Starts ${activityDateShort(progress.startDate)}`
-    : progress.paceLabel
-    ? `${progress.doneCount} of ${progress.total} finished &middot; ${progress.paceLabel}`
-    : `${progress.doneCount} of ${progress.total} finished`;
-  panel.appendChild(el(`
-    <div class="challenge-detail-card">
-      <div style="font-size:13.5px;font-weight:700;">${escapeHtml(progress.catalog.name)}</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${paceLine}</div>
-      <div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${pct}%;"></div></div>
-    </div>
-  `));
 
-  if (progress.currentIndex != null && !progress.notStartedYet) {
-    const current = progress.books[progress.currentIndex];
-    if (current && !current.done) {
-      const cadenceLabel = progress.catalog.paceUnit === "day" ? "Today" : "This month";
-      panel.appendChild(el(`
-        <div class="muted" style="font-size:12px;margin:-6px 0 14px;">${cadenceLabel}: <b style="color:var(--text);">${escapeHtml(current.title)}</b>${current.author ? ` by ${escapeHtml(current.author)}` : ""}</div>
-      `));
+  // 2026-09: same gold hero banner as the Challenges hub's Active card —
+  // this used to be a much flatter name/pace-line/thin-bar card, which
+  // made opening a challenge feel like a downgrade from the hub.
+  panel.appendChild(buildChallengeHeroCard(challengeId));
+
+  const isBooksChallenge = progress.catalog.practiceTemplateKey === "books";
+
+  // Same per-type interaction rules as before, just factored out so both
+  // a list row and the new "Up next" spotlight card can wire up the
+  // identical tap behavior instead of duplicating it.
+  function attachRowInteraction(row, b) {
+    if (!b.book) return;
+    if (isBooksChallenge) {
+      // Books' items are real library entries with their own reading
+      // log — tapping opens that, same as everywhere else on Books.
+      row.addEventListener("click", () => openReadingLogModal(id, b.book.id));
+    } else if (progress.catalog.itemKind === "range") {
+      // A Juz-range item isn't one row — it's a live summary over
+      // every ayah row the range covers (see quranRangeItem). Tapping
+      // toggles the whole Juz together, the same as tapping every one
+      // of its ayahs individually on the Qur'an sheet.
+      row.addEventListener("click", () => {
+        toggleQuranRange(b.book, todayStr);
+        scheduleSave();
+        renderCustomSheet(id);
+      });
+    } else if (progress.catalog.practiceTemplateKey === "sobriety") {
+      // Deliberately not a tap-to-toggle row: a sobriety day is only
+      // ever "done" through a real check-in (mood, an optional note —
+      // see buildSobrietyCheckInCard), never a bare checkbox someone
+      // could tap without meaning it. Only today's own row is
+      // actionable, and it goes to the real check-in flow rather than
+      // faking one from here; past/future days just show status.
+      if (b.book.date === todayStr && !b.done) {
+        row.style.cursor = "pointer";
+        row.addEventListener("click", () => activateTab("sobriety"));
+      } else {
+        row.style.cursor = "default";
+      }
+    } else {
+      // Other practices' Challenge items ARE the practice's own real
+      // rows — no separate reading log to open, so tapping just
+      // toggles it done the same way the base practice screen does.
+      row.addEventListener("click", () => {
+        b.book.done = !b.book.done;
+        if (b.book.done) b.book.completedDate = todayStr;
+        scheduleSave();
+        renderCustomSheet(id);
+      });
     }
   }
 
-  const isBooksChallenge = progress.catalog.practiceTemplateKey === "books";
-  const list = el(`<div class="card" style="padding:2px 14px;"></div>`);
-  progress.books.forEach((b, i) => {
+  function buildRow(b, i) {
     const isCurrent = i === progress.currentIndex && !b.done;
     const row = el(`
       <div class="challenge-book-row">
@@ -3996,49 +4117,74 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
         </div>
       </div>
     `);
-    if (b.book) {
-      if (isBooksChallenge) {
-        // Books' items are real library entries with their own reading
-        // log — tapping opens that, same as everywhere else on Books.
-        row.addEventListener("click", () => openReadingLogModal(id, b.book.id));
-      } else if (progress.catalog.itemKind === "range") {
-        // A Juz-range item isn't one row — it's a live summary over
-        // every ayah row the range covers (see quranRangeItem). Tapping
-        // toggles the whole Juz together, the same as tapping every one
-        // of its ayahs individually on the Qur'an sheet.
-        row.addEventListener("click", () => {
-          toggleQuranRange(b.book, todayStr);
-          scheduleSave();
-          renderCustomSheet(id);
-        });
-      } else if (progress.catalog.practiceTemplateKey === "sobriety") {
-        // Deliberately not a tap-to-toggle row: a sobriety day is only
-        // ever "done" through a real check-in (mood, an optional note —
-        // see buildSobrietyCheckInCard), never a bare checkbox someone
-        // could tap without meaning it. Only today's own row is
-        // actionable, and it goes to the real check-in flow rather than
-        // faking one from here; past/future days just show status.
-        if (b.book.date === todayStr && !b.done) {
-          row.style.cursor = "pointer";
-          row.addEventListener("click", () => activateTab("sobriety"));
-        } else {
-          row.style.cursor = "default";
-        }
-      } else {
-        // Other practices' Challenge items ARE the practice's own real
-        // rows — no separate reading log to open, so tapping just
-        // toggles it done the same way the base practice screen does.
-        row.addEventListener("click", () => {
-          b.book.done = !b.book.done;
-          if (b.book.done) b.book.completedDate = todayStr;
-          scheduleSave();
-          renderCustomSheet(id);
-        });
-      }
+    attachRowInteraction(row, b);
+    return row;
+  }
+
+  // "Up next" spotlight — currentIndex when the challenge is paced
+  // (12 Classics, Ramadan), falling back to the first unfinished item
+  // for an unpaced one (Top 12 Self-Improvement, which has no
+  // currentIndex at all). Skipped entirely before a fixedStartDate
+  // challenge has actually started, or once everything's finished.
+  let upNextIndex = -1;
+  if (!progress.notStartedYet) {
+    if (progress.currentIndex != null && progress.books[progress.currentIndex] && !progress.books[progress.currentIndex].done) {
+      upNextIndex = progress.currentIndex;
+    } else {
+      upNextIndex = progress.books.findIndex((b) => !b.done);
     }
-    list.appendChild(row);
+  }
+  if (upNextIndex !== -1) {
+    const b = progress.books[upNextIndex];
+    const cadenceLabel = progress.catalog.paceUnit === "day" ? "Today" : progress.catalog.type === "itemized-paced" ? "This month" : `Item ${upNextIndex + 1} of ${progress.total}`;
+    panel.appendChild(el(`<div class="challenge-up-next-label">Up next</div>`));
+    const upNext = el(`
+      <div class="challenge-up-next">
+        <div class="challenge-up-next-icon">${progress.catalog.icon}</div>
+        <div style="min-width:0;">
+          <div class="challenge-up-next-title">${escapeHtml(b.title)}</div>
+          ${b.author ? `<div class="challenge-up-next-author">${escapeHtml(b.author)}</div>` : ""}
+          <div class="challenge-up-next-when">${escapeHtml(cadenceLabel)}</div>
+        </div>
+        <div class="challenge-up-next-arrow">&rsaquo;</div>
+      </div>
+    `);
+    attachRowInteraction(upNext, b);
+    panel.appendChild(upNext);
+  }
+
+  // Everything else splits into a full-color "Finished" trophy case and
+  // a faded "Still ahead" list, instead of one flat numbered column —
+  // the Up Next item above is left out of both so it isn't shown twice.
+  const finished = [];
+  const upcoming = [];
+  progress.books.forEach((b, i) => {
+    if (i === upNextIndex) return;
+    if (b.done) finished.push({ b, i });
+    else upcoming.push({ b, i });
   });
-  panel.appendChild(list);
+
+  if (finished.length) {
+    panel.appendChild(el(`<div class="challenge-section-label">Finished</div>`));
+    const list = el(`<div class="card" style="padding:2px 14px;"></div>`);
+    finished.forEach(({ b, i }) => {
+      const row = buildRow(b, i);
+      row.appendChild(el(`<div class="challenge-book-badge">${escapeHtml((progress.catalog.unitLabel || "read").toUpperCase())}</div>`));
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+  }
+
+  if (upcoming.length) {
+    panel.appendChild(el(`<div class="challenge-section-label">Still ahead</div>`));
+    const list = el(`<div class="card" style="padding:2px 14px;"></div>`);
+    upcoming.forEach(({ b, i }) => {
+      const row = buildRow(b, i);
+      row.classList.add("faded");
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+  }
 
   const leaveLink = el(`<button type="button" class="challenge-leave-link">Leave this challenge</button>`);
   leaveLink.addEventListener("click", () => {
@@ -4244,20 +4390,12 @@ function renderBookShelfScreen(panel, id, sheet, todayStr) {
         setBookStatus(book, newStatus);
         scheduleSave();
         renderBookSheet(id);
-        // Undo only offered on the risky direction (marking read) — this
-        // used to flip silently with no way back (Veronika's own flag).
-        // Restores whatever the book's real previous status was (could be
-        // "reading", not just "to_read"), not a hardcoded fallback.
+        // 2026-09 (Veronika): marking a book read now opens the rate-it-
+        // or-skip + celebration flow instead of a plain undo toast — the
+        // "Not read yet? Undo" link inside that first modal covers the
+        // same misclick case the toast used to.
         if (newStatus === "read") {
-          showToast(`Marked "${book.title}" read`, {
-            actionLabel: "Undo",
-            duration: 4000,
-            onAction: () => {
-              setBookStatus(book, previousStatus);
-              scheduleSave();
-              renderBookSheet(id);
-            },
-          });
+          openBookFinishRating(id, book, previousStatus);
         }
       });
       item.querySelector(".wi-link-icon")?.addEventListener("click", (e) => e.stopPropagation());
@@ -4789,6 +4927,82 @@ function challengeProgress(challengeId) {
   return { catalog, books, doneCount, total, currentIndex, paceLabel, notStartedYet, startDate: c.startDate };
 }
 
+// unitLabel is a mix of nouns ("day") and verbs ("read" as in "6 of 12
+// read") across the catalog — blindly appending "s" turns the verb form
+// into a nonsense plural ("6 of 12 reads"), so only the known noun case
+// actually pluralizes.
+function pluralUnitLabel(unit, count) {
+  if (count === 1 || unit !== "day") return unit;
+  return `${unit}s`;
+}
+
+// The gold hero banner Veronika confirmed 2026-09 as "the standard for
+// challenges" — same treatment as the shipped Home teaser card
+// (.home-challenge-card), reused here as one shared builder so the
+// Challenges hub's Active section and the top of a challenge's own
+// detail screen always show the identical big-number/dot-row/hook
+// design instead of drifting into two different-looking progress UIs.
+function buildChallengeHeroCard(id, opts = {}) {
+  const catalog = CHALLENGE_CATALOG[id];
+  const progress = challengeProgress(id);
+  if (!catalog || !progress) return null;
+  const { doneCount, total, currentIndex, paceLabel, notStartedYet, books, startDate } = progress;
+  const pct = total ? Math.round((doneCount / total) * 100) : 0;
+  // currentIndex marks the slot the pace expects right now, which is
+  // often already finished (running ahead/on pace) — fall back to the
+  // first genuinely unfinished item so "Next up" doesn't just disappear
+  // whenever you're not literally behind.
+  let nextUpBook = null;
+  if (!notStartedYet) {
+    if (currentIndex != null && books[currentIndex] && !books[currentIndex].done) nextUpBook = books[currentIndex];
+    else nextUpBook = books.find((b) => !b.done) || null;
+  }
+  const currentTitle = nextUpBook ? nextUpBook.title : null;
+  const headline = notStartedYet
+    ? `Starts ${activityDateShort(startDate)}`
+    : currentTitle
+    ? `Next up: ${currentTitle}`
+    : "";
+  let hook;
+  if (notStartedYet) hook = `${total} ${pluralUnitLabel(catalog.unitLabel || "to go", total)} once it starts.`;
+  else if (pct >= 100) hook = "All finished — nice work.";
+  else if (paceLabel === "behind pace") hook = `${doneCount} of ${total} so far — a little behind pace.`;
+  else if (paceLabel) hook = pct >= 50 ? `More than halfway there — ${paceLabel}.` : `${doneCount} of ${total} so far — ${paceLabel}.`;
+  else hook = `${doneCount} of ${total} finished so far.`;
+
+  // A dot per item only reads as a quick-glance shape up to about a
+  // dozen — past that (a 30-day sobriety stretch) it becomes visual
+  // noise, so those fall back to the same slim fill bar used elsewhere.
+  const showDots = total > 0 && total <= 12;
+  const dotsHtml = showDots
+    ? Array.from({ length: total }).map((_, i) => {
+        const cls = i < doneCount ? "done" : i === doneCount ? "next" : "";
+        return `<div class="chd-dot ${cls}"></div>`;
+      }).join("")
+    : "";
+
+  const card = el(`
+    <div class="card home-challenge-card">
+      <div class="home-challenge-watermark">${catalog.icon}</div>
+      <div class="home-challenge-body">
+        <div class="home-challenge-eyebrow">${escapeHtml(catalog.name)}</div>
+        ${headline ? `<div class="home-challenge-headline">${escapeHtml(headline)}</div>` : ""}
+        <div class="challenge-hero-num-row">
+          <div class="challenge-hero-num">${doneCount}</div>
+          <div class="challenge-hero-num-of">of ${total} ${escapeHtml(pluralUnitLabel(catalog.unitLabel || "finished", total))}</div>
+        </div>
+        ${showDots
+          ? `<div class="challenge-hero-dots">${dotsHtml}</div>`
+          : `<div class="progress-track home-challenge-progress"><div class="progress-fill" style="width:${pct}%;"></div></div>`}
+        <div class="home-challenge-sub challenge-hero-hook">${escapeHtml(hook)}</div>
+        ${opts.linkLabel ? `<div class="home-challenge-link">${escapeHtml(opts.linkLabel)}</div>` : ""}
+      </div>
+    </div>
+  `);
+  if (opts.onClick) card.addEventListener("click", opts.onClick);
+  return card;
+}
+
 function openBookItemModal(sheetId, itemId) {
   const sheet = state.customSheets[sheetId];
   const isNew = !itemId;
@@ -4894,6 +5108,7 @@ function openBookItemModal(sheetId, itemId) {
     const newStatus = overlay.querySelector(".bk-f-status").value;
     if (!updated.title) return;
     let target;
+    const previousStatus = isNew ? "to_read" : item.status;
     if (isNew) {
       target = { id: nextId(), status: "to_read", currentChapter: 0, ...updated };
       sheet.items.push(target);
@@ -4914,6 +5129,12 @@ function openBookItemModal(sheetId, itemId) {
     overlay.remove();
     renderBookSheet(sheetId);
     if (bumped) showToast(`Moved "${bumped.title}" back to To Read`);
+    // 2026-09 (Veronika): same finish celebration as the shelf's quick
+    // checkbox — this form already has its own rating field, so there's
+    // no need to ask again; straight to the celebration.
+    if (newStatus === "read" && previousStatus !== "read") {
+      openBookFinishCelebration(sheetId, target);
+    }
   });
 
   const deleteBtn = overlay.querySelector(".bk-delete");
@@ -12386,6 +12607,129 @@ function computeRewardProgress(prize, today) {
   return { enabled, linked, goal, earned, pct, reached, realGrowth, targetDate };
 }
 
+// 2026-09 (Veronika): "part of my image might be cropped off" — every
+// reward photo used to render at a hardcoded center crop no matter what
+// was actually in the shot. Stored once per goal (object-fit/background
+// percentages are equivalent here), read by every surface that shows the
+// photo, and set for real via openRewardPhotoPositionModal's drag tool.
+function rewardPhotoPos(prize) {
+  const p = prize?.itemPhotoPosition;
+  return { x: p && typeof p.x === "number" ? p.x : 50, y: p && typeof p.y === "number" ? p.y : 50 };
+}
+function rewardPhotoObjectPositionStyle(prize) {
+  const pos = rewardPhotoPos(prize);
+  return `object-position:${pos.x}% ${pos.y}%;`;
+}
+function rewardPhotoBgPositionStyle(prize) {
+  const pos = rewardPhotoPos(prize);
+  return `background-position:${pos.x}% ${pos.y}%;`;
+}
+
+// The drag-to-position tool. Frame is a fixed 16:11 box — the same shape
+// as the Home gold banner, the most prominent surface the photo shows on
+// — so what you see here while dragging IS the real crop, not a stand-in
+// guide shape. Dragging the photo itself (not a separate crop rectangle)
+// keeps the interaction to one direct-manipulation gesture: drag left to
+// reveal more of the right side, drag up to reveal more of the bottom,
+// exactly like repositioning a cover photo.
+function openRewardPhotoPositionModal(prize, onDone) {
+  const start = rewardPhotoPos(prize);
+  let curX = start.x;
+  let curY = start.y;
+
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box" style="width:320px;">
+        <div class="info-modal-header">
+          <h3>Position your photo</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="muted" style="font-size:12px;margin:-4px 0 12px;">Drag the photo — this frame is exactly what shows on Home.</div>
+        <div class="rp-frame">
+          <img class="rp-drag-img" src="${prize.itemPhoto}" style="object-position:${curX}% ${curY}%;" draggable="false" />
+        </div>
+        <div class="rp-frame-label">This is the Home banner's shape</div>
+        <button type="button" class="sheet-primary-btn rp-save" style="margin-top:14px;">Save position</button>
+      </div>
+    </div>
+  `);
+  const frame = overlay.querySelector(".rp-frame");
+  const img = overlay.querySelector(".rp-drag-img");
+
+  let overflowX = 0;
+  let overflowY = 0;
+  function measure() {
+    const rect = frame.getBoundingClientRect();
+    const natW = img.naturalWidth || rect.width;
+    const natH = img.naturalHeight || rect.height;
+    const scale = Math.max(rect.width / natW, rect.height / natH);
+    overflowX = Math.max(0, natW * scale - rect.width);
+    overflowY = Math.max(0, natH * scale - rect.height);
+  }
+  if (img.complete && img.naturalWidth) measure();
+  else img.addEventListener("load", measure);
+
+  function pointerXY(e) {
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  let dragging = false;
+  let startPointer = { x: 0, y: 0 };
+  let startPos = { x: curX, y: curY };
+
+  function onDown(e) {
+    dragging = true;
+    img.style.cursor = "grabbing";
+    startPointer = pointerXY(e);
+    startPos = { x: curX, y: curY };
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const p = pointerXY(e);
+    const dx = p.x - startPointer.x;
+    const dy = p.y - startPointer.y;
+    const pctPerPxX = overflowX > 0 ? 100 / overflowX : 0;
+    const pctPerPxY = overflowY > 0 ? 100 / overflowY : 0;
+    curX = Math.max(0, Math.min(100, startPos.x - dx * pctPerPxX));
+    curY = Math.max(0, Math.min(100, startPos.y - dy * pctPerPxY));
+    img.style.objectPosition = `${curX}% ${curY}%`;
+    e.preventDefault();
+  }
+  function onUp() {
+    dragging = false;
+    img.style.cursor = "grab";
+  }
+
+  img.addEventListener("mousedown", onDown);
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+  img.addEventListener("touchstart", onDown, { passive: false });
+  window.addEventListener("touchmove", onMove, { passive: false });
+  window.addEventListener("touchend", onUp);
+
+  function cleanupListeners() {
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+    window.removeEventListener("touchmove", onMove);
+    window.removeEventListener("touchend", onUp);
+  }
+  function close() {
+    cleanupListeners();
+    overlay.remove();
+  }
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector(".rp-save").addEventListener("click", () => {
+    prize.itemPhotoPosition = { x: curX, y: curY };
+    cleanupListeners();
+    overlay.remove();
+    onDone?.();
+  });
+  document.body.appendChild(overlay);
+}
+
 // Multiple concurrent reward goals (2026-09, Veronika's call): a goal can
 // optionally be narrowed to specific practices — "only Workout logs fund
 // this one" — instead of any log counting. `practiceIds` is null/empty for
@@ -12560,7 +12904,7 @@ function openRewardClaimCelebration(prize, today, done) {
       <div class="modal-overlay" style="position:absolute;">
         <div class="modal-box" style="max-width:340px;text-align:center;">
           <div class="milestone-celebrate-card">
-            <div class="reward-claim-photo"${prize.itemPhoto ? ` style="background-image:url('${prize.itemPhoto}');"` : ""}>${prize.itemPhoto ? "" : "🏆"}</div>
+            <div class="reward-claim-photo"${prize.itemPhoto ? ` style="background-image:url('${prize.itemPhoto}');${rewardPhotoBgPositionStyle(prize)}"` : ""}>${prize.itemPhoto ? "" : "🏆"}</div>
             <div class="celebrate-title">You earned it!</div>
             <div class="celebrate-sub">${escapeHtml(itemLabel)} is fully funded &mdash; ${days} day${days === 1 ? "" : "s"} of showing up made this happen.</div>
             <div class="celebrate-stats">
@@ -12674,7 +13018,7 @@ function openPastRewardGoalsModal() {
   [...state.pastRewardGoals].reverse().forEach((g) => {
     list.appendChild(el(`
       <div class="reward-goal-row">
-        <div class="reward-goal-row-photo"${g.itemPhoto ? ` style="background-image:url('${g.itemPhoto}');"` : ""}>${g.itemPhoto ? "" : "🏆"}</div>
+        <div class="reward-goal-row-photo"${g.itemPhoto ? ` style="background-image:url('${g.itemPhoto}');${rewardPhotoBgPositionStyle(g)}"` : ""}>${g.itemPhoto ? "" : "🏆"}</div>
         <div class="reward-goal-row-body">
           <div class="reward-goal-row-name">${escapeHtml(g.itemName || "Claimed goal")}</div>
           <div class="reward-goal-row-fig">$${Math.round(g.depositGoal)} &mdash; claimed ${activityDateShort(g.claimedDate)}</div>
@@ -13295,9 +13639,15 @@ function buildRewardGoalSlide(prize, today, isColdOpen) {
   const stats = computeRewardProgress(prize, today);
   const name = prize.itemName || "your reward";
 
-  const banner = el(`<div class="home-reward-banner${stats.reached ? " reached" : ""}"></div>`);
+  // 2026-09 (Veronika): gold card matching .home-challenge-card, photo
+  // inset with its own margin instead of full-bleed with a text scrim —
+  // the name/progress get their own space below so they're never
+  // fighting the photo for contrast, and the whole thing reads as the
+  // app's one "this is special" identity instead of a plain photo tile.
+  const card = el(`<div class="home-reward-gold-card${stats.reached ? " reached" : ""}"></div>`);
+  const banner = el(`<div class="home-reward-banner"></div>`);
   if (prize.itemPhoto) {
-    banner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
+    banner.appendChild(el(`<img src="${prize.itemPhoto}" style="${rewardPhotoObjectPositionStyle(prize)}" />`));
   } else {
     banner.appendChild(el(`
       <div class="home-reward-banner-empty">
@@ -13305,16 +13655,20 @@ function buildRewardGoalSlide(prize, today, isColdOpen) {
       </div>
     `));
   }
-  banner.appendChild(el(`
-    <div class="home-reward-scrim">
-      <div class="home-reward-name">${escapeHtml(name)}${stats.reached ? " — ready to claim!" : ""}</div>
-      <div class="home-reward-sub">${stats.reached ? "Tap to claim" : `Targeting ${stats.targetDate}`}</div>
+  banner.appendChild(el(`<div class="home-reward-badge${stats.reached ? " reached" : ""}">${stats.reached ? "✓ FUNDED" : `${stats.pct}% FUNDED`}</div>`));
+  card.appendChild(banner);
+  const body = el(`
+    <div class="home-reward-body">
+      <div class="home-reward-eyebrow">Your reward</div>
+      <div class="home-reward-name">${escapeHtml(name)}</div>
+      <div class="home-reward-sub">${stats.reached ? "Ready to claim — tap to open it" : `Targeting ${stats.targetDate}`}</div>
     </div>
-  `));
-  banner.addEventListener("click", () => openYourRewardScreen(prize.id));
+  `);
+  card.appendChild(body);
+  card.addEventListener("click", () => openYourRewardScreen(prize.id));
 
   const slide = el(`<div class="home-reward-slide"></div>`);
-  slide.appendChild(banner);
+  slide.appendChild(card);
 
   // Counts up from the last-seen figure/bar instead of snapping, per goal
   // (keyed by goal id) — same two triggers as before multi-goal existed:
@@ -13343,7 +13697,7 @@ function buildRewardGoalSlide(prize, today, isColdOpen) {
       </div></div>
     </div>
   `);
-  slide.appendChild(progress);
+  body.appendChild(progress);
 
   if (fromEarned !== stats.earned || fromPct !== stats.pct) {
     const figureEl = progress.querySelector(".home-reward-progress-figure");
@@ -13907,7 +14261,7 @@ function openRewardGoalsListScreen() {
       const stats = computeRewardProgress(g, todayISO());
       const row = el(`
         <div class="reward-goal-row">
-          <div class="reward-goal-row-photo"${g.itemPhoto ? ` style="background-image:url('${g.itemPhoto}');"` : ""}>${g.itemPhoto ? "" : rewardCupcakeBadgeSvg()}</div>
+          <div class="reward-goal-row-photo"${g.itemPhoto ? ` style="background-image:url('${g.itemPhoto}');${rewardPhotoBgPositionStyle(g)}"` : ""}>${g.itemPhoto ? "" : rewardCupcakeBadgeSvg()}</div>
           <div class="reward-goal-row-body">
             <div class="reward-goal-row-name">${escapeHtml(g.itemName || "Not named yet")}</div>
             <div class="reward-goal-row-bar"><div class="reward-goal-row-fill${stats.reached ? " reached" : ""}" style="width:${stats.pct}%;"></div></div>
@@ -13998,7 +14352,7 @@ function openRewardGoalDetailScreen(prize) {
 
     const banner = el(`<div class="home-hero-prize-banner"></div>`);
     if (prize.itemPhoto) {
-      banner.appendChild(el(`<img src="${prize.itemPhoto}" />`));
+      banner.appendChild(el(`<img src="${prize.itemPhoto}" style="${rewardPhotoObjectPositionStyle(prize)}" />`));
     } else {
       banner.appendChild(el(`<div class="home-hero-prize-banner-noimg">No photo yet — tap to add one</div>`));
     }
@@ -14010,14 +14364,23 @@ function openRewardGoalDetailScreen(prize) {
     `));
     const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
     banner.appendChild(photoInput);
-    banner.addEventListener("click", (e) => { if (e.target !== editBtn && !editBtn.contains(e.target)) photoInput.click(); });
+    banner.addEventListener("click", (e) => {
+      if (e.target === editBtn || editBtn.contains(e.target)) return;
+      if (e.target === repositionBtn || repositionBtn?.contains(e.target)) return;
+      photoInput.click();
+    });
     photoInput.addEventListener("change", () => {
       const file = photoInput.files[0];
       if (!file) return;
       resizeImageToDataUrl(file).then((dataUrl) => {
         prize.itemPhoto = dataUrl;
+        prize.itemPhotoPosition = { x: 50, y: 50 };
         scheduleSave();
         render();
+        // Guide the crop right away instead of leaving a guessed center
+        // position — this is the moment "part of my photo got cropped
+        // off" actually happens if left unaddressed.
+        openRewardPhotoPositionModal(prize, () => { scheduleSave(); render(); });
       });
     });
     const editBtn = el(`
@@ -14027,6 +14390,18 @@ function openRewardGoalDetailScreen(prize) {
     `);
     editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditRewardModal(prize, render); });
     banner.appendChild(editBtn);
+    // Reposition an already-set photo any time, not just right after
+    // uploading it.
+    const repositionBtn = prize.itemPhoto
+      ? el(`<button type="button" class="home-hero-prize-reposition-btn">Reposition</button>`)
+      : null;
+    if (repositionBtn) {
+      repositionBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openRewardPhotoPositionModal(prize, () => { scheduleSave(); render(); });
+      });
+      banner.appendChild(repositionBtn);
+    }
     box.appendChild(banner);
 
     // Primary progress — earned by logging, not by the bank balance.
@@ -14582,29 +14957,12 @@ function renderChallengesPage() {
   panel.appendChild(el(`<h2 class="section-title serif">Challenges</h2>`));
   panel.appendChild(el(`<div class="muted" style="font-size:12.5px;margin:-8px 0 16px;">What you're on, and what's out there</div>`));
 
+  // 2026-09: the Active card now gets the same gold hero banner as the
+  // Home teaser and the challenge's own detail screen — Veronika's call
+  // that the gold banner is "the standard for challenges" everywhere it
+  // shows progress, not a one-off Home treatment.
   function progressCard(id) {
-    const catalog = CHALLENGE_CATALOG[id];
-    const progress = challengeProgress(id);
-    const pct = Math.round((progress.doneCount / progress.total) * 100);
-    const unit = catalog.unitLabel || "finished";
-    const paceLine = progress.paceLabel
-      ? `${catalog.practiceLabel} &middot; ${progress.doneCount} of ${progress.total} ${unit} &middot; ${progress.paceLabel}`
-      : `${catalog.practiceLabel} &middot; ${progress.doneCount} of ${progress.total} ${unit}`;
-    const card = el(`
-      <div class="card challenge-progress-card">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <div class="challenge-icon-bare">${catalog.icon}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13.5px;font-weight:700;color:var(--text);">${escapeHtml(catalog.name)}</div>
-            <div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${paceLine}</div>
-          </div>
-          <div style="color:var(--muted);font-size:15px;">&rsaquo;</div>
-        </div>
-        <div class="progress-track" style="margin-top:10px;background:rgba(169,128,79,.2);"><div class="progress-fill" style="width:${pct}%;"></div></div>
-      </div>
-    `);
-    card.addEventListener("click", () => openChallengeFromHome(id));
-    return card;
+    return buildChallengeHeroCard(id, { linkLabel: "View challenge &rsaquo;", onClick: () => openChallengeFromHome(id) });
   }
 
   function joinCard(id) {
