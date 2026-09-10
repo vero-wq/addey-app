@@ -2611,6 +2611,15 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
    plain tab switch back to Home. Greeting and hero fade in first, apps
    grid tiles stagger in just after. The reward bar's own draw-in is a JS
    width tween (renderHomeRewardBanner), not CSS, so it isn't here. */
+/* home-hero-wrap: replaces the old .card shell that used to wrap the
+   grace banner / reward gold card / link line — Veronika: "I just don't
+   think the cream box is necessary." Those pieces already carry their
+   own background/border/shadow, so this wrapper is layout-only (cold-open
+   stagger timing) and adds none of its own. These two rules take over
+   the top/bottom spacing the removed .card's padding used to provide,
+   regardless of which child ends up first/last. */
+.home-hero-wrap > *:first-child { margin-top: 14px; }
+.home-hero-wrap > *:last-child { margin-bottom: 14px; }
 .home-greeting-cold, .home-hero-cold, .home-app-tile-cold {
   opacity: 0; transform: translateY(8px); animation: home-cold-in .5s ease-out forwards;
 }
