@@ -502,8 +502,18 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .new-list-tile-label { font-size: 13px; font-weight: 700; color: var(--accent-dark); }
 
 .list-detail-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.list-back-btn, .list-delete-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px; flex-shrink: 0; }
+.list-delete-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px; flex-shrink: 0; }
 .list-detail-title { flex: 1; cursor: pointer; }
+
+/* Shared "back to <parent>" control — icon + destination name, always
+   top-left, first element in its screen. Standardized 2026-09-10 to
+   replace three drifted-apart versions of the same idea (an icon-only
+   button on Lists, a text-chevron link on Your Shelf/Challenges, and a
+   conditional text link on Reward Goal detail). See backLinkBtn() in
+   app.js — every drill-in screen should use it, not a one-off button. */
+.nav-back-btn { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--accent-dark); background: none; border: none; font-family: inherit; padding: 2px 0; margin-bottom: 10px; cursor: pointer; flex-shrink: 0; }
+.nav-back-btn svg { flex-shrink: 0; width: 16px; height: 16px; }
+.list-detail-topbar .nav-back-btn { margin-bottom: 0; }
 
 .field-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
 .field-label:first-of-type { margin-top: 4px; }
@@ -1183,7 +1193,7 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .shelf-link-title { font-size: 13.5px; font-weight: 700; color: var(--text); }
 .shelf-link-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 .shelf-link-chevron { color: var(--muted); font-size: 15px; flex-shrink: 0; }
-.shelf-back-link { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--accent-dark); background: none; border: none; font-family: inherit; padding: 0; margin-bottom: 10px; cursor: pointer; }
+/* .shelf-back-link retired 2026-09-10 — replaced by the shared .nav-back-btn */
 
 /* 2026-09 Challenges (Veronika) — first real build. Trophy + a warm gold
    tint (rgba(169,128,79,...) alongside the existing --accent tokens) is
@@ -2011,7 +2021,7 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 
 /* Goal detail screen's "back to the list" link — only shown when more
    than one goal is active. */
-.reward-back-link { display: inline-block; background: none; border: none; padding: 0; margin-bottom: 10px; font-size: 12.5px; font-weight: 700; color: var(--accent-dark); cursor: pointer; font-family: inherit; }
+/* .reward-back-link retired 2026-09-10 — replaced by the shared .nav-back-btn */
 
 /* Edit-goal modal: which practices count toward this goal. */
 .reward-practice-hint { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-bottom: 8px; }
