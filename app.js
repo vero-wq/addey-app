@@ -32,7 +32,7 @@ const BUILTIN_SHEET_ORDER = ["bible", "sleep", "wellness"];
 const SHEET_GALLERY = [
   {
     key: "workout",
-    label: "Workout Log",
+    label: "Workout",
     icon: `<rect x="1.5" y="9" width="3" height="6" rx="1"></rect><rect x="19.5" y="9" width="3" height="6" rx="1"></rect><rect x="5.5" y="7" width="2.5" height="10" rx="1"></rect><rect x="16" y="7" width="2.5" height="10" rx="1"></rect><line x1="8" y1="12" x2="16" y2="12"></line>`,
     desc: "Track sets, weight, and how your training sessions are going.",
     starterItems: ["Upper body — Monday", "Lower body — Wednesday", "Full body — Friday"],
@@ -40,7 +40,7 @@ const SHEET_GALLERY = [
   },
   {
     key: "activity",
-    label: "Activity Log",
+    label: "Activity",
     icon: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>`,
     // 2026-09 (Veronika): dropped the "Workout Log's sibling for
     // Movement" line — the six-pillar model (Movement included) is
@@ -5346,7 +5346,7 @@ function computeMovementMix(sheet, today) {
     const goodDays = flattenWorkoutDays(other).slice(-WINDOW).filter((d) => d.tone === "good").length;
     if (goodDays) {
       const otherSheet = state.sheets.find((s) => s.id === sheetId);
-      const label = `Strength (${otherSheet ? sheetLabel(otherSheet) : "Workout Log"})`;
+      const label = `Strength (${otherSheet ? sheetLabel(otherSheet) : "Workout"})`;
       counts.set(label, (counts.get(label) || 0) + goodDays);
     }
   });
@@ -11083,6 +11083,23 @@ function buildTrendProgressCard(icon, label, current, target, subtext) {
     </div>
   `);
 }
+// 2026-09-10 (Veronika): a Trends card can be "empty" two different ways —
+// not enough volume logged yet (buildTrendProgressCard's X-of-Y dots), or
+// enough volume but no correlation cleared its own threshold this window.
+// The second case used to fall back to a bare italic sentence with no
+// icon/label, which read as a broken/unstyled leftover sitting right next
+// to the dashed sage cards above it — same underlying message ("nothing
+// yet, keep logging"), so it gets the same dashed-card treatment, just
+// without a countdown since there's no target count to show progress
+// against.
+function buildTrendWatchingCard(icon, label, message) {
+  return el(`
+    <div class="trend-progress-card">
+      <div class="tpc-head"><span class="tpc-icon">${icon}</span><span class="tpc-label">${escapeHtml(label)}</span></div>
+      <div class="tpc-sub">${message}</div>
+    </div>
+  `);
+}
 function renderSleepPatternsCard(section, today) {
   const trend = computeSleepTrend();
   if (!trend) {
@@ -11104,7 +11121,11 @@ function renderSleepPatternsCard(section, today) {
   // a real, if less common, case worth a word rather than nothing.
   if (!trend.insights.length) {
     section.appendChild(
-      el(`<div class="trend-pattern-note" style="margin-top:10px;">Not enough variety in your recent nights yet to spot a pattern (caffeine, movement, mood) &mdash; keep logging and one should turn up.</div>`)
+      buildTrendWatchingCard(
+        "🌙",
+        "Sleep patterns",
+        "Not enough variety in your recent nights yet to spot a pattern (caffeine, movement, mood) &mdash; keep logging and one should turn up."
+      )
     );
     return;
   }
@@ -11762,7 +11783,13 @@ function renderCooccurrenceCard(panel, today) {
     // pattern clearing COOCCUR_MIN_DAYS/COOCCUR_MIN_DIFF read as Trends
     // being broken or empty rather than "not enough data yet," which is
     // what was actually going on. One honest line instead of nothing.
-    panel.appendChild(el(`<div class="trend-pattern-note" style="margin-top:2px;">Not enough overlapping history yet to spot a pattern between Practices &mdash; check back once you've logged more across a few of them.</div>`));
+    panel.appendChild(
+      buildTrendWatchingCard(
+        "🔗",
+        "Patterns",
+        "Not enough overlapping history yet to spot a pattern between Practices &mdash; check back once you've logged more across a few of them."
+      )
+    );
     return;
   }
 
@@ -14976,7 +15003,11 @@ function renderCyclePhaseCompletionCard(panel, today, restrictAppId) {
     // day minimum yet (needs a spread of logged days across at least 2
     // phases) — real progress, just not a clean single countdown to show.
     panel.appendChild(
-      el(`<div class="trend-pattern-note" style="margin-top:10px;">Not enough days logged across your cycle phases yet to spot a completion pattern &mdash; keep logging and one should turn up.</div>`)
+      buildTrendWatchingCard(
+        "🌸",
+        "Completion by cycle phase",
+        "Not enough days logged across your cycle phases yet to spot a completion pattern &mdash; keep logging and one should turn up."
+      )
     );
     return;
   }
@@ -17594,6 +17625,19 @@ async function bootInner() {
       if (cs.label === "Quran Plan") cs.label = "Quran";
     });
     state.sheetLabelShortenV3Applied = true;
+  }
+  // One-time (v4): "Workout Log" -> "Workout", "Activity Log" -> "Activity"
+  // (Veronika's call, 2026-09-10) — "Log" was redundant on every Practice
+  // label (Bible, Sleep, Books, Sobriety etc. never carry it either), and
+  // dropping it also buys back a little room on the bottom bar. Same rule
+  // as v1-v3: only a sheet still carrying the old default label is
+  // touched; a sheet she's since renamed herself is left alone.
+  if (!state.sheetLabelShortenV4Applied) {
+    Object.values(state.customSheets).forEach((cs) => {
+      if (cs.label === "Workout Log") cs.label = "Workout";
+      if (cs.label === "Activity Log") cs.label = "Activity";
+    });
+    state.sheetLabelShortenV4Applied = true;
   }
   // Pillar Mapping — which spaces auto-complete each pillar. Defaults to
   // Bible for Spiritual anchor once, the first time someone has a Bible
