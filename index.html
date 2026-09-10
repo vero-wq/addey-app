@@ -1303,6 +1303,34 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .home-challenge-progress .progress-fill { background: #7A4E1E; }
 .home-challenge-link { margin-top: 12px; font-size: 12px; font-weight: 700; color: #6B3F14; }
 
+/* Challenge hero banner, 2026-09: the same gold card above is now the
+   standard treatment for a challenge's progress everywhere it shows up
+   (Challenges hub Active section, and the top of the challenge detail
+   screen) — not just the Home teaser. buildChallengeHeroCard() builds
+   this; see renderChallengesPage() and renderChallengeDetail(). */
+.challenge-hero-num-row { display: flex; align-items: baseline; gap: 6px; margin-top: 10px; position: relative; }
+.challenge-hero-num { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 32px; font-weight: 700; color: #3B2C10; line-height: 1; }
+.challenge-hero-num-of { font-size: 12.5px; color: #6B4A22; font-weight: 600; }
+.challenge-hero-dots { display: flex; gap: 4px; margin-top: 11px; flex-wrap: wrap; position: relative; }
+.chd-dot { width: 14px; height: 14px; border-radius: 4px; background: rgba(255,255,255,.4); border: 1px solid rgba(107,74,34,.28); }
+.chd-dot.done { background: #7C5C1E; border-color: #7C5C1E; }
+.chd-dot.next { background: #fff; border: 1.5px solid #7C5C1E; }
+.challenge-hero-hook { margin-top: 11px; font-weight: 700; }
+
+/* "Up next" spotlight card + Finished/Still ahead grouping inside a
+   challenge's detail screen — same 2026-09 pass. */
+.challenge-up-next-label { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 4px 2px 8px; }
+.challenge-up-next { display: flex; gap: 13px; align-items: center; background: var(--surface); border: 1.5px solid var(--accent); border-radius: 16px; padding: 13px; margin-bottom: 20px; box-shadow: 0 4px 14px rgba(169,128,79,.16); cursor: pointer; }
+.challenge-up-next-icon { font-size: 32px; line-height: 1; width: 42px; text-align: center; flex-shrink: 0; }
+.challenge-up-next-title { font-size: 14px; font-weight: 800; color: var(--text); }
+.challenge-up-next-author { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.challenge-up-next-when { font-size: 11px; color: var(--accent-dark); font-weight: 700; margin-top: 6px; }
+.challenge-up-next-arrow { margin-left: auto; color: var(--muted); font-size: 16px; flex-shrink: 0; }
+.challenge-section-label { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 16px 2px 6px; display: flex; align-items: center; gap: 6px; }
+.challenge-section-label::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.challenge-book-row.faded { opacity: .55; }
+.challenge-book-badge { margin-left: auto; font-size: 10px; font-weight: 800; padding: 3px 7px; border-radius: 6px; flex-shrink: 0; background: rgba(85,105,74,.14); color: var(--good); }
+
 /* Challenge icons, de-boxed 2026-09: a colored square behind an emoji
    read as a third, competing icon language against the nav bar's line
    icons and the Milestones medallions — so every Challenge icon (here
@@ -1989,6 +2017,24 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .home-hero-prize-scrim { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 14px; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(30,20,10,0.55) 100%); }
 .home-hero-prize-name { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 17px; color: #fff; }
 .home-hero-prize-sub { font-size: 12px; color: #F3E8D4; margin-top: 1px; }
+/* 2026-09 (Veronika): "the crop might be cutting my photo off" — a small
+   reposition affordance sits beside the edit pencil whenever a photo
+   exists, opening openRewardPhotoPositionModal's drag tool instead of
+   leaving object-position stuck at a guessed center crop. */
+.home-hero-prize-reposition-btn {
+  position: absolute; top: 10px; right: 50px; height: 32px; padding: 0 12px; border-radius: 100px;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+  background: rgba(34, 30, 26, 0.45); border: none; color: #FFFFFF; cursor: pointer; backdrop-filter: blur(2px);
+}
+.home-hero-prize-reposition-btn:hover { background: rgba(34, 30, 26, 0.65); }
+
+/* The drag-to-position tool itself: a fixed 16:11 frame — the same
+   shape as the Home gold banner, the most prominent place the photo
+   shows — with the photo dragged directly underneath it, so the frame
+   IS the true preview rather than a guess. */
+.rp-frame { position: relative; width: 100%; aspect-ratio: 16 / 11; border-radius: 14px; overflow: hidden; background: var(--border); border: 2px dashed var(--accent); }
+.rp-drag-img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: grab; user-select: none; -webkit-user-drag: none; touch-action: none; }
+.rp-frame-label { text-align: center; font-size: 10.5px; font-weight: 700; color: var(--muted); margin-top: 8px; }
 .home-hero-pillars-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
 .home-hero-pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
@@ -2023,21 +2069,32 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .reward-pill-chevron { color: var(--muted); flex-shrink: 0; }
 .reward-pill.needs-link { border-style: dashed; }
 .reward-pill.needs-link .reward-pill-name { color: var(--accent-dark); }
-.home-reward-banner { position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 14px; overflow: hidden; margin-top: 14px; cursor: pointer; background: linear-gradient(135deg, #DCC9A6, #C7A876); border: 1px solid var(--border); }
-.home-reward-banner.reached { border-color: var(--good); }
+/* 2026-09 (Veronika): the reward banner now gets the exact same gold
+   treatment as .home-challenge-card — her call that gold is the app's
+   one "this is special" identity and the reward (arguably the biggest
+   payoff in the app) should carry it too, rather than inventing its own
+   color. Structure changed from a full-bleed photo+scrim tile to an
+   inset photo with its own body section below, so name/progress never
+   fight the photo for contrast regardless of what's in it. */
+.home-reward-gold-card { position: relative; border-radius: 20px; overflow: hidden; background: linear-gradient(135deg, #F4E1B8, #CE9F5F 65%, #B37F3E); box-shadow: 0 8px 24px rgba(139,98,45,.28); margin-top: 14px; cursor: pointer; }
+.home-reward-gold-card.reached { box-shadow: 0 8px 24px rgba(62,122,84,.28); }
+.home-reward-banner { position: relative; margin: 10px 10px 0; aspect-ratio: 16 / 11; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(74,48,22,.25); }
 .home-reward-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .home-reward-banner-empty { display: flex; align-items: center; justify-content: center; height: 100%; background: radial-gradient(circle at 35% 30%, #EFE0C4, #C7A876 60%, #8E6B3E 100%); }
 .home-reward-banner-empty svg { width: 40px; height: 40px; }
-.home-reward-scrim { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 14px; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(30,20,10,.6) 100%); }
-.home-reward-name { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 17px; color: #fff; }
-.home-reward-sub { font-size: 12px; color: #F3E8D4; margin-top: 1px; }
-.home-reward-progress { margin-top: 10px; }
+.home-reward-badge { position: absolute; top: 10px; left: 10px; background: rgba(30,20,10,.5); color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; padding: 5px 10px; border-radius: 100px; }
+.home-reward-badge.reached { background: #3E7A54; }
+.home-reward-body { position: relative; padding: 14px 16px 16px; }
+.home-reward-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #7C5C22; }
+.home-reward-name { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 18px; font-weight: 800; color: #4A3016; margin-top: 3px; }
+.home-reward-sub { font-size: 12px; color: #6B4A22; margin-top: 11px; font-weight: 700; }
+.home-reward-progress { margin-top: 12px; }
 .home-reward-progress-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-.home-reward-progress-label { font-size: 11.5px; font-weight: 700; }
-.home-reward-progress-figure { font-size: 11.5px; font-weight: 700; color: var(--accent-dark); }
-.home-reward-bar { position: relative; height: 8px; border-radius: 5px; background: var(--border); }
-.home-reward-fill { height: 100%; border-radius: 5px; background: var(--accent-dark); }
-.home-reward-fill.reached { background: var(--good); }
+.home-reward-progress-label { font-size: 11.5px; font-weight: 700; color: #6B4A22; }
+.home-reward-progress-figure { font-size: 11.5px; font-weight: 700; color: #4A3016; }
+.home-reward-bar { position: relative; height: 9px; border-radius: 5px; background: rgba(255,255,255,.45); }
+.home-reward-fill { height: 100%; border-radius: 5px; background: #7A4E1E; }
+.home-reward-fill.reached { background: #3E7A54; }
 /* 2026-09 (Veronika): quarter-mark notches so the bar reads as a real
    scale, not just a blob of color creeping right — three 1px ticks at
    25/50/75%, painted as a pseudo-element so they sit visibly on top of
