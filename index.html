@@ -209,6 +209,33 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .grace-earn-row b { color: var(--text); }
 .account-btn-sub { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 
+/* Manual "use a grace day" flow (openUseGraceDayModal / Veronika,
+   2026-09-10) — the button on the Grace Days screen, and the plain
+   one-at-a-time Practice list it opens. Honey palette on the button to
+   match the rest of grace's visual identity (the pill, the "covered
+   you" pop-up); the list rows themselves stay neutral/plain like any
+   other settings list. */
+.use-grace-day-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  background: linear-gradient(135deg, #F3E7D2, #EFE0C4); border: 1px solid #E3D1AC;
+  color: #6B5628; font-weight: 700; font-size: 13px; padding: 13px; border-radius: 12px; cursor: pointer; font-family: inherit;
+}
+.use-grace-day-btn svg { width: 16px; height: 16px; }
+.grace-use-row {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  background: none; border: none; border-top: 1px solid var(--border); padding: 12px 2px; cursor: pointer; font-family: inherit; color: var(--text);
+}
+.grace-use-row:first-child { border-top: none; }
+.grace-use-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--accent-dark); }
+.grace-use-icon svg { width: 17px; height: 17px; }
+.grace-use-text { flex: 1; min-width: 0; }
+.grace-use-name { font-size: 13.5px; font-weight: 700; }
+.grace-use-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.grace-use-chev { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; transform: rotate(180deg); }
+.grace-use-chev svg { width: 100%; height: 100%; }
+.grace-use-row.disabled { opacity: .45; cursor: default; }
+.grace-use-row.disabled .grace-use-sub { color: #55694A; font-weight: 600; }
+
 /* Refer a friend (c028) — the code itself reads like a coupon (dashed
    border, letterspaced monospace) so it's obviously a "thing to copy",
    distinct from the plain-text redeem input just below it. */
@@ -999,12 +1026,6 @@ td input:hover { border-color: var(--border); }
 .trend-insight-banner { background: linear-gradient(135deg, #F3E7D2, #EFE0C4); border: 1px solid #E3D1AC; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; display: flex; gap: 12px; align-items: flex-start; }
 html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(135deg, #3A3324, #2E2A1E); border-color: #4A4230; }
 .trend-insight-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid #E3D1AC; color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.grace-banner .grace-icon {
-  width: 40px; height: 40px; border: none; color: #fff;
-  background: linear-gradient(145deg, #DCC9A6, #B98F58);
-  box-shadow: 0 3px 8px rgba(124,92,54,.35), inset 0 1px 1px rgba(255,255,255,.4);
-}
-.grace-banner .grace-icon svg { width: 19px; height: 19px; }
 .trend-insight-text { font-size: 13.5px; line-height: 1.45; padding-top: 3px; }
 .trend-insight-text strong { color: var(--accent-dark); }
 .insight-hero-eyebrow { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-dark); margin-bottom: 3px; }
@@ -2508,6 +2529,42 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 @media (prefers-reduced-motion: reduce) {
   .milestone-celebrate-card { animation: none; }
   .milestone-confetti { display: none; }
+}
+
+/* "A grace day covered you" pop-up (openGraceCoveredCelebration) — a
+   centered modal, same .modal-overlay/.modal-box family as the book
+   finish celebration above, not a toast or a banner. Lighter honey
+   palette (matches the grace-days pill / Grace Days modal) rather than
+   the app's dark accent, with a soft continuous flutter + pulse on the
+   badge for as long as it's on screen — Veronika's picked direction
+   after seeing it against a solid-dark toast and a plain static one. */
+.grace-cover-badge {
+  width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 14px;
+  background: linear-gradient(135deg, #F3E7D2, #EFE0C4); border: 1px solid #E3D1AC;
+  display: flex; align-items: center; justify-content: center; position: relative;
+}
+.grace-cover-badge::before {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid #E3D1AC;
+  opacity: 0; animation: grace-cover-pulse 2.2s ease-out infinite;
+}
+.grace-cover-badge svg {
+  stroke: var(--accent-dark); width: 26px; height: 26px;
+  transform-origin: 70% 20%; animation: grace-cover-flutter 1.7s ease-in-out infinite;
+}
+.grace-cover-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #6B5628; margin-bottom: 3px; }
+.grace-cover-title { font-family: "Source Serif 4", Georgia, serif; font-size: 18px; }
+.grace-cover-sub { font-size: 12.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+@keyframes grace-cover-flutter {
+  0%, 100% { transform: rotate(-6deg) translateY(0); }
+  50% { transform: rotate(7deg) translateY(-2px); }
+}
+@keyframes grace-cover-pulse {
+  0% { transform: scale(.85); opacity: .5; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grace-cover-badge::before { animation: none; opacity: 0; }
+  .grace-cover-badge svg { animation: none; }
 }
 
 /* Reward goal flow (2026-09, Veronika — "finishing a reward goal is a dead
