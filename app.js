@@ -403,6 +403,12 @@ let currentUserFirstName = "";
 // renderHome().
 let pendingGraceToastCount = 0;
 let pendingGraceToastLabels = [];
+// Same idea, for the "a grace day covered you" pop-up (2026-09-10,
+// Veronika — replaces the old always-on Home banner with a real
+// centered celebration, shown at most once per boot). Set once per boot
+// by boot() itself (reading mostRecentGraceCoverage), consumed and
+// cleared the first time renderHome runs after that — see renderHome().
+let pendingGraceCoveredCelebration = null;
 // True only for the very first Home render after boot (a "cold open") —
 // flipped false the instant it's captured, so it never replays on later
 // re-renders within the same session (switching tabs back to Home, a
@@ -13192,7 +13198,10 @@ function computeStreakStats(today) {
 // caring about the streak). Coverage is per streak — each of the six
 // pillars plus the overall streak has its own independent gap it can
 // bridge — and once a date is marked covered it's permanent history,
-// never re-decided on a later boot.
+// never re-decided on a later boot. It only ever auto-covers a gap
+// bridging a streak of at least GRACE_MIN_STREAK_TO_COVER days — a
+// brand-new, barely-started streak isn't worth spending a scarce token
+// on protecting.
 //
 // Deliberately automatic and silent: there's no "use a token?" prompt
 // in the moment. The whole point is removing the anxiety of a missed
@@ -13200,6 +13209,14 @@ function computeStreakStats(today) {
 // ------------------------------------------------------------------
 const GRACE_BANK_CAP = 7;
 const GRACE_LOOKBACK_DAYS = 14; // how far back reconcileGraceDays scans for a coverable gap
+// 2026-09-10 (Veronika): grace only auto-covers a gap that's bridging a
+// streak at least this long — a log/miss/log pattern with no real
+// momentum yet (day 1 alive, day 2 missed) shouldn't spend one of a
+// scarce handful of tokens on a "streak" that's really just day one
+// happening again. 7 lines up with the week-view dots already on every
+// Practice row (F S S M T W T) — grace protects a streak that's already
+// filled out a real week, not the shakiest first couple of days.
+const GRACE_MIN_STREAK_TO_COVER = 7;
 // Bonus tokens ride the same streak ladder the push notifications already
 // celebrate. 2026-09 apps rearchitecture: this now runs per Practice app
 // (state.grace.bonusAwardedAt[appId]) instead of once off a combined
@@ -13294,21 +13311,26 @@ function reconcileGraceDays(today) {
     const prevDate = addDays(date, -1);
 
     // Every app that actually needs covering on this date — a real gap,
-    // bridging a streak that was genuinely alive the day before.
-    const needsCoverage = appIds.filter((id) => {
-      if (g.coveredDates[`${id}|${date}`]) return false; // already decided, permanent
-      if (isAppLoggedToday(id, date)) return false; // nothing to cover
-      const prevAlive = isAppLoggedToday(id, prevDate) || g.coveredDates[`${id}|${prevDate}`];
-      return prevAlive;
-    });
+    // bridging a streak that's both genuinely alive the day before AND
+    // long enough to be worth spending a token on. Without that second
+    // check, a log/miss/log pattern (one day logged, then a gap) would
+    // qualify just as readily as a real streak — there's no momentum
+    // there yet to protect.
+    const needsCoverage = appIds
+      .filter((id) => {
+        if (g.coveredDates[`${id}|${date}`]) return false; // already decided, permanent
+        if (isAppLoggedToday(id, date)) return false; // nothing to cover
+        return isAppLoggedToday(id, prevDate) || g.coveredDates[`${id}|${prevDate}`];
+      })
+      .map((id) => ({ id, runLength: appStreakRunEndingAt(id, prevDate) }))
+      .filter(({ runLength }) => runLength >= GRACE_MIN_STREAK_TO_COVER);
     if (!needsCoverage.length) continue;
 
     // When the bank can't cover everything missed on the same day, the
     // longest-standing streak wins — losing 100 days of one practice hurts
-    // more than losing 3 days of another, whatever order they're listed
+    // more than losing 7 of another, whatever order they're listed
     // in. Ties (equal length) keep the app-list order.
     needsCoverage
-      .map((id) => ({ id, runLength: appStreakRunEndingAt(id, prevDate) }))
       .sort((a, b) => b.runLength - a.runLength)
       .forEach(({ id }) => {
         if (g.banked <= 0) return;
@@ -13404,6 +13426,32 @@ function showGraceTokenToast(count, labels) {
   toast.addEventListener("animationend", () => toast.remove());
 }
 
+// A centered pop-up for the moment grace actually stepped in to cover a
+// missed day — same modal-overlay/modal-box family as a milestone
+// celebration, not a toast or a banner. Went through three rounds with
+// Veronika: a corner banner (too easy to miss), a fluttering toast in
+// the app's dark accent color (liked the motion, not the color), a
+// fluttering toast recolored to the lighter honey palette (liked the
+// color, wanted it centered instead) — this is the one that landed.
+// Triggered once per boot from renderHome() via pendingGraceCoveredCelebration.
+function openGraceCoveredCelebration(covered) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box" style="width:300px;text-align:center;">
+        <div class="grace-cover-badge">${graceFeatherSvg()}</div>
+        <div class="grace-cover-eyebrow">${escapeHtml(covered.label)}</div>
+        <div class="grace-cover-title">A grace day covered you</div>
+        <div class="grace-cover-sub">Yesterday's gap is covered — your streak kept going. ${state.grace.banked} of ${GRACE_BANK_CAP} grace days banked.</div>
+        <button type="button" class="sheet-primary-btn grace-cover-continue">Keep going</button>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".grace-cover-continue").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
 // ------------------------------------------------------------------
 // Home — a quiet, read-only summary that lives dead center in the nav
 // on mobile (a fixed circle, never scrolled away) and first in the
@@ -13447,6 +13495,15 @@ function renderHome() {
     showGraceTokenToast(pendingGraceToastCount, pendingGraceToastLabels);
     pendingGraceToastCount = 0;
     pendingGraceToastLabels = [];
+  }
+
+  // Same one-shot pattern as the toast above, for the "a grace day
+  // covered you" pop-up — computed once at boot (pendingGraceCoveredCelebration),
+  // shown the first time Home renders after that, then cleared so it
+  // never reopens on a later re-render this same session.
+  if (pendingGraceCoveredCelebration) {
+    openGraceCoveredCelebration(pendingGraceCoveredCelebration);
+    pendingGraceCoveredCelebration = null;
   }
 
   // One page now, not two — Wellness's unique content (today's
@@ -13838,18 +13895,10 @@ function renderHomeHero(today, isColdOpen) {
   // wrapper exists purely for cold-open stagger timing and layout.
   const hero = el(`<div class="home-hero-wrap${isColdOpen ? " home-hero-cold" : ""}"></div>`);
 
-  const graceCovered = mostRecentGraceCoverage(today);
-  if (graceCovered) {
-    hero.appendChild(el(`
-      <div class="trend-insight-banner grace-banner">
-        <div class="trend-insight-icon grace-icon">${graceFeatherSvg()}</div>
-        <div class="trend-insight-text">
-          <strong>A grace day covered you</strong> — ${escapeHtml(graceCovered.label)} kept going.
-          <div class="trend-insight-sub">${state.grace.banked} grace day${state.grace.banked === 1 ? "" : "s"} banked</div>
-        </div>
-      </div>
-    `));
-  }
+  // The old always-on "a grace day covered you" banner used to render
+  // here every time Home did. Replaced by openGraceCoveredCelebration, a
+  // centered pop-up triggered once per boot from renderHome() itself
+  // (Veronika: wanted it "more of a pop up... not a banner").
 
   const rewardBanner = renderHomeRewardBanner(today, isColdOpen);
   if (rewardBanner) hero.appendChild(rewardBanner);
@@ -18445,6 +18494,11 @@ async function bootInner() {
   const graceBonusResult = reconcileGraceDays(todayISO());
   pendingGraceToastCount = graceBonusResult.count;
   pendingGraceToastLabels = graceBonusResult.labels;
+  // Computed once here (not at render time) so the pop-up shows exactly
+  // once per boot instead of every time Home re-renders that day —
+  // mostRecentGraceCoverage itself still only ever looks at yesterday,
+  // so this naturally goes stale (null) on tomorrow's boot regardless.
+  pendingGraceCoveredCelebration = mostRecentGraceCoverage(todayISO());
 
   // Write straight back after any migrations above so the row reflects
   // the current shape immediately, rather than waiting for the first
