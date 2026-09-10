@@ -1960,6 +1960,13 @@ function openGraceDaysModal() {
           <div class="grace-token-row">${tokensHtml}</div>
           <div class="grace-token-caption">${g.banked} of ${GRACE_BANK_CAP} banked</div>
         </div>
+        ${
+          g.banked > 0
+            ? `<div class="account-section" style="border-top:none;padding-top:0;">
+                 <button type="button" class="use-grace-day-btn">${graceFeatherSvg()}Use a grace day</button>
+               </div>`
+            : ""
+        }
         <div class="account-section" style="display:flex;flex-direction:column;gap:0;">
           <div class="grace-earn-row"><span>Monthly earn rate</span><b>${isPaid ? "+2" : "+1"} / month</b></div>
           <div class="grace-earn-row"><span>Bonus for long streaks</span><b>+1 at every streak milestone, 30 days on</b></div>
@@ -1971,6 +1978,10 @@ function openGraceDaysModal() {
   `);
   const close = () => overlay.remove();
   overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector(".use-grace-day-btn")?.addEventListener("click", () => {
+    close();
+    openUseGraceDayModal();
+  });
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
@@ -13434,14 +13445,19 @@ function showGraceTokenToast(count, labels) {
 // fluttering toast recolored to the lighter honey palette (liked the
 // color, wanted it centered instead) — this is the one that landed.
 // Triggered once per boot from renderHome() via pendingGraceCoveredCelebration.
-function openGraceCoveredCelebration(covered) {
+// `dayLabel` defaults to "Yesterday's" (the only case the automatic path
+// ever produces — see mostRecentGraceCoverage). The manual flow
+// (openUseGraceDayModal) reuses this exact same pop-up rather than a
+// separate one — Veronika's call — passing "Today's" when that's the
+// day actually being covered.
+function openGraceCoveredCelebration(covered, dayLabel = "Yesterday's") {
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box info-modal-box" style="width:300px;text-align:center;">
         <div class="grace-cover-badge">${graceFeatherSvg()}</div>
         <div class="grace-cover-eyebrow">${escapeHtml(covered.label)}</div>
         <div class="grace-cover-title">A grace day covered you</div>
-        <div class="grace-cover-sub">Yesterday's gap is covered — your streak kept going. ${state.grace.banked} of ${GRACE_BANK_CAP} grace days banked.</div>
+        <div class="grace-cover-sub">${escapeHtml(dayLabel)} gap is covered — your streak kept going. ${state.grace.banked} of ${GRACE_BANK_CAP} grace days banked.</div>
         <button type="button" class="sheet-primary-btn grace-cover-continue">Keep going</button>
       </div>
     </div>
@@ -13449,6 +13465,97 @@ function openGraceCoveredCelebration(covered) {
   const close = () => overlay.remove();
   overlay.querySelector(".grace-cover-continue").addEventListener("click", close);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.body.appendChild(overlay);
+}
+
+// Manual "use a grace day" flow (Veronika, 2026-09-10): one Practice at a
+// time, no date picker, no scheduling ahead — the list only ever shows
+// what could be covered right now (today if not yet logged, otherwise
+// yesterday if that's a real gap), and tapping a row applies it
+// immediately. Deliberately skips both the 7-day minimum-streak gate the
+// automatic path enforces (this is a choice being made on purpose, not
+// an unattended check) and Sobriety entirely (Veronika's call — grace
+// only ever knows a day wasn't LOGGED, not what actually happened, and
+// that ambiguity is a worse fit for Sobriety specifically than for any
+// other Practice).
+function graceManualUseOptions() {
+  const today = todayISO();
+  const yesterday = addDays(today, -1);
+  return currentPracticeAppIds()
+    .filter((id) => id !== "sobriety")
+    .map((id) => {
+      const entry = currentAppEntries().find((a) => a.id === id);
+      const label = entry?.label || id;
+      const icon = entry?.icon || `<circle cx="12" cy="12" r="9"></circle>`;
+      let coverDate = null;
+      if (!isAppLoggedToday(id, today)) coverDate = today;
+      else if (!isAppLoggedToday(id, yesterday) && !state.grace?.coveredDates?.[`${id}|${yesterday}`]) coverDate = yesterday;
+      return { id, label, icon, coverDate };
+    });
+}
+
+function openUseGraceDayModal() {
+  const backChevronSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
+  const today = todayISO();
+  const options = graceManualUseOptions();
+  const rowsHtml = options
+    .map((opt) => {
+      if (!opt.coverDate) {
+        return `
+          <div class="grace-use-row disabled">
+            <div class="grace-use-icon">${iconSvg(opt.icon)}</div>
+            <div class="grace-use-text"><div class="grace-use-name">${escapeHtml(opt.label)}</div><div class="grace-use-sub">✓ Already logged today</div></div>
+          </div>`;
+      }
+      const isToday = opt.coverDate === today;
+      return `
+        <button type="button" class="grace-use-row" data-app="${opt.id}" data-date="${opt.coverDate}">
+          <div class="grace-use-icon">${iconSvg(opt.icon)}</div>
+          <div class="grace-use-text"><div class="grace-use-name">${escapeHtml(opt.label)}</div><div class="grace-use-sub">Covers ${isToday ? "today" : "yesterday"}, ${escapeHtml(activityDateShort(opt.coverDate))}</div></div>
+          <div class="grace-use-chev">${backChevronSvg}</div>
+        </button>`;
+    })
+    .join("");
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3 style="display:flex;align-items:center;gap:6px;">
+            <button type="button" class="icon-btn grace-use-back" aria-label="Back">${backChevronSvg}</button>
+            Use a grace day
+          </h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="account-section" style="border-top:none;padding-top:4px;">
+          <div class="account-note">Tap a Practice to cover its most recent missed day. Uses 1 of your banked days.</div>
+        </div>
+        <div class="account-section" style="padding-top:0;">
+          ${rowsHtml || `<div class="account-note">Nothing needs covering right now.</div>`}
+        </div>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector(".grace-use-back").addEventListener("click", () => {
+    close();
+    openGraceDaysModal();
+  });
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelectorAll(".grace-use-row:not(.disabled)").forEach((row) => {
+    row.addEventListener("click", () => {
+      const appId = row.dataset.app;
+      const date = row.dataset.date;
+      if (!state.grace || state.grace.banked <= 0) return;
+      state.grace.coveredDates[`${appId}|${date}`] = true;
+      state.grace.banked -= 1;
+      scheduleSave();
+      close();
+      const label = currentAppEntries().find((a) => a.id === appId)?.label || appId;
+      openGraceCoveredCelebration({ key: appId, label }, date === today ? "Today's" : "Yesterday's");
+      renderHome();
+    });
+  });
   document.body.appendChild(overlay);
 }
 
