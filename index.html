@@ -1193,6 +1193,14 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .shelf-link-title { font-size: 13.5px; font-weight: 700; color: var(--text); }
 .shelf-link-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 .shelf-link-chevron { color: var(--muted); font-size: 15px; flex-shrink: 0; }
+/* Bible entry screen's current-book card (2026-09-10, Veronika) — the book
+   she's actively in, full chapter grid, always expanded. Reuses the same
+   .chapter-grid/.chapter-chip rules as the Browse-all-books screen. */
+.current-book-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+.cbc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.cbc-title { font-size: 17px; font-weight: 600; color: var(--text); }
+.cbc-frac { font-size: 12.5px; color: var(--muted); font-weight: 600; flex-shrink: 0; }
+.cbc-sub { font-size: 11.5px; color: var(--muted); margin: 2px 0 4px; }
 /* .shelf-back-link retired 2026-09-10 — replaced by the shared .nav-back-btn */
 
 /* 2026-09 Challenges (Veronika) — first real build. Trophy + a warm gold
