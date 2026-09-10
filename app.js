@@ -9993,20 +9993,10 @@ function renderBiblePace(panel, doneCount, total) {
   panel.appendChild(card);
 }
 
-function renderBible() {
-  const panel = document.getElementById("panel-bible");
-  const rows = state.bible;
-  const total = rows.length;
-  const doneCount = rows.filter((r) => r.done).length;
-
-  panel.innerHTML = "";
-  // Standardized streak card, same as every other Practice's own screen
-  // (2026-09) — Bible was a real gap here, the one Practice besides Sleep
-  // with no streak shown at all despite having a real one (already used
-  // by Trends/push notifications).
-  panel.appendChild(buildStreakCard(appCurrentStreak("bible", todayISO()), "day Bible streak"));
-  renderBiblePace(panel, doneCount, total);
-
+// Groups the flat state.bible rows into canonical-order books, shared by
+// the entry screen's current-book card and the Browse-all-books screen so
+// the two never drift apart on how a "book" is derived from the rows.
+function bibleBooksGrouped(rows) {
   const books = [];
   const byBook = new Map();
   rows.forEach((r) => {
@@ -10017,15 +10007,118 @@ function renderBible() {
     }
     byBook.get(book).push({ ...r, chapter });
   });
+  return { books, byBook };
+}
 
-  // A book counts as "in progress" once at least one chapter is done but
-  // not all of them — the first one, in canonical order, is where a jump
-  // link should land, since that's where reading naturally picks back up.
-  const firstInProgressBook = books.find((book) => {
-    const chapters = byBook.get(book);
+// 2026-09-10 (UX audit + Veronika, revised after her feedback): the first
+// pass here replaced the 66-book wall with a plain summary card, which
+// fixed the new-reader overwhelm the audit flagged but broke Veronika's
+// own daily habit of opening Bible and tapping straight into a chapter —
+// that cost 3 taps instead of 1. This version keeps her one-tap logging
+// intact: the entry screen shows the single book she's currently in, full
+// chapter grid, tap any chip same as before. "Browse all books" is now
+// specifically for jumping ahead, rereading, or catching up out of order
+// — the 66-book list itself only ever renders there, not on entry.
+function renderBible() {
+  const panel = document.getElementById("panel-bible");
+  const rows = state.bible;
+  const total = rows.length;
+  const doneCount = rows.filter((r) => r.done).length;
+
+  panel.innerHTML = "";
+
+  if (state.bibleScreen === "browse") {
+    renderBibleBrowseScreen(panel, rows, total, doneCount);
+    return;
+  }
+
+  // Standardized streak card, same as every other Practice's own screen
+  // (2026-09) — Bible was a real gap here, the one Practice besides Sleep
+  // with no streak shown at all despite having a real one (already used
+  // by Trends/push notifications).
+  panel.appendChild(buildStreakCard(appCurrentStreak("bible", todayISO()), "day Bible streak"));
+  renderBiblePace(panel, doneCount, total);
+
+  const { books, byBook } = bibleBooksGrouped(rows);
+  // The "current" book is the first one (canonical order) with any unread
+  // chapter — same definition as Books' Currently Reading. Once it's
+  // fully done, this naturally rolls to the next book with nothing extra
+  // to track. If every book is finished, fall back to the last one so the
+  // card still shows something rather than disappearing.
+  const currentBook = books.find((book) => byBook.get(book).some((c) => !c.done)) || books[books.length - 1];
+
+  if (currentBook) {
+    const chapters = byBook.get(currentBook);
     const bookDone = chapters.filter((c) => c.done).length;
-    return bookDone > 0 && bookDone < chapters.length;
+    const isOT = OT_BOOKS.has(currentBook);
+    const card = el(`
+      <div class="current-book-card">
+        <div class="cbc-head">
+          <span class="cbc-title serif">${escapeHtml(currentBook)}</span>
+          <span class="cbc-frac">${bookDone} / ${chapters.length}</span>
+        </div>
+        <div class="cbc-sub">${isOT ? "Old Testament" : "New Testament"} · tap any chapter to log</div>
+        <div class="chapter-grid"></div>
+      </div>
+    `);
+    const grid = card.querySelector(".chapter-grid");
+    chapters.forEach((c) => {
+      const chip = el(`<div class="chapter-chip ${c.done ? "done" : ""}">${c.chapter ?? ""}</div>`);
+      chip.addEventListener("click", () => {
+        const original = state.bible.find((x) => x.id === c.id);
+        original.done = !original.done;
+        if (original.done) original.completedDate = todayISO();
+        // Lifetime Milestones tracking — check whether this book just
+        // became (or is still) fully done, independent of the toggle
+        // above so a book can be un-toggled without ever un-recording it.
+        if (chapters.every((row) => (state.bible.find((x) => x.id === row.id) || {}).done)) {
+          if (!state.bibleBooksEverFinished.includes(currentBook)) state.bibleBooksEverFinished.push(currentBook);
+        }
+        scheduleSave();
+        renderBible();
+      });
+      grid.appendChild(chip);
+    });
+    panel.appendChild(card);
+  }
+
+  const remaining = total - doneCount;
+  const browseLink = el(`
+    <button type="button" class="shelf-link-card">
+      <div class="shelf-link-icon">📚</div>
+      <div class="shelf-link-body">
+        <div class="shelf-link-title">Browse all books</div>
+        <div class="shelf-link-sub">${remaining > 0 ? "Reread a past book or jump ahead" : "The whole Bible, finished"}</div>
+      </div>
+      <span class="shelf-link-chevron">›</span>
+    </button>
+  `);
+  browseLink.addEventListener("click", () => {
+    state.bibleScreen = "browse";
+    scheduleSave();
+    renderBible();
   });
+  panel.appendChild(browseLink);
+
+  // ---- Milestones — permanent, unlike the streak above. Stays on the
+  // entry screen, after the browse link, matching every other Practice
+  // (Books included — see renderBookTodayScreen) rather than moving to
+  // the Browse screen: it's the app-wide convention that Milestones live
+  // wherever a Practice's own tab opens, not behind a drill-in. ----
+  const milestonesSheet = { milestonesEarned: state.bibleMilestonesEarned, booksEverFinished: state.bibleBooksEverFinished };
+  panel.appendChild(buildMilestonesCard(milestonesSheet, BIBLE_MILESTONES, todayISO()));
+}
+
+// ---- "Browse all books" screen: the full 66-book list, one tap away ----
+function renderBibleBrowseScreen(panel, rows, total, doneCount) {
+  panel.appendChild(backLinkBtn("Bible", () => {
+    state.bibleScreen = "today";
+    scheduleSave();
+    renderBible();
+  }));
+  panel.appendChild(el(`<h2 class="section-title serif">All Books</h2>`));
+
+  const { books, byBook } = bibleBooksGrouped(rows);
 
   const toolbarRow = el(`<div class="view-toggle-row"></div>`);
   const testamentToggle = el(`
@@ -10044,10 +10137,6 @@ function renderBible() {
     });
   });
   toolbarRow.appendChild(testamentToggle);
-  // 2026-09 (Veronika): removed the "jump to where you left off" bookmark
-  // icon that used to sit next to this toggle — firstInProgressBook is
-  // computed above only to feed it, now dead code for this purpose but
-  // left in place in case it's wanted for something else later.
   panel.appendChild(toolbarRow);
 
   const visibleBooks = books.filter((book) => {
@@ -10097,9 +10186,6 @@ function renderBible() {
     });
     panel.appendChild(details);
   });
-
-  const milestonesSheet = { milestonesEarned: state.bibleMilestonesEarned, booksEverFinished: state.bibleBooksEverFinished };
-  panel.appendChild(buildMilestonesCard(milestonesSheet, BIBLE_MILESTONES, todayISO()));
 }
 
 // ------------------------------------------------------------------
@@ -17144,6 +17230,7 @@ async function bootInner() {
   state.bibleTestament ||= "all";
   state.quranRevelation ||= "all";
   state.bibleOpenBooks ||= {};
+  state.bibleScreen ||= "today";
   // Starts unset; the over/under flags just don't show anything meaningful
   // until this is filled in from the Budget tab.
   state.paycheckSettings ||= { amount: 0, frequency: "semimonthly" };
