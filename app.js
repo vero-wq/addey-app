@@ -2093,38 +2093,66 @@ function countedSpaces() {
 
 // A small, reusable "you're at your limit" modal — never a silent block.
 // Names the exact next tier and how many more spaces it buys.
-function openSpaceCapModal() {
-  const acct = state.account || {};
-  const limit = spaceCapForAccount();
-  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Addley Plus";
-  const nextTierLimit = 15;
+// One shared "you hit a limit" upgrade-prompt component. Consolidated
+// 2026-09-10 (UX audit + Veronika, Part A of the Upgrade Moments
+// cleanup) — this used to be three separate, near-identical copies
+// (openSpaceCapModal, openRewardGoalCapModal, openChallengeCapModal),
+// each with its own slightly-drifted markup for the same idea. The
+// "Upgrade to Addley Plus" button still does today's placeholder action
+// (close the modal, jump to Settings) until real Stripe checkout exists
+// (Part B — see the sprint board, blocked on Stripe being connected) —
+// this pass only unifies the UI, it doesn't change what tapping it does.
+// Every future cap (Challenges, or whatever comes next) should call this
+// instead of writing a fourth copy.
+function openUpgradeCapModal(opts) {
   const overlay = el(`
     <div class="modal-overlay">
       <div class="modal-box" style="max-width:360px;text-align:center;">
-        <div style="font-size:26px;margin-bottom:8px;">🔒</div>
-        <h3 style="margin:0 0 8px;">You've used all ${limit} practices</h3>
-        <p class="muted" style="margin:0 0 18px;line-height:1.5;">
-          ${
-            nextTierLabel
-              ? `Upgrade to ${nextTierLabel} for ${nextTierLimit} practices total — double the room, same habit tracking. Or remove a practice in My Practices to make room.`
-              : `Remove a practice in My Practices to make room for a new one.`
-          }
-        </p>
-        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `Upgrade to ${nextTierLabel}` : "Manage my practices"}</button>
-        <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Close</button>
+        <div style="font-size:26px;margin-bottom:8px;">${opts.icon}</div>
+        <h3 style="margin:0 0 8px;">${opts.title}</h3>
+        <p class="muted" style="margin:0 0 18px;line-height:1.5;">${opts.body}</p>
+        <button type="button" class="btn-primary" style="width:100%;">${opts.primaryLabel}</button>
+        <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">${opts.secondaryLabel || "Close"}</button>
       </div>
     </div>
   `);
   overlay.querySelector(".btn-primary").addEventListener("click", () => {
     overlay.remove();
-    settingsSubTab = "mine";
-    activateTab("settings");
+    if (opts.onPrimary) opts.onPrimary();
   });
-  overlay.querySelector(".btn-ghost").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
+  overlay.querySelector(".btn-ghost").addEventListener("click", () => {
+    overlay.remove();
+    if (opts.onSecondary) opts.onSecondary();
   });
+  if (opts.dismissOnOverlayClick) {
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+  }
   document.body.appendChild(overlay);
+  return overlay;
+}
+
+function goToMyPractices() {
+  settingsSubTab = "mine";
+  activateTab("settings");
+}
+
+function openSpaceCapModal() {
+  const acct = state.account || {};
+  const limit = spaceCapForAccount();
+  const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Addley Plus";
+  const nextTierLimit = 15;
+  openUpgradeCapModal({
+    icon: "🔒",
+    title: `You've used all ${limit} practices`,
+    body: nextTierLabel
+      ? `Upgrade to ${nextTierLabel} for ${nextTierLimit} practices total — double the room, same habit tracking. Or remove a practice in My Practices to make room.`
+      : `Remove a practice in My Practices to make room for a new one.`,
+    primaryLabel: nextTierLabel ? `Upgrade to ${nextTierLabel}` : "Manage my practices",
+    onPrimary: goToMyPractices,
+    dismissOnOverlayClick: true,
+  });
 }
 
 function addSheetFromTemplate(tpl) {
@@ -2982,6 +3010,22 @@ const editSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" str
 const chevronSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 const chevronRightSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>`;
 const backArrowSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"></polyline></svg>`;
+
+// One shared "go back to where I came from" control, used everywhere a
+// screen is a drill-in from a specific parent (Your Shelf -> Books,
+// Challenges detail -> Challenges, Reward Goal detail -> All goals, a
+// Lists detail -> Lists) rather than a true popup with no parent context
+// (those keep the top-right X close button — see .info-modal-close /
+// .sheet-close). Standardized 2026-09-10 after a UX audit found this same
+// idea implemented four different, inconsistent ways (.list-back-btn
+// icon-only, .shelf-back-link text, .reward-back-link text, and no
+// consistent rule for which screens got one at all). Always icon + the
+// name of where "back" actually goes, so it reads the same everywhere.
+function backLinkBtn(label, onClick) {
+  const btn = el(`<button type="button" class="nav-back-btn">${backArrowSvg}<span>${escapeHtml(label)}</span></button>`);
+  btn.addEventListener("click", onClick);
+  return btn;
+}
 const trashSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
 
 // A curated palette for the dot — separate from the free-text Color
@@ -4031,8 +4075,7 @@ function renderChallengeDetail(panel, id, challengeId, todayStr) {
 
 // ---- "Your Shelf" screen: the full library, one tap away ----
 function renderBookShelfScreen(panel, id, sheet, todayStr) {
-  const back = el(`<button type="button" class="shelf-back-link">&lsaquo; ${escapeHtml(sheet.label)}</button>`);
-  back.addEventListener("click", () => goToBookScreen(id, "today"));
+  const back = backLinkBtn(sheet.label, () => goToBookScreen(id, "today"));
   panel.appendChild(back);
   panel.appendChild(el(`<h2 class="section-title serif">Your Shelf</h2>`));
 
@@ -4678,27 +4721,14 @@ function joinedChallengesCount() {
 // it's just not the pitch here). Only ever shown to free accounts, since
 // challengeCapForAccount() is Infinity for Plus and founder accounts.
 function openChallengeCapModal() {
-  const overlay = el(`
-    <div class="modal-overlay">
-      <div class="modal-box" style="max-width:360px;text-align:center;">
-        <div style="font-size:26px;margin-bottom:8px;">🏆</div>
-        <h3 style="margin:0 0 8px;">Take on every challenge with Addley Plus</h3>
-        <p class="muted" style="margin:0 0 18px;line-height:1.5;">
-          Free includes one challenge at a time. Upgrade to Addley Plus to run all of them at once — no picking and choosing.
-        </p>
-        <button type="button" class="btn-primary" style="width:100%;">Upgrade to Addley Plus</button>
-        <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Not now</button>
-      </div>
-    </div>
-  `);
-  overlay.querySelector(".btn-primary").addEventListener("click", () => {
-    overlay.remove();
-    settingsSubTab = "mine";
-    activateTab("settings");
+  openUpgradeCapModal({
+    icon: "🏆",
+    title: "Take on every challenge with Addley Plus",
+    body: "Free includes one challenge at a time. Upgrade to Addley Plus to run all of them at once — no picking and choosing.",
+    primaryLabel: "Upgrade to Addley Plus",
+    onPrimary: goToMyPractices,
+    secondaryLabel: "Not now",
   });
-  overlay.querySelector(".btn-ghost").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
-  document.body.appendChild(overlay);
 }
 
 // Reads progress straight off each linked book's real status — no
@@ -8478,16 +8508,15 @@ function renderListDetail(list) {
 
   const topRow = el(`
     <div class="list-detail-topbar">
-      <button type="button" class="list-back-btn">${backArrowSvg}</button>
       <h2 class="section-title serif list-detail-title" style="margin:0;" title="Double-click to rename">${escapeHtml(list.name)}</h2>
       <button type="button" class="list-delete-btn" title="Delete this list">${trashSvg}</button>
     </div>
   `);
-  topRow.querySelector(".list-back-btn").addEventListener("click", () => {
+  topRow.insertBefore(backLinkBtn("Lists", () => {
     state.activeListId = null;
     scheduleSave();
     renderLists();
-  });
+  }), topRow.firstChild);
   topRow.querySelector(".list-delete-btn").addEventListener("click", () => {
     confirmModal("Delete list?", `Delete "${list.name}" and everything in it? This can't be undone.`, "Delete", () => {
       state.lists = state.lists.filter((l) => l.id !== list.id);
@@ -13595,29 +13624,15 @@ function openRewardGoalCapModal() {
   const acct = state.account || {};
   const limit = rewardGoalCapForAccount();
   const nextTierLabel = acct.plan === "paid" || acct.isFounder ? null : "Addley Plus";
-  const overlay = el(`
-    <div class="modal-overlay">
-      <div class="modal-box" style="max-width:360px;text-align:center;">
-        <div style="font-size:26px;margin-bottom:8px;">🔒</div>
-        <h3 style="margin:0 0 8px;">You've used all ${limit} reward goal${limit === 1 ? "" : "s"}</h3>
-        <p class="muted" style="margin:0 0 18px;line-height:1.5;">
-          ${
-            nextTierLabel
-              ? `Upgrade to ${nextTierLabel} for up to 5 goals running at once. Or claim or remove a goal to make room for a new one.`
-              : `Claim or remove a goal to make room for a new one.`
-          }
-        </p>
-        <button type="button" class="btn-primary" style="width:100%;">${nextTierLabel ? `Upgrade to ${nextTierLabel}` : "Close"}</button>
-        <button type="button" class="btn-ghost" style="width:100%;margin-top:8px;">Close</button>
-      </div>
-    </div>
-  `);
-  overlay.querySelector(".btn-primary").addEventListener("click", () => {
-    overlay.remove();
-    if (nextTierLabel) { settingsSubTab = "mine"; activateTab("settings"); }
+  openUpgradeCapModal({
+    icon: "🔒",
+    title: `You've used all ${limit} reward goal${limit === 1 ? "" : "s"}`,
+    body: nextTierLabel
+      ? `Upgrade to ${nextTierLabel} for up to 5 goals running at once. Or claim or remove a goal to make room for a new one.`
+      : `Claim or remove a goal to make room for a new one.`,
+    primaryLabel: nextTierLabel ? `Upgrade to ${nextTierLabel}` : "Close",
+    onPrimary: nextTierLabel ? goToMyPractices : undefined,
   });
-  overlay.querySelector(".btn-ghost").addEventListener("click", () => overlay.remove());
-  document.body.appendChild(overlay);
 }
 
 // The detail view for one goal — photo, quote, big dollar progress with
@@ -13636,6 +13651,10 @@ function openRewardGoalDetailScreen(prize) {
     const stats = computeRewardProgress(prize, todayISO());
     const hasMultiple = enabledRewardGoals().length > 1;
 
+    if (hasMultiple) {
+      box.appendChild(backLinkBtn("All goals", () => { overlay.remove(); openRewardGoalsListScreen(); }));
+    }
+
     box.appendChild(el(`
       <div class="info-modal-header">
         <h3 style="display:flex;align-items:center;gap:10px;">
@@ -13646,12 +13665,6 @@ function openRewardGoalDetailScreen(prize) {
       </div>
     `));
     box.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
-
-    if (hasMultiple) {
-      const back = el(`<button type="button" class="reward-back-link">&larr; All goals</button>`);
-      back.addEventListener("click", () => { overlay.remove(); openRewardGoalsListScreen(); });
-      box.appendChild(back);
-    }
 
     if (!prize.enabled) {
       box.appendChild(el(`<div class="account-note" style="padding:14px 0;">You skipped setting up a reward during onboarding — streaks and milestones still work exactly the same without one. Set one up any time.</div>`));
@@ -14342,8 +14355,7 @@ function renderChallengeLearnMore(panel, id) {
   const catalog = CHALLENGE_CATALOG[id];
   if (!catalog) return;
 
-  const back = el(`<button type="button" class="shelf-back-link">&lsaquo; Challenges</button>`);
-  back.addEventListener("click", () => {
+  const back = backLinkBtn("Challenges", () => {
     challengesLearnMoreId = null;
     renderChallengesPage();
   });
