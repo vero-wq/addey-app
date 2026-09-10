@@ -8172,7 +8172,7 @@ function renderWorkoutSheet(sheetId) {
             <span class="day-drag-handle" title="Drag to reorder">${dragHandleSvg}</span>
             <span class="workout-day-number">Day ${index + 1}</span>
             <span class="wardrobe-cat-title workout-day-title-text">${escapeHtml(day.title || "")}</span>
-            ${skipped ? `<span class="day-skip-badge">↺ Skipped this week</span>` : ""}
+            ${skipped ? `<span class="day-skip-badge">⏸ Paused this week</span>` : ""}
           </span>
           <span class="muted">${day.exercises.length} exercise${day.exercises.length === 1 ? "" : "s"}</span>
         </summary>
@@ -8206,15 +8206,19 @@ function renderWorkoutSheet(sheetId) {
     });
     const itemsWrap = details.querySelector(".wardrobe-items");
     day.exercises.forEach((ex) => itemsWrap.appendChild(renderWorkoutExercise(sheetId, day.id, ex, day, week)));
-    const addExBtn = el(`<button type="button" class="btn-ghost small" style="margin-top:10px;">+ Add exercise</button>`);
-    addExBtn.addEventListener("click", () => openWorkoutExerciseModal(sheetId, day.id, null));
-    itemsWrap.appendChild(addExBtn);
+    // All three day-level actions (add / pause / remove) live in one row
+    // together now — previously "+ Add exercise" sat alone above a
+    // separate row holding the other two, which read as two unrelated
+    // groups (Veronika, 2026-09-10). Renamed "Skip this week" -> "Pause
+    // this week" (and "Undo skip" -> "Resume this week") since the
+    // per-exercise action right above already uses "Skip" for a smaller,
+    // same-day thing — reusing the word for this bigger, whole-week
+    // action read as the same action at first glance.
     const actionsRow = el(`<div class="day-actions-row"></div>`);
-    // "Skip this week" vs. "Remove day" — skip keeps every exercise and
-    // set exactly as they are (just dimmed + locked, and left out of the
-    // week's percentage/streak math below); Remove day is still there
-    // for when a day is genuinely gone for good, not just paused.
-    const skipBtn = el(`<button type="button" class="btn-ghost small ${skipped ? "unskip-toggle" : "skip-toggle"}">${skipped ? "Undo skip" : "Skip this week"}</button>`);
+    const addExBtn = el(`<button type="button" class="btn-ghost small">+ Add exercise</button>`);
+    addExBtn.addEventListener("click", () => openWorkoutExerciseModal(sheetId, day.id, null));
+    actionsRow.appendChild(addExBtn);
+    const skipBtn = el(`<button type="button" class="btn-ghost small ${skipped ? "unskip-toggle" : "skip-toggle"}">${skipped ? "Resume this week" : "Pause this week"}</button>`);
     skipBtn.addEventListener("click", () => {
       day.skipped = !day.skipped;
       scheduleSave();
