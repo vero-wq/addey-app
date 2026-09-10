@@ -1567,6 +1567,10 @@ function openAccountSheet() {
           ${iconSvg(rewardCupcakeSvg())}
           <span>Your Reward</span>
         </button>
+        <button type="button" class="you-list-row" id="account-referral-btn">
+          ${iconSvg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>')}
+          <span>Refer a friend</span>
+        </button>
         <button type="button" class="you-list-row" id="account-billing-btn">
           ${iconSvg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>')}
           <span>Plan &amp; Billing</span>
@@ -1627,6 +1631,10 @@ function openAccountSheet() {
   overlay.querySelector("#account-reward-btn").addEventListener("click", () => {
     close();
     openYourRewardScreen();
+  });
+  overlay.querySelector("#account-referral-btn").addEventListener("click", () => {
+    close();
+    openReferralModal();
   });
   const signOutBtn = overlay.querySelector("#account-signout-btn");
   signOutBtn.addEventListener("click", async () => {
@@ -1757,6 +1765,165 @@ function openBillingModal() {
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
+  document.body.appendChild(overlay);
+}
+
+// Reached from Account → "Refer a friend" (c028). Two independent halves:
+// "Your code" (generated lazily by the referral Edge Function's get-code
+// action, cached on the module-level referralUi object for the rest of the
+// session) and "Have a code?" (a plain text input that calls the same
+// function's redeem action) — a person could plausibly do either, neither,
+// or both in one visit, so both stay visible rather than picking one flow
+// for them. Whether this account has already redeemed a code is read
+// directly off referral_redemptions via a normal client-side select (its
+// own RLS policy already allows a signed-in user to see rows they're party
+// to) — no extra Edge Function call needed just to check that.
+let referralUi = { code: null, loadingCode: false, alreadyRedeemed: null };
+
+async function fetchOwnReferralCode() {
+  if (referralUi.code) return referralUi.code;
+  const { data, error } = await sb.functions.invoke("referral", { body: { action: "get-code" } });
+  if (error || !data?.code) throw error || new Error("No code returned");
+  referralUi.code = data.code;
+  return data.code;
+}
+
+async function fetchAlreadyRedeemed() {
+  if (referralUi.alreadyRedeemed !== null) return referralUi.alreadyRedeemed;
+  const { data, error } = await sb.from("referral_redemptions").select("id").eq("redeemer_id", currentUserId).maybeSingle();
+  if (error) throw error;
+  referralUi.alreadyRedeemed = Boolean(data);
+  return referralUi.alreadyRedeemed;
+}
+
+function openReferralModal() {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box">
+        <div class="info-modal-header">
+          <h3>Refer a friend</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="account-section" style="border-top:none;padding-top:4px;">
+          <div class="account-note">Share your code — you both get 14 days of Addley Plus, free, the moment they join.</div>
+        </div>
+        <div class="account-section referral-your-code-section">
+          <div class="account-section-label">Your code</div>
+          <div class="referral-code-row"><div class="referral-code-loading">Loading&hellip;</div></div>
+        </div>
+        <div class="account-section referral-redeem-section" hidden>
+          <div class="account-section-label">Have a code?</div>
+          <div class="referral-redeem-row">
+            <input type="text" class="referral-redeem-input" placeholder="Enter a friend's code" maxlength="6" autocapitalize="characters">
+            <button type="button" class="btn-primary referral-redeem-btn">Redeem</button>
+          </div>
+          <div class="referral-redeem-msg"></div>
+        </div>
+        <div class="account-section referral-already-note" hidden>
+          <div class="account-note">You've already redeemed a referral code — thanks for joining!</div>
+        </div>
+      </div>
+    </div>
+  `);
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  const codeRow = overlay.querySelector(".referral-code-row");
+  fetchOwnReferralCode()
+    .then((code) => {
+      const shareUrl = `https://addley.app/?ref=${encodeURIComponent(code)}`;
+      codeRow.innerHTML = `
+        <div class="referral-code-box">${escapeHtml(code)}</div>
+        <button type="button" class="btn-ghost referral-copy-btn">Copy link</button>
+        ${navigator.share ? `<button type="button" class="btn-ghost referral-share-btn">Share</button>` : ""}
+      `;
+      codeRow.querySelector(".referral-copy-btn").addEventListener("click", async (e) => {
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          const btn = e.currentTarget;
+          const original = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(() => { btn.textContent = original; }, 1500);
+        } catch (err) {
+          console.error("Copy failed", err);
+        }
+      });
+      const shareBtn = codeRow.querySelector(".referral-share-btn");
+      if (shareBtn) {
+        shareBtn.addEventListener("click", () => {
+          navigator.share({ title: "Addley", text: "Come build habits with me on Addley — use my code for 14 days of Plus, free.", url: shareUrl }).catch(() => {});
+        });
+      }
+    })
+    .catch((err) => {
+      console.error("openReferralModal: fetchOwnReferralCode failed", err);
+      codeRow.innerHTML = `<div class="referral-code-loading">Couldn't load your code — try reopening this.</div>`;
+    });
+
+  const redeemSection = overlay.querySelector(".referral-redeem-section");
+  const alreadyNote = overlay.querySelector(".referral-already-note");
+  fetchAlreadyRedeemed()
+    .then((already) => {
+      if (already) alreadyNote.hidden = false;
+      else redeemSection.hidden = false;
+    })
+    .catch((err) => {
+      console.error("openReferralModal: fetchAlreadyRedeemed failed", err);
+      redeemSection.hidden = false; // fail open — worst case the server-side redeem call rejects it cleanly
+    });
+
+  const redeemInput = overlay.querySelector(".referral-redeem-input");
+  const redeemBtn = overlay.querySelector(".referral-redeem-btn");
+  const redeemMsg = overlay.querySelector(".referral-redeem-msg");
+  const doRedeem = () => {
+    const code = redeemInput.value.trim().toUpperCase();
+    if (!code) return;
+    redeemBtn.disabled = true;
+    redeemMsg.textContent = "";
+    sb.functions
+      .invoke("referral", { body: { action: "redeem", code } })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (data?.error === "invalid_code") {
+          redeemMsg.textContent = "That code doesn't match anyone — double-check it and try again.";
+        } else if (data?.error === "self_referral") {
+          redeemMsg.textContent = "That's your own code — share it with a friend instead.";
+        } else if (data?.error === "already_redeemed") {
+          referralUi.alreadyRedeemed = true;
+          redeemSection.hidden = true;
+          alreadyNote.hidden = false;
+        } else if (data?.redeemed) {
+          referralUi.alreadyRedeemed = true;
+          state.account ||= { plan: "free", planLabel: "Free", isFounder: false, unlimitedSpaces: false, earnedTrialGrantedAt: null };
+          if (data.granted) {
+            state.account.plan = "paid";
+            state.account.planLabel = "Plus";
+            scheduleSave();
+          }
+          redeemSection.hidden = true;
+          redeemMsg.textContent = "";
+          alreadyNote.hidden = false;
+          alreadyNote.querySelector(".account-note").textContent = "You're in! 14 days of Addley Plus is on your account now.";
+        } else {
+          redeemMsg.textContent = "Something went wrong — try again in a moment.";
+        }
+      })
+      .catch((err) => {
+        console.error("referral redeem failed", err);
+        redeemMsg.textContent = "Something went wrong — try again in a moment.";
+      })
+      .finally(() => {
+        redeemBtn.disabled = false;
+      });
+  };
+  redeemBtn.addEventListener("click", doRedeem);
+  redeemInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") doRedeem();
+  });
+
   document.body.appendChild(overlay);
 }
 
