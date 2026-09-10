@@ -897,6 +897,48 @@ td input:hover { border-color: var(--border); }
 .home-empty-practices { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 18px 10px; }
 .home-empty-practices-title { font-size: 14px; font-weight: 600; color: var(--text); }
 
+/* Home consolidated Practices strip — 2026-09-10 (Veronika): merges the
+   old apps grid and the Milestones & Streaks streak-chip list into one
+   draggable list. Reuses .streak-chip/.sc-* (the old streak list),
+   .row-drag-handle/.dragging/.drag-over-above/.drag-over-below (the same
+   classes the My Apps settings rows already use for the same
+   state.appOrder drag), and .app-type-tag for Trackers/Tools. */
+.home-greeting-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.home-greeting-row .home-greeting { margin-bottom: 0; }
+.grace-pill { display: flex; align-items: center; gap: 5px; background: rgba(107,143,92,0.14); border: 1px solid rgba(107,143,92,0.35); color: var(--accent-dark); font-size: 11.5px; font-weight: 700; padding: 5px 10px; border-radius: 999px; flex-shrink: 0; cursor: pointer; white-space: nowrap; font-family: inherit; }
+.home-practices-list .streak-chip { cursor: pointer; }
+.home-practice-row .sc-drag { padding: 4px 2px 4px 0; }
+.home-practice-row.dragging { opacity: 0.4; }
+.home-practice-row.drag-over-above { box-shadow: inset 0 2px 0 var(--accent); }
+.home-practice-row.drag-over-below { box-shadow: inset 0 -2px 0 var(--accent); }
+.sc-col-nondot { display: flex; justify-content: flex-end; }
+/* Nudge treatment ported from the old .home-app-tile-nudge grid tile —
+   same glow + wiggle rhythm, scoped to just the row's icon well so the
+   whole strip row doesn't rock back and forth. */
+.sc-icon-nudge { animation: scIconGlow 2.6s ease-in-out infinite, scIconWiggle 4s ease-in-out infinite; }
+@keyframes scIconGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(169,128,79,0); }
+  50% { box-shadow: 0 0 0 5px rgba(169,128,79,0.30); }
+}
+@keyframes scIconWiggle {
+  0%, 12.5%, 100% { transform: rotate(0deg); }
+  1.875% { transform: rotate(-8deg); }
+  5.625% { transform: rotate(8deg); }
+  9.375% { transform: rotate(-6deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-icon-nudge { animation: none; }
+}
+.show-more-link { width: 100%; text-align: center; font-size: 12px; font-weight: 700; color: var(--accent-dark); background: none; border: none; padding: 10px 0 2px; margin-top: 2px; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.show-more-link .chev { display: inline-block; transition: transform .15s ease; font-size: 10px; }
+.show-more-link.expanded .chev { transform: rotate(180deg); }
+.practices-manage-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--bg); border: 1px dashed var(--border); border-radius: 10px; padding: 9px 12px; margin-top: 10px; cursor: pointer; font-family: inherit; }
+.practices-manage-row .m-icon { width: 26px; height: 26px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; font-weight: 700; }
+.practices-manage-row .m-text { flex: 1; display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.practices-manage-row .m-title { font-size: 12px; font-weight: 700; color: var(--accent-dark); }
+.practices-manage-row .m-sub { font-size: 10.5px; color: var(--muted); }
+.practices-manage-row .m-chevron { color: var(--muted); font-size: 14px; flex-shrink: 0; }
+
 .theme-swatch-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 @media (max-width: 480px) { .theme-swatch-grid { grid-template-columns: 1fr; } }
 .theme-swatch-card {
@@ -981,16 +1023,26 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
 /* 2026-09 (Veronika): the chip's own leading icon well, replacing the old
    flat color-cycle dot — reuses the app's real icon, same as its Today's
    Practices tile, so the two rows visibly refer to the same app. */
-.sc-icon { width: 28px; height: 28px; border-radius: 9px; background: var(--bg); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sc-icon { position: relative; width: 28px; height: 28px; border-radius: 9px; background: var(--bg); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .sc-icon svg { width: 15px; height: 15px; }
 .sc-label { font-size: 13px; font-weight: 500; width: 84px; flex-shrink: 0; }
-.sc-mini { display: flex; gap: 3px; flex: 1; align-items: center; }
+/* 2026-09-10 (Veronika): the dot strip used to sit right after the label
+   with a tight 3px gap, so all 7 dots clumped to the left of a lot of
+   unused width before the streak count — she flagged it as reading too
+   small/cramped. Spread across the full remaining width instead, and
+   sized up (8px -> 11px) to match. .sc-col wraps the optional day-initial
+   header (first row only, see renderPillarStreakList) plus the dots so
+   they share one column and stay aligned. */
+.sc-col { flex: 1; min-width: 0; }
+.sc-daylabels { display: flex; justify-content: space-between; padding: 0 1px; margin-bottom: 3px; }
+.sc-daylabels span { font-size: 8px; font-weight: 600; color: var(--muted); text-transform: uppercase; width: 11px; text-align: center; }
+.sc-mini { display: flex; justify-content: space-between; align-items: center; padding: 0 1px; }
 /* Plain circular pellets, one per day of the trailing week, replacing the
    old bar-segment mini chart — several lit in a row used to blur into one
    solid strip; discrete dots keep every day legible at a glance. */
-.sc-mini i { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: 0 0 auto; display: block; }
+.sc-mini i { width: 11px; height: 11px; border-radius: 50%; background: var(--border); flex: 0 0 auto; display: block; }
 .sc-mini i.on { background: var(--good); }
-.sc-streak { font-size: 12.5px; font-weight: 600; color: var(--accent-dark); white-space: nowrap; width: 30px; text-align: right; }
+.sc-streak { font-size: 12.5px; font-weight: 600; color: var(--accent-dark); white-space: nowrap; width: 30px; text-align: right; flex-shrink: 0; }
 
 /* Between-pillar pattern card, styled as a quiet aside rather than a data table. */
 .trend-pattern-card { background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.5; font-style: italic; }
@@ -1825,6 +1877,22 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .sleep-progress-dots span { flex: 1; height: 8px; border-radius: 4px; background: var(--border); }
 .sleep-progress-dots span.done { background: var(--accent-dark); }
 .sleep-progress-sub { font-size: 11px; color: var(--muted); margin-top: 8px; }
+/* 2026-09-10 (Veronika): the "not enough data yet" empty state for Trends
+   cards (cycle-phase completion, sleep patterns) — deliberately a
+   different palette from .sleep-progress-card above (amber/dashed) and
+   from the paid-tier .trends-locked-card blur (which means "pay to see
+   this"). Sage/green + a growth icon reads as "still growing," not
+   "locked" or "not yet unlocked by a plan" — confirmed against the
+   mockup Veronika picked (Option A, the dashed progress card, over a
+   blurred-preview alternative). */
+.trend-progress-card { background: rgba(107,143,92,0.12); border: 1.5px dashed #9BB98C; border-radius: 14px; padding: 13px; margin-top: 10px; }
+.tpc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tpc-icon { font-size: 15px; }
+.tpc-label { font-size: 12.5px; font-weight: 700; color: #3F5A34; }
+.tpc-dots { display: flex; gap: 5px; margin-bottom: 8px; }
+.tpc-dots span { flex: 1; height: 8px; border-radius: 4px; background: rgba(107,143,92,0.18); }
+.tpc-dots span.done { background: #6B8F5C; }
+.tpc-sub { font-size: 11px; color: #5C7350; }
 .sleep-report-hero { background: linear-gradient(135deg, var(--accent-dark), var(--accent)); border-radius: 16px; padding: 16px; color: #fff; margin-bottom: 14px; }
 .sleep-report-label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; opacity: .85; font-weight: 700; }
 .sleep-report-hero h3 { font-family: "Source Serif 4", Georgia, serif; font-size: 18px; margin: 4px 0 2px; }
