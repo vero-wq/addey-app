@@ -13262,6 +13262,18 @@ function reconcileGraceDays(today) {
   g.coveredDates ||= {};
   g.bonusAwardedAt ||= {};
 
+  // One-time floor for accounts that already existed before the change
+  // above shipped — they'd otherwise be stuck wherever their bank
+  // happened to sit (often 0) forever, since the `||=` above only ever
+  // fires for an account's very first boot. `floorGranted` makes sure
+  // every account, old or new, gets bumped up to at least 1 banked
+  // exactly once — never lowers an account that already has more, never
+  // repeats on a later boot.
+  if (!g.floorGranted) {
+    g.banked = Math.max(g.banked, 1);
+    g.floorGranted = true;
+  }
+
   const currentMonthKey = today.slice(0, 7);
   if (!g.lastGrantMonthKey) {
     // First time this has ever run for this account — starts counting
@@ -13818,7 +13830,13 @@ function renderHomeHero(today, isColdOpen) {
   ensureTodaysWellnessEntry(today);
   applyPracticeDepositsForToday(today);
 
-  const hero = el(`<div class="card${isColdOpen ? " home-hero-cold" : ""}"></div>`);
+  // Deliberately NOT a .card — the reward's gold card and the grace
+  // banner both already carry their own background/border/shadow, so
+  // wrapping them in the standard white/cream card shell (as this used
+  // to) just put a special card inside a plain one for no reason
+  // (Veronika: "I just don't think the cream box is necessary"). This
+  // wrapper exists purely for cold-open stagger timing and layout.
+  const hero = el(`<div class="home-hero-wrap${isColdOpen ? " home-hero-cold" : ""}"></div>`);
 
   const graceCovered = mostRecentGraceCoverage(today);
   if (graceCovered) {
