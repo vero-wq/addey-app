@@ -3725,6 +3725,30 @@ function setBookStatus(book, status) {
   book.read = status === "read";
 }
 
+// 2026-09 (Veronika: "I marked a book done in the challenge but I don't
+// see a habit logged for books" — asking to confirm challenges stay
+// linked to their real practice). They mostly already are: a Qur'an
+// challenge slot toggles the real ayah rows directly (toggleQuranRange),
+// and a Sobriety challenge day only ever completes through a real
+// check-in (see attachRowInteraction) — in both, "the challenge item is
+// done" and "today's practice is logged" are the same underlying data,
+// no separate ledger to drift out of sync. Books never had that
+// guarantee: book.read is a lifetime flag with no date on it at all —
+// the real per-day signal lives only in state.learningLog, written by
+// the reading-log modal's own "Log it" button. Marking a book finished
+// (the Shelf checkbox, or the Challenge's "Mark as finished") used to
+// skip that step entirely, so a book could be checked off with no
+// corresponding day ever logged. This upserts today's entry the same
+// way "Log it" does, so finishing a book always also counts as today's
+// reading — same rule "Log it" already follows, just applied here too.
+function logReadingEntryToday(book) {
+  const todayStr = todayISO();
+  const chapter = book.totalChapters || book.currentChapter || null;
+  if (chapter) book.currentChapter = chapter;
+  state.learningLog = (state.learningLog || []).filter((e) => e.date !== todayStr);
+  state.learningLog.push({ date: todayStr, bookId: book.id, chapter });
+}
+
 // Lazy per-item migration — run every render rather than gated behind a
 // sheet-level schema bump, since this only ever adds a field and never
 // changes the shape of anything that already exists.
@@ -4404,6 +4428,7 @@ function renderBookShelfScreen(panel, id, sheet, todayStr) {
         e.preventDefault();
         const previousStatus = book.status;
         const newStatus = book.status === "read" ? "to_read" : "read";
+        if (newStatus === "read") logReadingEntryToday(book);
         setBookStatus(book, newStatus);
         scheduleSave();
         renderBookSheet(id);
@@ -5279,6 +5304,7 @@ function openReadingLogModal(sheetId, presetBookId) {
     const book = sheet.items.find((b) => b.id === Number(bookSelect.value));
     if (!book) return;
     const previousStatus = book.status;
+    logReadingEntryToday(book);
     setBookStatus(book, "read");
     scheduleSave();
     overlay.remove();
