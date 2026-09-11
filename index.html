@@ -1023,11 +1023,20 @@ td input:hover { border-color: var(--border); }
 
 /* Headline insight banner — one plain-language sentence about the
    strongest pillar, instead of leading with raw grids. */
-.trend-insight-banner { background: linear-gradient(135deg, #F3E7D2, #EFE0C4); border: 1px solid #E3D1AC; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; display: flex; gap: 12px; align-items: flex-start; }
-html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(135deg, #3A3324, #2E2A1E); border-color: #4A4230; }
-.trend-insight-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid #E3D1AC; color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.trend-insight-text { font-size: 13.5px; line-height: 1.45; padding-top: 3px; }
-.trend-insight-text strong { color: var(--accent-dark); }
+.trend-insight-banner { background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; display: flex; gap: 14px; align-items: flex-start; }
+.trend-insight-icon { width: 40px; height: 40px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); border: none; color: var(--accent-dark); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px; }
+.trend-insight-icon-pair { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.trend-insight-icon-pair .chip { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.trend-insight-icon-pair .chip.a { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent-dark); }
+.trend-insight-icon-pair .chip.b { background: color-mix(in srgb, var(--muted) 24%, var(--surface)); color: var(--text); }
+.trend-insight-icon-pair .chip .tab-icon { width: 20px; height: 20px; }
+.trend-insight-icon-pair .link-arrow { color: var(--muted); flex-shrink: 0; }
+.trend-insight-banner.stacked { flex-direction: column; align-items: stretch; gap: 10px; }
+.trend-insight-banner.stacked .pattern-head { display: flex; align-items: center; gap: 10px; }
+.trend-insight-banner.stacked .pattern-head .insight-hero-eyebrow { margin-bottom: 0; }
+.trend-insight-banner.stacked .trend-insight-text { padding-top: 0; }
+.trend-insight-text { font-size: 13.5px; line-height: 1.5; padding-top: 3px; }
+.trend-insight-text strong, .trend-insight-text b { color: var(--accent-dark); font-weight: 700; }
 .insight-hero-eyebrow { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-dark); margin-bottom: 3px; }
 
 /* "Days you showed up" pulse chart — one line instead of five rows of squares. */
@@ -1089,13 +1098,14 @@ html[data-app-theme="dark"] .trend-insight-banner { background: linear-gradient(
    is gated: real content rendered underneath (so a Plus upgrade never
    looks like it "unlocks" fabricated data), blurred, with a centered
    message overlay. */
-.trends-locked-card { position: relative; display: grid; overflow: hidden; padding: 0; }
-.trends-blur-content { grid-area: 1 / 1; filter: blur(7px); user-select: none; pointer-events: none; padding: 16px; }
-.trends-lock-overlay { grid-area: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; background: rgba(255,255,255,0.62); }
-html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.68); }
+.trends-locked-card { position: relative; display: grid; overflow: hidden; padding: 0; max-height: 340px; }
+.trends-blur-content { grid-area: 1 / 1; filter: blur(6px) saturate(1.35); user-select: none; pointer-events: none; padding: 16px; overflow: hidden; }
+.trends-lock-overlay { grid-area: 1 / 1; position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; background: rgba(255,255,255,0.42); }
+html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.52); }
 .trends-lock-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); color: var(--accent-dark); display: flex; align-items: center; justify-content: center; }
 .trends-lock-msg { font-size: 12.5px; line-height: 1.5; color: var(--text); max-width: 320px; }
 .trends-lock-msg b { color: var(--accent-dark); }
+.trends-teaser-btn { background: var(--accent-dark); color: #fff; border: none; border-radius: 20px; padding: 9px 18px; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
 .trends-empty { font-size: 12.5px; color: var(--muted); font-style: italic; }
 .trends-upgrade-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 22px 20px; }
 .trends-upgrade-card:hover { border-color: var(--accent); }
@@ -1123,6 +1133,27 @@ html[data-app-theme="dark"] .trends-lock-overlay { background: rgba(20,17,12,0.6
 .trends-setup-fineprint { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-bottom: 14px; }
 .trends-setup-fineprint b { color: var(--accent-dark); }
 .trends-setup-confirm-btn { width: 100%; background: var(--accent-dark); color: #fff; border: none; border-radius: 12px; padding: 13px; font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.trends-setup-upgrade-link { display: block; width: 100%; background: none; border: none; margin-top: 10px; padding: 4px; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--accent-dark); cursor: pointer; text-align: center; }
+.trends-setup-upgrade-link:hover { text-decoration: underline; }
+
+/* Trends page (2026-09, take two) — a horizontal Practice picker instead
+   of stacking every Practice's detail one after another. Same "selected"
+   convention as .trends-setup-option above (accent border + tint). */
+.trends-practice-picker { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px 4px; scrollbar-width: none; }
+.trends-practice-picker::-webkit-scrollbar { display: none; }
+.trends-practice-chip { flex-shrink: 0; display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1.5px solid var(--border); border-radius: 999px; padding: 8px 14px 8px 8px; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; transition: border-color .12s, background .12s; white-space: nowrap; }
+.trends-practice-chip .chip-icon { width: 26px; height: 26px; border-radius: 50%; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--accent-dark); }
+.trends-practice-chip .chip-icon .tab-icon { width: 15px; height: 15px; }
+.trends-practice-chip.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%); }
+.trends-practice-chip.selected .chip-icon { background: var(--surface); }
+.trends-practice-chip.locked { opacity: .55; }
+.trends-practice-chip.locked .chip-lock { display: flex; align-items: center; color: var(--muted); margin-left: -2px; }
+
+/* Free-tier gating row + Trend Settings entry point (2026-09, take three) */
+.trends-lock-status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px; margin-bottom: 12px; }
+.trends-lock-status-row b { color: var(--text); }
+.trends-settings-link { flex-shrink: 0; background: none; border: 1.5px solid var(--border); border-radius: 20px; padding: 6px 12px; font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--accent-dark); cursor: pointer; white-space: nowrap; }
+.trends-settings-btn { width: 100%; background: var(--accent-dark); color: #fff; border: none; border-radius: 12px; padding: 13px; font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; margin-top: 10px; }
 .trends-setup-confirm-btn:disabled { opacity: 0.4; cursor: default; }
 .trends-setup-confirm-btn:not(:disabled):hover { background: var(--accent); }
 .trends-grid-item b { color: var(--accent-dark); }
