@@ -11431,6 +11431,29 @@ function renderSleepPatternsCard(section, today) {
       `)
     );
   });
+  renderSleepQualityCarryoverCard(section, today);
+}
+
+// Quality-conditioned carryover's own slot inside the Sleep patterns
+// section — deliberately separate from the trend.insights loop above,
+// since it runs on its own longer window (SLEEP_QUALITY_CARRYOVER_WINDOW_DAYS)
+// and its own per-side floor (SLEEP_QUALITY_CARRYOVER_MIN_NIGHTS), and can
+// still be "not ready" even once the basic SLEEP_NIGHTS_TO_UNLOCK gate above
+// has long since cleared. Silent watching card rather than nothing, same
+// honesty rule as the rest of Trends.
+function renderSleepQualityCarryoverCard(section, today) {
+  const result = computeSleepQualityCarryover(today);
+  if (result) {
+    section.insertAdjacentHTML("beforeend", sleepQualityPatternBannerHtml(result, appLabelLookup()));
+    return;
+  }
+  section.appendChild(
+    buildTrendWatchingCard(
+      "💤",
+      "Sleep quality's next-day effect",
+      `Once you've logged at least ${SLEEP_QUALITY_CARRYOVER_MIN_NIGHTS} rough nights and ${SLEEP_QUALITY_CARRYOVER_MIN_NIGHTS} great nights, we'll compare what tends to happen the next day.`
+    )
+  );
 }
 
 function renderSleepHistory(panel) {
@@ -11801,9 +11824,10 @@ function renderTrendInsightBanner(panel, today, restrictAppId) {
   const headline = restrictAppId
     ? `<strong>${escapeHtml(best.label)}</strong> &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.`
     : `<strong>${escapeHtml(best.label)}</strong> is your strongest Practice &mdash; ${best.activeCount} of the last ${best.totalDays} days${streakClause}.`;
+  const icon = appIconLookup()[best.appId];
   panel.appendChild(el(`
     <div class="trend-insight-banner">
-      <div class="trend-insight-icon">🔥</div>
+      <div class="trend-insight-icon">${icon ? iconSvg(icon) : "🔥"}</div>
       <div class="trend-insight-text">${headline}</div>
     </div>
   `));
@@ -12021,6 +12045,76 @@ function computeNextDayAppPatterns(today) {
   return results.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 2);
 }
 
+// ------------------------------------------------------------------
+// Quality-conditioned carryover (Trends Playbook, 2026-09, approved by
+// Veronika) — the category the boolean cooccurrence functions above can't
+// cover: not "did you log Sleep" but "how was it." Sleep is first because
+// it already has the richest field (SLEEP_QUALITY_META) and the biggest
+// expected audience; Breathe and Meal Log are the natural next candidates
+// once this pattern is proven out.
+//
+// Shape deliberately mirrors appNextDayCooccurrence (a night on day N,
+// another Practice's completion on day N+1) — it's the same lag, just
+// conditioned on a real field value instead of on logged/not-logged. Only
+// "rough" vs. "great" nights are compared (the two extremes from her own
+// example); "okay" nights and unrated ones sit out of the comparison
+// entirely rather than being folded into either side.
+//
+// SLEEP_QUALITY_CARRYOVER_MIN_NIGHTS reuses COOCCUR_MIN_DAYS on purpose —
+// decided in review rather than inventing a separate number. The window
+// is much longer than COOCCUR_WINDOW_DAYS though: "rough" and "great"
+// nights are each a subset of all nights, not roughly half of them, so it
+// takes longer to build up 15 of either side than it takes to build up 15
+// "logged" days for a plain boolean practice.
+const SLEEP_QUALITY_CARRYOVER_WINDOW_DAYS = 90;
+const SLEEP_QUALITY_CARRYOVER_MIN_NIGHTS = COOCCUR_MIN_DAYS;
+
+function sleepQualityNextDayEffect(otherAppId, today) {
+  const buckets = { rough: { total: 0, hit: 0 }, great: { total: 0, hit: 0 } };
+  for (let i = 1; i <= SLEEP_QUALITY_CARRYOVER_WINDOW_DAYS; i++) {
+    const nightDate = addDays(today, -i);
+    const nextDate = addDays(today, -i + 1);
+    const night = state.sleepLogs.find((e) => e.date === nightDate);
+    const quality = night?.am?.quality;
+    if (quality !== "rough" && quality !== "great") continue; // no rating, or "okay" — not part of this comparison
+    buckets[quality].total++;
+    if (isAppLoggedToday(otherAppId, nextDate)) buckets[quality].hit++;
+  }
+  if (buckets.rough.total < SLEEP_QUALITY_CARRYOVER_MIN_NIGHTS || buckets.great.total < SLEEP_QUALITY_CARRYOVER_MIN_NIGHTS) return null;
+  const rateRough = buckets.rough.hit / buckets.rough.total;
+  const rateGreat = buckets.great.hit / buckets.great.total;
+  return { otherAppId, roughNights: buckets.rough.total, greatNights: buckets.great.total, rateRough, rateGreat, diff: rateGreat - rateRough };
+}
+
+// Widest gap wins, same "surface the strongest thing" restraint as every
+// other Trends card — Sleep quality could plausibly affect several other
+// Practices at once, but showing all of them would read as fishing.
+function computeSleepQualityCarryover(today) {
+  if (!currentPracticeAppIds().includes("sleep")) return null;
+  const others = currentPracticeAppIds().filter((id) => id !== "sleep");
+  let best = null;
+  others.forEach((id) => {
+    const r = sleepQualityNextDayEffect(id, today);
+    if (r && Math.abs(r.diff) >= COOCCUR_MIN_DIFF && (!best || Math.abs(r.diff) > Math.abs(best.diff))) best = r;
+  });
+  return best;
+}
+
+function sleepQualityPatternBannerHtml(r, labels) {
+  const labelFor = (id) => labels[id] || id;
+  return `
+    <div class="trend-insight-banner stacked">
+      <div class="pattern-head">
+        ${patternIconPairHtml("sleep", r.otherAppId, true)}
+        <div class="insight-hero-eyebrow">Quality pattern</div>
+      </div>
+      <div class="trend-insight-text">
+        After a <b>rough</b> night's sleep, you complete <b>${escapeHtml(labelFor(r.otherAppId))}</b> the next day <b>${Math.round(r.rateRough * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateGreat * 100)}% after a <b>great</b> one.
+      </div>
+    </div>
+  `;
+}
+
 // Labels for whichever apps computeNotableAppCooccurrences/
 // computeNextDayAppPatterns turned up — built fresh each call since the
 // app list can change.
@@ -12030,6 +12124,32 @@ function appLabelLookup() {
     map[a.id] = a.label;
   });
   return map;
+}
+
+// Icons for the same set — used to build the two-app icon-chip pairing on
+// pattern banners (2026-09, Veronika: swap the flat emoji/arrow icon for
+// each pattern's actual two app icons, outlined card to match the bar-chart
+// cards instead of the old filled/gradient banner).
+function appIconLookup() {
+  const map = {};
+  currentAppEntries().forEach((a) => {
+    map[a.id] = a.icon;
+  });
+  return map;
+}
+
+function patternIconPairHtml(idA, idB, directional) {
+  const icons = appIconLookup();
+  const fallback = '<circle cx="12" cy="12" r="9"></circle>';
+  const arrow = directional
+    ? `<svg class="link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`
+    : `<svg class="link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="12" r="2.3"></circle><circle cx="17" cy="12" r="2.3"></circle><line x1="9.3" y1="12" x2="14.7" y2="12"></line></svg>`;
+  return `
+    <div class="trend-insight-icon-pair">
+      <div class="chip a">${iconSvg(icons[idA] || fallback)}</div>
+      ${arrow}
+      <div class="chip b">${iconSvg(icons[idB] || fallback)}</div>
+    </div>`;
 }
 
 // Lives inside the Trends card now (moved in per Veronika's
@@ -12053,15 +12173,16 @@ function trendsPairKey(r, kind) {
 
 function trendsPatternCardHtml(r, labels, kind) {
   const labelFor = (id) => labels[id] || id;
-  const icon = kind === "same" ? "🔗" : "&rarr;";
   const eyebrow = kind === "same" ? "Pattern spotted" : "Next-day pattern";
   const lead = kind === "same" ? "On days you log" : "The day after you log";
   const verb = kind === "same" ? "also log" : "log";
   return `
-    <div class="trend-insight-banner">
-      <div class="trend-insight-icon">${icon}</div>
-      <div class="trend-insight-text">
+    <div class="trend-insight-banner stacked">
+      <div class="pattern-head">
+        ${patternIconPairHtml(r.appIdA, r.appIdB, kind !== "same")}
         <div class="insight-hero-eyebrow">${eyebrow}</div>
+      </div>
+      <div class="trend-insight-text">
         ${lead} <b>${escapeHtml(labelFor(r.appIdA))}</b>, you ${verb} <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
       </div>
     </div>
@@ -12144,6 +12265,7 @@ let trendsUi = {
   profile: null, // { plan, trends_locked_practice_id, trends_lock_expires_at } | null
   selectedAppId: null,
   setupPick: null, // highlighted-but-not-yet-confirmed choice on the free+unlocked setup screen
+  previewAppId: null, // Free+locked: which chip is currently open below the picker (locked or not)
 };
 
 // Founder override — Veronika is full access by definition, whatever her
@@ -12355,11 +12477,14 @@ function trendsLockIconSvg() {
 
 function trendsPatternBannerHtml(r, labels, kind) {
   const labelFor = (id) => labels[id] || id;
-  const icon = kind === "same" ? "🔗" : "&rarr;";
+  const eyebrow = kind === "same" ? "Pattern spotted" : "Next-day pattern";
   const lead = kind === "same" ? "On days you log" : "The day after you log";
   return `
-    <div class="trend-insight-banner">
-      <div class="trend-insight-icon">${icon}</div>
+    <div class="trend-insight-banner stacked">
+      <div class="pattern-head">
+        ${patternIconPairHtml(r.appIdA, r.appIdB, kind !== "same")}
+        <div class="insight-hero-eyebrow">${eyebrow}</div>
+      </div>
       <div class="trend-insight-text">
         ${lead} <b>${escapeHtml(labelFor(r.appIdA))}</b>, you ${kind === "same" ? "also log" : "log"} <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
       </div>
@@ -12442,11 +12567,290 @@ function trendsConfirmSetup() {
     });
 }
 
+// ------------------------------------------------------------------
+// Full Trends page (2026-09, Veronika) — the endless-scroll home for
+// every category once Home itself got capped to its single strongest
+// card per type. One section per current Practice: its weekday rhythm,
+// its cycle-phase spread, every pattern it's involved in, and (Sleep
+// only) its own internal correlations plus the quality-conditioned
+// carryover. Reuses the exact same render functions Home calls —
+// renderWeeklyRhythmCard/renderCyclePhaseCompletionCard already take a
+// restrictAppId for precisely this, and trendsSameDayPairsFor/
+// trendsNextDayPairsFor were already built uncapped for the old "full
+// pattern grid" — so this is assembly, not new analysis.
+// ------------------------------------------------------------------
+// Trends detail for one Practice — no streak chip here (that's Home's
+// job, a different concept entirely); this is purely the analysis: its
+// weekday rhythm, its cycle-phase spread, every pattern it's part of, and
+// (Sleep only) its own internal correlations plus quality-conditioned
+// carryover.
+function renderPracticeTrendsSection(container, appId, today) {
+  const labels = appLabelLookup();
+  renderWeeklyRhythmCard(container, today, appId);
+  renderCyclePhaseCompletionCard(container, today, appId);
+  if (appId === "sleep") renderSleepPatternsCard(container, today);
+  const sameDay = trendsSameDayPairsFor(appId, today);
+  const nextDay = trendsNextDayPairsFor(appId, today);
+  if (sameDay.length || nextDay.length) {
+    sameDay.forEach((r) => container.insertAdjacentHTML("beforeend", trendsPatternBannerHtml(r, labels, "same")));
+    nextDay.forEach((r) => container.insertAdjacentHTML("beforeend", trendsPatternBannerHtml(r, labels, "next")));
+  }
+}
+
+// Full Trends page (2026-09, take two) — Veronika's call after seeing the
+// first pass: not an endless sequential scroll of every Practice stacked
+// one after another. Same standing as the Challenges page (its own
+// tab-style panel, "Trends" title + subtitle, left via the header
+// logo/Home button like every other non-bottom-bar page) — but browsed
+// like a real picker: a row of Practice chips up top, one selected at a
+// time, only that Practice's detail showing below. Reuses trendsUi.
+// selectedAppId/trendsSelectPractice, which already existed for exactly
+// this "browse one Practice's trends" interaction.
+function renderTrendsPracticePicker(panel, ids, today) {
+  const labels = appLabelLookup();
+  const icons = appIconLookup();
+  if (!trendsUi.selectedAppId || !ids.includes(trendsUi.selectedAppId)) trendsUi.selectedAppId = ids[0];
+  const picker = el(`<div class="trends-practice-picker"></div>`);
+  ids.forEach((id) => {
+    const chip = el(`
+      <button type="button" class="trends-practice-chip${id === trendsUi.selectedAppId ? " selected" : ""}">
+        <span class="chip-icon">${iconSvg(icons[id] || '<circle cx="12" cy="12" r="9"></circle>')}</span>
+        <span class="chip-label">${escapeHtml(labels[id] || id)}</span>
+      </button>
+    `);
+    chip.addEventListener("click", () => trendsSelectPractice(id));
+    picker.appendChild(chip);
+  });
+  panel.appendChild(picker);
+}
+
+function renderFullTrendsPage(panel, today) {
+  const ids = currentPracticeAppIds();
+  renderTrendsPracticePicker(panel, ids, today);
+  const detail = el(`<div style="margin-top:16px;"></div>`);
+  renderPracticeTrendsSection(detail, trendsUi.selectedAppId, today);
+  panel.appendChild(detail);
+  panel.appendChild(el(`<div class="trend-pattern-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
+}
+
+// Free + an active lock: the same picker row, but only the locked
+// Practice's chip actually opens anything — every other chip stays
+// visible (so the whole roster is legible at a glance) but reads as
+// locked and pops the upgrade paywall instead of switching. A status row
+// above states the lock plainly and links out to Trend Settings, so
+// there's always a way to see the countdown or upgrade without hunting
+// for it in the account menu.
+function renderGatedTrendsPage(panel, profile, today) {
+  const lockedId = profile.trends_locked_practice_id;
+  const labels = appLabelLookup();
+  const icons = appIconLookup();
+  const lockedLabel = labels[lockedId] || lockedId;
+  const days = trendsDaysRemaining(profile.trends_lock_expires_at);
+
+  const statusRow = el(`
+    <div class="trends-lock-status-row">
+      <span>Locked to <b>${escapeHtml(lockedLabel)}</b> &middot; ${days} day${days === 1 ? "" : "s"} left</span>
+      <button type="button" class="trends-settings-link">Trend Settings</button>
+    </div>
+  `);
+  statusRow.querySelector(".trends-settings-link").addEventListener("click", () => openTrendSettingsModal());
+  panel.appendChild(statusRow);
+
+  const ids = currentPracticeAppIds();
+  if (!trendsUi.previewAppId || !ids.includes(trendsUi.previewAppId)) trendsUi.previewAppId = lockedId;
+  const viewId = trendsUi.previewAppId;
+
+  const picker = el(`<div class="trends-practice-picker"></div>`);
+  ids.forEach((id) => {
+    const isLockedOut = id !== lockedId;
+    const chip = el(`
+      <button type="button" class="trends-practice-chip${id === viewId ? " selected" : ""}${isLockedOut ? " locked" : ""}">
+        <span class="chip-icon">${iconSvg(icons[id] || '<circle cx="12" cy="12" r="9"></circle>')}</span>
+        <span class="chip-label">${escapeHtml(labels[id] || id)}</span>
+        ${isLockedOut ? `<span class="chip-lock">${trendsLockIconSvg()}</span>` : ""}
+      </button>
+    `);
+    chip.addEventListener("click", () => {
+      // First tap on any chip (locked or not) just opens its preview below —
+      // for a locked Practice that preview is real content under blur. The
+      // paywall itself only fires on a second, deliberate tap into that blur
+      // (see the .trends-locked-card click handler below), never on the chip.
+      trendsUi.previewAppId = id;
+      renderTrends();
+    });
+    picker.appendChild(chip);
+  });
+  panel.appendChild(picker);
+
+  const detail = el(`<div style="margin-top:16px;"></div>`);
+  if (viewId === lockedId) {
+    renderPracticeTrendsSection(detail, viewId, today);
+  } else {
+    const viewLabel = labels[viewId] || viewId;
+    const real = el(`<div></div>`);
+    renderPracticeTrendsSection(real, viewId, today);
+    const blurCard = el(`
+      <div class="card trends-locked-card" style="cursor:pointer;">
+        <div class="trends-blur-content">${real.innerHTML}</div>
+        <div class="trends-lock-overlay">
+          <div class="trends-lock-msg">Upgrade to <b>Addley Plus</b> to see ${escapeHtml(viewLabel)}'s trends too.</div>
+          <button type="button" class="trends-teaser-btn">Tap to unlock</button>
+        </div>
+      </div>
+    `);
+    // Whole card is tappable (matches the "tap the blur" instruction), but
+    // the button gives it an explicit, unmistakable affordance too — this
+    // IS the deliberate second tap that pops the paywall, not a shortcut
+    // past it, so it doesn't undercut the two-step reveal.
+    blurCard.addEventListener("click", () => openTrendPaywallModal(lockedLabel, viewLabel));
+    detail.appendChild(blurCard);
+  }
+  panel.appendChild(detail);
+  panel.appendChild(el(`<div class="trend-pattern-note">Observed together, not proven cause and effect &mdash; it could run either direction.</div>`));
+}
+
+// The paywall a locked-out chip pops — reuses the same
+// openUpgradeCapModal helper Challenges already uses for its own cap, so
+// this reads as one consistent upgrade moment app-wide rather than a
+// bespoke Trends-only dialog.
+function openTrendPaywallModal(lockedLabel, targetLabel) {
+  openUpgradeCapModal({
+    icon: "🔒",
+    title: `See ${targetLabel}'s trends too`,
+    body: `You're locked to <b>${escapeHtml(lockedLabel)}</b> on the Free plan. Upgrade to Addley Plus to track every Practice's trends at once &mdash; no lock, nothing to choose between.`,
+    primaryLabel: "Upgrade to Addley Plus",
+    onPrimary: () => openBillingModal(),
+    secondaryLabel: "Not now",
+  });
+}
+
+// Trend Settings (2026-09, take three) — the practice-lock setup/status
+// that used to BE the Trends tab now lives here, under My Account, since
+// the tab itself is real content. Reached from Trends via the status
+// row's link (locked) or the prompt button (not yet chosen). Keeps its
+// own local pick state rather than trendsUi.setupPick, since a modal
+// re-renders itself rather than the whole Trends tab.
+function openTrendSettingsModal() {
+  const profile = trendsUi.profile;
+  const today = todayISO();
+  let localPick = null;
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box account-modal-box" style="max-width:380px;">
+        <div class="info-modal-header">
+          <h3>Trend Settings</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <div class="info-modal-body"></div>
+      </div>
+    </div>
+  `);
+  const body = overlay.querySelector(".info-modal-body");
+
+  function renderBody() {
+    body.innerHTML = "";
+    if (!trendsIsFreePlan(profile)) {
+      body.appendChild(el(`<div class="trends-sub" style="margin-bottom:0;">You're on <b>Addley Plus</b> &mdash; every Practice is tracked automatically, any time. Nothing to choose here.</div>`));
+      return;
+    }
+    const locked = trendsLockActive(profile);
+    if (locked) {
+      const lockedLabel = appLabelLookup()[profile.trends_locked_practice_id] || profile.trends_locked_practice_id;
+      const days = trendsDaysRemaining(profile.trends_lock_expires_at);
+      body.appendChild(el(`
+        <div class="trends-sub">Locked to <b>${escapeHtml(lockedLabel)}</b> for ${days} more day${days === 1 ? "" : "s"} &mdash; delete ${escapeHtml(lockedLabel)} from your Gallery to switch sooner, or wait it out.</div>
+      `));
+      // Tease with a real OTHER Practice's actual trend section (icons,
+      // colored bars, everything) rather than the flat cross-practice
+      // sentence list — same colorful content the Trends page itself
+      // blurs when you tap a locked chip, so this reads as one consistent
+      // "here's what you're missing" moment instead of a plainer preview.
+      const otherIds = currentPracticeAppIds().filter((id) => id !== profile.trends_locked_practice_id);
+      const teaserId = otherIds[0];
+      const teaserContent = el(`<div></div>`);
+      if (teaserId) renderPracticeTrendsSection(teaserContent, teaserId, today);
+      const upgradeCard = el(`
+        <div class="card trends-locked-card" style="cursor:pointer;">
+          <div class="trends-blur-content">${teaserId ? teaserContent.innerHTML : trendsFullGridHtml(today)}</div>
+          <div class="trends-lock-overlay">
+            <div class="trends-lock-msg">Upgrade to <b>Addley Plus</b> to track every Practice at once, any time &mdash; no lock, nothing to choose between.</div>
+            <button type="button" class="trends-teaser-btn">Upgrade to Addley Plus</button>
+          </div>
+        </div>
+      `);
+      upgradeCard.addEventListener("click", () => {
+        overlay.remove();
+        openBillingModal();
+      });
+      body.appendChild(upgradeCard);
+      return;
+    }
+    // Not locked yet — same one-time deliberate setup as before, just
+    // living in this modal instead of taking over the whole tab.
+    body.appendChild(el(`
+      <div class="trends-setup-icon">${trendsLockIconSvg()}</div>
+      <div class="trends-setup-title">Choose your Practice</div>
+      <p class="trends-setup-copy">Pick one Practice below and Trends will track it closely for the next <b>${TRENDS_LOCK_DAYS} days</b> &mdash; its daily streak, and every pattern with your other Practices. Nothing is saved until you confirm.</p>
+    `));
+    const setupGrid = el(`<div class="trends-setup-grid"></div>`);
+    currentAppEntries()
+      .filter((e) => e.type === "practice")
+      .forEach((entry) => {
+        const streak = appCurrentStreak(entry.id, today);
+        const isPicked = entry.id === localPick;
+        const option = el(`
+          <div class="trends-setup-option${isPicked ? " selected" : ""}">
+            <div class="oi">${iconSvg(entry.icon || '<circle cx="12" cy="12" r="9"></circle>')}</div>
+            <div class="ot"><div class="name">${escapeHtml(entry.label)}</div><div class="streak">${streak}-day streak</div></div>
+            <div class="radio"></div>
+          </div>
+        `);
+        option.addEventListener("click", () => {
+          localPick = entry.id;
+          renderBody();
+        });
+        setupGrid.appendChild(option);
+      });
+    body.appendChild(setupGrid);
+    body.appendChild(el(`<p class="trends-setup-fineprint">On the <b>Free</b> plan you can lock to one Practice at a time. <b>Addley Plus</b> tracks every Practice at once, any time, no lock.</p>`));
+    const labels = appLabelLookup();
+    const confirmLabel = localPick ? `Lock in Trends for ${escapeHtml(labels[localPick] || localPick)} &mdash; ${TRENDS_LOCK_DAYS} days` : "Choose a Practice above";
+    const confirmBtn = el(`<button type="button" class="trends-setup-confirm-btn" ${localPick ? "" : "disabled"}>${confirmLabel}</button>`);
+    confirmBtn.addEventListener("click", () => {
+      const appId = localPick;
+      if (!appId) return;
+      trendsUi.selectedAppId = appId;
+      overlay.remove();
+      trendsSetLock(appId)
+        .then((patch) => {
+          trendsUi.profile = { plan: trendsUi.profile?.plan || "free", ...trendsUi.profile, ...patch };
+          renderTrends();
+        })
+        .catch((err) => {
+          console.error("Trends lock write failed", err);
+          openTrendSettingsModal();
+        });
+    });
+    body.appendChild(confirmBtn);
+    const upgradeInstead = el(`<button type="button" class="trends-setup-upgrade-link">Or upgrade to Addley Plus &mdash; track every Practice, no lock</button>`);
+    upgradeInstead.addEventListener("click", () => {
+      overlay.remove();
+      openBillingModal();
+    });
+    body.appendChild(upgradeInstead);
+  }
+
+  renderBody();
+  overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
+  document.body.appendChild(overlay);
+}
+
 function renderTrends() {
   const panel = document.getElementById("panel-trends");
   if (!panel) return;
   panel.innerHTML = "";
   panel.appendChild(el(`<h2 class="section-title serif">Trends</h2>`));
+  panel.appendChild(el(`<div class="muted" style="font-size:12.5px;margin:-8px 0 16px;">Pick a Practice to see what's really going on</div>`));
 
   const today = todayISO();
   const ids = currentPracticeAppIds();
@@ -12497,70 +12901,40 @@ function renderTrends() {
     trendsUi.selectedAppId = trendsLockActive(profile) ? profile.trends_locked_practice_id : ids[0];
   }
 
-  const labels = appLabelLookup();
   const locked = trendsLockActive(profile);
 
-  // Free + no active lock yet: this is a one-time (well, once-per-30-days)
-  // decision with a real consequence, so it gets its own deliberate setup
-  // screen rather than living as a caption line over a row of small chips —
-  // a single accidental tap on a picker chip used to commit the 30-day lock
-  // immediately, with no confirmation step. Nothing here writes anything
-  // until trendsConfirmSetup runs.
+  // 2026-09 (take three, Veronika): the practice-lock setup/settings moved
+  // OUT of this tab entirely — it now lives under My Account > Trend
+  // Settings (openTrendSettingsModal), since this tab is real content now,
+  // not a settings screen. This tab's only three states left: nothing
+  // chosen yet (a prompt pointing at Trend Settings), a Free lock active
+  // (gated picker — only the locked Practice opens, everything else pops
+  // the upgrade paywall), or Plus (every Practice, no gate at all).
   if (trendsIsFreePlan(profile) && !locked) {
-    panel.appendChild(el(`
-      <div class="trends-setup-icon">${trendsLockIconSvg()}</div>
-      <div class="trends-setup-title">Choose your Practice</div>
-      <p class="trends-setup-copy">Pick one Practice below and Trends will track it closely for the next <b>${TRENDS_LOCK_DAYS} days</b> &mdash; its daily streak, and every pattern with your other Practices. Nothing is saved until you confirm.</p>
-    `));
-    const setupGrid = el(`<div class="trends-setup-grid"></div>`);
-    currentAppEntries()
-      .filter((e) => e.type === "practice")
-      .forEach((entry) => {
-        const streak = appCurrentStreak(entry.id, today);
-        const isPicked = entry.id === trendsUi.setupPick;
-        const option = el(`
-          <div class="trends-setup-option${isPicked ? " selected" : ""}">
-            <div class="oi">${iconSvg(entry.icon || '<circle cx="12" cy="12" r="9"></circle>')}</div>
-            <div class="ot"><div class="name">${escapeHtml(entry.label)}</div><div class="streak">${streak}-day streak</div></div>
-            <div class="radio"></div>
-          </div>
-        `);
-        option.addEventListener("click", () => trendsPickForSetup(entry.id));
-        setupGrid.appendChild(option);
-      });
-    panel.appendChild(setupGrid);
-    panel.appendChild(el(`<p class="trends-setup-fineprint">On the <b>Free</b> plan you can lock to one Practice at a time. <b>Addley Plus</b> tracks every Practice at once, any time, no lock.</p>`));
-    const confirmLabel = trendsUi.setupPick
-      ? `Lock in Trends for ${escapeHtml(labels[trendsUi.setupPick] || trendsUi.setupPick)} &mdash; ${TRENDS_LOCK_DAYS} days`
-      : "Choose a Practice above";
-    const confirmBtn = el(`<button type="button" class="trends-setup-confirm-btn" ${trendsUi.setupPick ? "" : "disabled"}>${confirmLabel}</button>`);
-    confirmBtn.addEventListener("click", () => trendsConfirmSetup());
-    panel.appendChild(confirmBtn);
+    const prompt = el(`
+      <div class="card trends-upgrade-card" style="cursor:pointer;">
+        <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
+        <div class="trends-lock-msg">Choose a Practice in Trend Settings to start seeing its Trends here.</div>
+      </div>
+    `);
+    prompt.addEventListener("click", () => openTrendSettingsModal());
+    panel.appendChild(prompt);
+    const settingsBtn = el(`<button type="button" class="trends-settings-btn">Open Trend Settings</button>`);
+    settingsBtn.addEventListener("click", () => openTrendSettingsModal());
+    panel.appendChild(settingsBtn);
+    // Someone who already knows they want Plus shouldn't have to open
+    // Settings first to find that option — same "both paths together"
+    // pairing as the setup screen inside Trend Settings itself.
+    const upgradeInstead = el(`<button type="button" class="trends-setup-upgrade-link">Or upgrade to Addley Plus &mdash; track every Practice, no lock</button>`);
+    upgradeInstead.addEventListener("click", () => openBillingModal());
+    panel.appendChild(upgradeInstead);
     return;
   }
 
-  // This screen is pure settings now — which Practice you've got locked
-  // in, nothing more. The actual Trends content (strongest practice,
-  // chart, patterns) all lives on Home, unblurred, for everyone — showing
-  // any of it again here just duplicated Home. Per Veronika's call: no
-  // insight content on this screen, ever, just the lock state and an
-  // upgrade prompt for Plus.
   if (trendsIsFreePlan(profile)) {
-    const lockedLabel = labels[profile.trends_locked_practice_id] || profile.trends_locked_practice_id;
-    const days = trendsDaysRemaining(profile.trends_lock_expires_at);
-    panel.appendChild(el(`
-      <div class="trends-sub">Locked to <b>${escapeHtml(lockedLabel)}</b> for ${days} more day${days === 1 ? "" : "s"} &mdash; delete ${escapeHtml(lockedLabel)} from your Gallery to switch sooner, or wait it out.</div>
-    `));
-    const upgradeCard = el(`
-      <div class="card trends-upgrade-card" style="cursor:pointer;">
-        <div class="trends-lock-icon">${trendsLockIconSvg()}</div>
-        <div class="trends-lock-msg">Upgrade to Addley Plus to track every Practice at once, any time &mdash; no lock, nothing to choose between.</div>
-      </div>
-    `);
-    upgradeCard.addEventListener("click", () => openBillingModal());
-    panel.appendChild(upgradeCard);
+    renderGatedTrendsPage(panel, profile, today);
   } else {
-    panel.appendChild(el(`<div class="trends-sub">You're on <b>Addley Plus</b> &mdash; every Practice is tracked automatically. Nothing to choose here.</div>`));
+    renderFullTrendsPage(panel, today);
   }
 }
 
@@ -15571,8 +15945,20 @@ function renderHomeTrendsSection(panel, today) {
     renderTrendInsightBanner(section, today);
     renderWeeklyRhythmCard(section, today);
     renderCyclePhaseCompletionCard(section, today);
-    renderCooccurrenceCard(section, today);
-    renderSleepPatternsCard(section, today);
+    // Home shows the single strongest pattern only — everything else (every
+    // other pattern, plus a full per-Practice breakdown) lives on the
+    // dedicated Trends tab now, so Home doesn't turn into an endless scroll
+    // of its own. See renderFullTrendsPage.
+    const homeLabels = appLabelLookup();
+    const homeSameDay = computeNotableAppCooccurrences(today);
+    const homeNextDay = computeNextDayAppPatterns(today);
+    const topPattern = [...homeSameDay.map((r) => ({ r, kind: "same" })), ...homeNextDay.map((r) => ({ r, kind: "next" }))].sort(
+      (a, b) => Math.abs(b.r.diff) - Math.abs(a.r.diff)
+    )[0];
+    if (topPattern) section.insertAdjacentHTML("beforeend", trendsPatternBannerHtml(topPattern.r, homeLabels, topPattern.kind));
+    const seeAllBtn = el(`<button type="button" class="trend-show-more-btn" style="width:100%;margin-top:8px;">See all trends &rarr;</button>`);
+    seeAllBtn.addEventListener("click", () => activateTab("trends"));
+    section.appendChild(seeAllBtn);
     return;
   }
 
@@ -15624,6 +16010,9 @@ function renderHomeTrendsSection(panel, today) {
       </div>
     </div>
   `));
+  const seeFullBtn = el(`<button type="button" class="trend-show-more-btn" style="width:100%;margin-top:8px;">See your ${escapeHtml(labels[lockedId] || lockedId)} trends in full &rarr;</button>`);
+  seeFullBtn.addEventListener("click", () => activateTab("trends"));
+  section.appendChild(seeFullBtn);
 }
 
 // Completion rate by cycle phase — "not just seeing your streaks, but the
@@ -15682,7 +16071,13 @@ function renderWeeklyRhythmCard(panel, today, restrictAppId) {
     const rates = WEEKDAY_ORDER.map((d) => ({ key: d, ...buckets[d], rate: buckets[d].total ? buckets[d].logged / buckets[d].total : null })).filter(
       (r) => r.total >= WEEKLY_RHYTHM_MIN_DAYS
     );
-    best = rates.length >= 2 ? { appId: restrictAppId, rates } : null;
+    // Zero signal across every bucket (nothing logged at all in this
+    // window) isn't a "pattern" — it's just not started yet. Without this
+    // check every rate reads 0%, and "most consistent" / "least" both land
+    // on whichever bucket happens first, which reads as a broken card
+    // rather than an honest "no data" one.
+    const hasSignal = rates.some((r) => r.rate > 0);
+    best = rates.length >= 2 && hasSignal ? { appId: restrictAppId, rates } : null;
   } else {
     best = pickWeeklyRhythmApp(today);
   }
@@ -15703,7 +16098,7 @@ function renderWeeklyRhythmCard(panel, today, restrictAppId) {
 
   const card = el(`<div class="trend-phase-card" style="margin-top:10px;"></div>`);
   card.appendChild(el(`<div class="insight-hero-eyebrow">Completion rate by day of week</div>`));
-  card.appendChild(el(`<div class="trend-phase-sub">${escapeHtml(label)} &mdash; strongest on ${WEEKDAY_LABELS[bestDay.key]} (${Math.round(bestDay.rate * 100)}%), weakest on ${WEEKDAY_LABELS[worstDay.key]} (${Math.round(worstDay.rate * 100)}%)</div>`));
+  card.appendChild(el(`<div class="trend-phase-sub">${escapeHtml(label)} &mdash; most consistent on ${WEEKDAY_LABELS[bestDay.key]} (${Math.round(bestDay.rate * 100)}%), least on ${WEEKDAY_LABELS[worstDay.key]} (${Math.round(worstDay.rate * 100)}%)</div>`));
   const bars = el(`<div class="trend-phase-bars"></div>`);
   best.rates.forEach((r) => {
     const pct = Math.round(r.rate * 100);
@@ -15791,7 +16186,13 @@ function renderCyclePhaseCompletionCard(panel, today, restrictAppId) {
     const rates = CYCLE_PHASE_ORDER.map((key) => ({ key, ...buckets[key], rate: buckets[key].total ? buckets[key].logged / buckets[key].total : null })).filter(
       (r) => r.total >= CYCLE_PHASE_COMPLETION_MIN_DAYS
     );
-    best = rates.length >= 2 ? { appId: restrictAppId, rates } : null;
+    // Zero signal across every bucket (nothing logged at all in this
+    // window) isn't a "pattern" — it's just not started yet. Without this
+    // check every rate reads 0%, and "most consistent" / "least" both land
+    // on whichever bucket happens first, which reads as a broken card
+    // rather than an honest "no data" one.
+    const hasSignal = rates.some((r) => r.rate > 0);
+    best = rates.length >= 2 && hasSignal ? { appId: restrictAppId, rates } : null;
   } else {
     best = pickCyclePhaseCompletionApp(today);
   }
