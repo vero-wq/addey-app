@@ -2908,7 +2908,7 @@ function buildNotificationsSection(rerender) {
             status.permission === "denied"
               ? "Blocked in this browser's site settings — allow notifications for Addley there, then come back."
               : isOn
-              ? "On for this device &mdash; milestone celebrations and a gentle evening nudge if a pillar's still open."
+              ? "On for this device &mdash; milestone celebrations and a gentle evening nudge if a practice is still open."
               : "Off. Turn on for streak &amp; deposit milestone pushes, plus a gentle evening nudge."
           }
         </span>
@@ -11698,6 +11698,18 @@ const COOCCUR_WINDOW_DAYS = 60; // a longer, sturdier window for the between-pil
 const COOCCUR_MIN_DAYS = 15; // below this in either bucket, the rate is too noisy to show
 const COOCCUR_MIN_DIFF = 0.15; // don't surface a "pattern" that's within normal day-to-day noise
 
+// Completion rate by day of week — single-Practice, no partner app or
+// rich field needed, which is what makes it the cheapest new Trends card
+// to add (Veronika, 2026-09). Reuses COOCCUR_WINDOW_DAYS as its lookback
+// so every weekday gets ~8-9 occurrences; WEEKLY_RHYTHM_MIN_DAYS is a much
+// lower floor than COOCCUR_MIN_DAYS since a single weekday bucket is a
+// smaller, rarer sample by construction (at most 1 in 7 days) than a
+// same-day/next-day bucket, which sees roughly half of all days.
+const WEEKLY_RHYTHM_WINDOW_DAYS = COOCCUR_WINDOW_DAYS;
+const WEEKLY_RHYTHM_MIN_DAYS = 4; // at least 4 occurrences of a weekday in-window before it counts
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon..Sun for display — JS Date.getDay() is 0=Sun
+const WEEKDAY_LABELS = { 0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat" };
+
 function pillarTrendBreakdown(key, today) {
   const days = [];
   for (let i = TREND_WINDOW_DAYS - 1; i >= 0; i--) days.push(addDays(today, -i));
@@ -14760,7 +14772,7 @@ function openRewardGoalDetailScreen(prize) {
           <div class="home-deposit-track-fill" style="width:${stats.pct}%;"></div>
           ${REWARD_MILESTONE_FRACTIONS.map((f) => `<div class="home-deposit-tick ${stats.earned >= Math.round(stats.goal * f) ? "passed" : ""}" style="left:${f * 100}%;"></div>`).join("")}
         </div>
-        ${prize.dollarPerLog ? `<div class="account-note" style="margin-top:6px;">$${prize.dollarPerLog} earned per pillar logged, each day${prize.practiceIds && prize.practiceIds.length ? ` — only from ${prize.practiceIds.map((id) => sheetLabelForPracticeId(id)).join(", ")}` : ""}.</div>` : ""}
+        ${prize.dollarPerLog ? `<div class="account-note" style="margin-top:6px;">$${prize.dollarPerLog.toFixed(2).replace(/\.00$/, "")} earned per practice logged, each day${prize.practiceIds && prize.practiceIds.length ? ` — only from ${prize.practiceIds.map((id) => sheetLabelForPracticeId(id)).join(", ")}` : ""}.</div>` : ""}
       </div>
     `));
 
@@ -15557,6 +15569,7 @@ function renderHomeTrendsSection(panel, today) {
     // week-strip removals. Leads with the strongest-practice read now,
     // then the cycle-phase breakdown, then cross-practice patterns.
     renderTrendInsightBanner(section, today);
+    renderWeeklyRhythmCard(section, today);
     renderCyclePhaseCompletionCard(section, today);
     renderCooccurrenceCard(section, today);
     renderSleepPatternsCard(section, today);
@@ -15580,6 +15593,7 @@ function renderHomeTrendsSection(panel, today) {
   // Free, locked to one Practice — that Practice's own trends, unblurred.
   // 2026-09 (Veronika): pulse chart dropped here too, same as the Plus branch.
   renderTrendInsightBanner(section, today, lockedId);
+  renderWeeklyRhythmCard(section, today, lockedId);
   renderCyclePhaseCompletionCard(section, today, lockedId);
   // Sleep's own within-practice correlations (caffeine, movement, mood)
   // aren't a cross-Practice pattern, but they're still real analysis tied
@@ -15625,6 +15639,87 @@ function renderHomeTrendsSection(panel, today) {
 // TODAY's rolling average cycle/period length to every historical date in
 // the window, on the assumption her cycle has been reasonably stable
 // (same simplification cycleTodayInfo already makes for "today").
+// Completion rate by day of week — the single-Practice sibling of the
+// cycle-phase card just below: same "bucket the window, filter by a
+// minimum count, keep whichever app shows the widest spread" shape, just
+// bucketed by weekday instead of by cycle phase, and with no external
+// unlock gate (no equivalent of "2 periods logged" — it's ready as soon
+// as one Practice has enough days logged).
+function computeAppCompletionByWeekday(appId, today) {
+  const buckets = {};
+  WEEKDAY_ORDER.forEach((d) => (buckets[d] = { logged: 0, total: 0 }));
+  for (let i = 0; i < WEEKLY_RHYTHM_WINDOW_DAYS; i++) {
+    const date = addDays(today, -i);
+    const dow = new Date(date + "T00:00:00").getDay();
+    buckets[dow].total++;
+    if (isAppLoggedToday(appId, date)) buckets[dow].logged++;
+  }
+  return buckets;
+}
+
+// Widest spread across weekdays wins — one card, not a wall of them, same
+// restraint as pickCyclePhaseCompletionApp below.
+function pickWeeklyRhythmApp(today) {
+  let best = null;
+  currentPracticeAppIds().forEach((appId) => {
+    const buckets = computeAppCompletionByWeekday(appId, today);
+    const rates = WEEKDAY_ORDER.map((d) => ({ key: d, ...buckets[d], rate: buckets[d].total ? buckets[d].logged / buckets[d].total : null })).filter(
+      (r) => r.total >= WEEKLY_RHYTHM_MIN_DAYS
+    );
+    if (rates.length < 2) return;
+    const spread = Math.max(...rates.map((r) => r.rate)) - Math.min(...rates.map((r) => r.rate));
+    if (spread >= COOCCUR_MIN_DIFF && (!best || spread > best.spread)) best = { appId, rates, spread };
+  });
+  return best;
+}
+
+// restrictAppId (free-tier Trends gating): weekday completion for that one
+// Practice specifically, same bypass pattern as renderCyclePhaseCompletionCard.
+function renderWeeklyRhythmCard(panel, today, restrictAppId) {
+  let best;
+  if (restrictAppId) {
+    const buckets = computeAppCompletionByWeekday(restrictAppId, today);
+    const rates = WEEKDAY_ORDER.map((d) => ({ key: d, ...buckets[d], rate: buckets[d].total ? buckets[d].logged / buckets[d].total : null })).filter(
+      (r) => r.total >= WEEKLY_RHYTHM_MIN_DAYS
+    );
+    best = rates.length >= 2 ? { appId: restrictAppId, rates } : null;
+  } else {
+    best = pickWeeklyRhythmApp(today);
+  }
+  if (!best) {
+    panel.appendChild(
+      buildTrendWatchingCard(
+        "📅",
+        "Completion by day of week",
+        "Not enough days logged yet across the week to spot a weekday pattern &mdash; keep logging and one should turn up."
+      )
+    );
+    return;
+  }
+  const label = appLabelLookup()[best.appId] || best.appId;
+  const maxRate = Math.max(...best.rates.map((r) => r.rate), 0.01);
+  const bestDay = best.rates.reduce((a, b) => (b.rate > a.rate ? b : a));
+  const worstDay = best.rates.reduce((a, b) => (b.rate < a.rate ? b : a));
+
+  const card = el(`<div class="trend-phase-card" style="margin-top:10px;"></div>`);
+  card.appendChild(el(`<div class="insight-hero-eyebrow">Completion rate by day of week</div>`));
+  card.appendChild(el(`<div class="trend-phase-sub">${escapeHtml(label)} &mdash; strongest on ${WEEKDAY_LABELS[bestDay.key]} (${Math.round(bestDay.rate * 100)}%), weakest on ${WEEKDAY_LABELS[worstDay.key]} (${Math.round(worstDay.rate * 100)}%)</div>`));
+  const bars = el(`<div class="trend-phase-bars"></div>`);
+  best.rates.forEach((r) => {
+    const pct = Math.round(r.rate * 100);
+    const heightPct = Math.round((r.rate / maxRate) * 100);
+    bars.appendChild(el(`
+      <div class="trend-phase-bar-col">
+        <div class="trend-phase-bar-pct">${pct}%</div>
+        <div class="trend-phase-bar-track"><div class="trend-phase-bar-fill" style="height:${heightPct}%;background:var(--accent);"></div></div>
+        <div class="trend-phase-bar-label">${WEEKDAY_LABELS[r.key]}</div>
+      </div>
+    `));
+  });
+  card.appendChild(bars);
+  panel.appendChild(card);
+}
+
 const CYCLE_PHASE_COMPLETION_WINDOW_DAYS = 90;
 const CYCLE_PHASE_COMPLETION_MIN_DAYS = 6; // per-phase bucket floor — phases are naturally short (esp. ovulatory), so this sits below COOCCUR_MIN_DAYS on purpose
 const CYCLE_PHASE_ORDER = ["menstrual", "follicular", "ovulatory", "luteal"];
