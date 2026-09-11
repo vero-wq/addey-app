@@ -5209,7 +5209,7 @@ function openReadingLogModal(sheetId, presetBookId) {
           <div class="rl-chapter-hint muted">Read more than one? Just enter the last one — the rest count automatically.</div>
         </div>
         <div class="modal-actions" style="justify-content:space-between;">
-          <div></div>
+          <button type="button" class="rl-mark-finished" style="background:none;border:none;font-size:12.5px;font-weight:700;color:var(--accent-dark);cursor:pointer;padding:4px 0;">Mark as finished</button>
           <button type="button" class="btn-primary rl-save">${existing ? "Update log" : "Log it"}</button>
         </div>
       </div>
@@ -5222,6 +5222,7 @@ function openReadingLogModal(sheetId, presetBookId) {
   const chapterInput = overlay.querySelector(".rl-f-chapter");
   const formatLabel = overlay.querySelector(".rl-f-format-label");
   const saveBtn = overlay.querySelector(".rl-save");
+  const markFinishedBtn = overlay.querySelector(".rl-mark-finished");
 
   // A long shelf makes a plain dropdown slow to search on mobile — typing
   // here narrows the actual <select> down to matching title/author before
@@ -5248,6 +5249,17 @@ function openReadingLogModal(sheetId, presetBookId) {
     formatLabel.textContent = book?.format ? `Format: ${book.format}` : "";
     const carryOverChapter = book?.id === existing?.bookId ? existing?.chapter : null;
     chapterInput.value = carryOverChapter ?? book?.currentChapter ?? 0;
+    // 2026-09 (Veronika, via a Challenge item she couldn't mark done):
+    // this modal is also what a Challenge's book row/"Up next" card opens
+    // (see attachRowInteraction in renderChallengeDetail) — before this,
+    // it only let you log a chapter number, with no path at all to
+    // actually finishing the book, so a challenge title could never be
+    // checked off from here. Reuses the exact same setBookStatus +
+    // openBookFinishRating flow the Shelf's own checkbox uses, so it
+    // still gets the rating prompt, the celebration, and — since
+    // openBookFinishCelebration already folds in challenge progress —
+    // the right "X of 12" framing when this book belongs to one.
+    markFinishedBtn.hidden = !book || book.read;
   }
   renderOptions("", startBookId);
   syncForBook();
@@ -5261,6 +5273,18 @@ function openReadingLogModal(sheetId, presetBookId) {
   overlay.querySelector(".info-modal-close").addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
+  });
+
+  markFinishedBtn.addEventListener("click", () => {
+    const book = sheet.items.find((b) => b.id === Number(bookSelect.value));
+    if (!book) return;
+    const previousStatus = book.status;
+    setBookStatus(book, "read");
+    scheduleSave();
+    overlay.remove();
+    renderBookSheet(sheetId);
+    renderHome();
+    openBookFinishRating(sheetId, book, previousStatus);
   });
 
   overlay.querySelector(".rl-save").addEventListener("click", () => {
@@ -12629,17 +12653,25 @@ function computeRewardProgress(prize, today) {
 // was actually in the shot. Stored once per goal (object-fit/background
 // percentages are equivalent here), read by every surface that shows the
 // photo, and set for real via openRewardPhotoPositionModal's drag tool.
+const REWARD_PHOTO_MAX_ZOOM = 3;
 function rewardPhotoPos(prize) {
   const p = prize?.itemPhotoPosition;
-  return { x: p && typeof p.x === "number" ? p.x : 50, y: p && typeof p.y === "number" ? p.y : 50 };
+  return {
+    x: p && typeof p.x === "number" ? p.x : 50,
+    y: p && typeof p.y === "number" ? p.y : 50,
+    zoom: p && typeof p.zoom === "number" ? Math.max(1, Math.min(REWARD_PHOTO_MAX_ZOOM, p.zoom)) : 1,
+  };
 }
-function rewardPhotoObjectPositionStyle(prize) {
+// Every real reward-photo surface (Home banner, hero prize banner, claim
+// celebration, goal-row thumbnails) renders through this one <img> style
+// string now — object-fit:cover handles the base "always fills the frame"
+// crop, and transform:scale layers zoom on top of that, centered, cropped
+// by the parent's overflow:hidden. Keeping every surface on one helper
+// means a zoom added in the position modal shows up everywhere at once,
+// with no separate background-image code path to drift out of sync.
+function rewardPhotoImgStyle(prize) {
   const pos = rewardPhotoPos(prize);
-  return `object-position:${pos.x}% ${pos.y}%;`;
-}
-function rewardPhotoBgPositionStyle(prize) {
-  const pos = rewardPhotoPos(prize);
-  return `background-position:${pos.x}% ${pos.y}%;`;
+  return `object-position:${pos.x}% ${pos.y}%;${pos.zoom !== 1 ? ` transform:scale(${pos.zoom}); transform-origin:center center;` : ""}`;
 }
 
 // The drag-to-position tool. Frame is a fixed 16:11 box — the same shape
@@ -12649,29 +12681,61 @@ function rewardPhotoBgPositionStyle(prize) {
 // keeps the interaction to one direct-manipulation gesture: drag left to
 // reveal more of the right side, drag up to reveal more of the bottom,
 // exactly like repositioning a cover photo.
-function openRewardPhotoPositionModal(prize, onDone) {
+// 2026-09 (Veronika: "the pinch and zoom doesn't work"): the data model
+// and every read-side surface (rewardPhotoPos/rewardPhotoImgStyle) have
+// carried a real `zoom` field for a while, and every render site already
+// applies it via transform:scale — but this modal, the only place that's
+// supposed to ever SET it, never grew the control to change it. It only
+// ever wrote {x, y}, silently dropping zoom on every save. Fixed by
+// wiring up an actual zoom gesture (two-finger pinch, mouse wheel/
+// trackpad, and +/- buttons for anyone without either) and carrying
+// curZoom through to the save.
+// 2026-09 (Veronika: "this looks like too many layers"): both real
+// callers open this from inside openRewardGoalDetailScreen's own modal —
+// stacking a second .modal-overlay on top of the first doubled up the
+// dark scrim and read as three panels deep (Home behind, the Reward
+// popup, then this). Now takes an optional `container`: when given (both
+// current call sites pass their own modal-box), the tool swaps its
+// content directly into that same box instead of opening a new overlay —
+// one modal, its content changes, not a stack. Omitting `container`
+// keeps the old standalone-overlay behavior for any future caller that
+// isn't already inside its own modal.
+function openRewardPhotoPositionModal(prize, onDone, container) {
   const start = rewardPhotoPos(prize);
   let curX = start.x;
   let curY = start.y;
+  let curZoom = start.zoom;
 
-  const overlay = el(`
-    <div class="modal-overlay">
-      <div class="modal-box info-modal-box" style="width:320px;">
-        <div class="info-modal-header">
-          <h3>Position your photo</h3>
-          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
-        </div>
-        <div class="muted" style="font-size:12px;margin:-4px 0 12px;">Drag the photo — this frame is exactly what shows on Home.</div>
-        <div class="rp-frame">
-          <img class="rp-drag-img" src="${prize.itemPhoto}" style="object-position:${curX}% ${curY}%;" draggable="false" />
-        </div>
-        <div class="rp-frame-label">This is the Home banner's shape</div>
-        <button type="button" class="sheet-primary-btn rp-save" style="margin-top:14px;">Save position</button>
+  const content = el(`
+    <div class="rp-inline">
+      <div class="info-modal-header">
+        <h3>Position your photo</h3>
+        <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
       </div>
+      <div class="muted" style="font-size:12px;margin:-4px 0 12px;">Drag to move, pinch (or scroll) to zoom — this frame is exactly what shows on Home.</div>
+      <div class="rp-frame">
+        <img class="rp-drag-img" src="${prize.itemPhoto}" style="object-position:${curX}% ${curY}%; transform:scale(${curZoom}); transform-origin:center center;" draggable="false" />
+      </div>
+      <div class="rp-frame-label">This is the Home banner's shape</div>
+      <div class="rp-zoom-row">
+        <button type="button" class="rp-zoom-btn rp-zoom-out" aria-label="Zoom out">&#8722;</button>
+        <span class="rp-zoom-pct">${Math.round(curZoom * 100)}%</span>
+        <button type="button" class="rp-zoom-btn rp-zoom-in" aria-label="Zoom in">&#43;</button>
+      </div>
+      <button type="button" class="sheet-primary-btn rp-save" style="margin-top:14px;">Save position</button>
     </div>
   `);
-  const frame = overlay.querySelector(".rp-frame");
-  const img = overlay.querySelector(".rp-drag-img");
+
+  // Standalone mode (no container passed): wrap in the usual overlay/box
+  // shell, same as this used to always do.
+  const overlay = container ? null : el(`<div class="modal-overlay"></div>`);
+  const box = container || el(`<div class="modal-box info-modal-box" style="width:320px;"></div>`);
+  if (overlay) { box.appendChild(content); overlay.appendChild(box); }
+  else { container.innerHTML = ""; container.appendChild(content); }
+
+  const frame = content.querySelector(".rp-frame");
+  const img = content.querySelector(".rp-drag-img");
+  const zoomPct = content.querySelector(".rp-zoom-pct");
 
   let overflowX = 0;
   let overflowY = 0;
@@ -12690,33 +12754,86 @@ function openRewardPhotoPositionModal(prize, onDone) {
     if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
     return { x: e.clientX, y: e.clientY };
   }
+  function touchDist(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+  function applyTransform() {
+    img.style.objectPosition = `${curX}% ${curY}%`;
+    img.style.transform = `scale(${curZoom})`;
+    zoomPct.textContent = `${Math.round(curZoom * 100)}%`;
+  }
+  function setZoom(z) {
+    curZoom = Math.max(1, Math.min(REWARD_PHOTO_MAX_ZOOM, z));
+    applyTransform();
+  }
 
   let dragging = false;
+  let pinching = false;
   let startPointer = { x: 0, y: 0 };
   let startPos = { x: curX, y: curY };
+  let pinchStartDist = 0;
+  let pinchStartZoom = curZoom;
+
+  // Panning at a given zoom moves the same base overflow range, but
+  // transform:scale (centered) also magnifies how far that pan visually
+  // travels on screen — dividing by curZoom keeps a screen-pixel drag
+  // mapped to the same visual distance regardless of zoom level.
+  function panBy(dx, dy) {
+    const pctPerPxX = overflowX > 0 ? 100 / overflowX : 0;
+    const pctPerPxY = overflowY > 0 ? 100 / overflowY : 0;
+    curX = Math.max(0, Math.min(100, startPos.x - (dx * pctPerPxX) / curZoom));
+    curY = Math.max(0, Math.min(100, startPos.y - (dy * pctPerPxY) / curZoom));
+    applyTransform();
+  }
 
   function onDown(e) {
-    dragging = true;
-    img.style.cursor = "grabbing";
-    startPointer = pointerXY(e);
-    startPos = { x: curX, y: curY };
+    if (e.touches && e.touches.length === 2) {
+      pinching = true;
+      dragging = false;
+      pinchStartDist = touchDist(e.touches);
+      pinchStartZoom = curZoom;
+    } else {
+      dragging = true;
+      pinching = false;
+      img.style.cursor = "grabbing";
+      startPointer = pointerXY(e);
+      startPos = { x: curX, y: curY };
+    }
     e.preventDefault();
   }
   function onMove(e) {
+    if (pinching && e.touches && e.touches.length === 2) {
+      const dist = touchDist(e.touches);
+      if (pinchStartDist > 0) setZoom(pinchStartZoom * (dist / pinchStartDist));
+      e.preventDefault();
+      return;
+    }
     if (!dragging) return;
     const p = pointerXY(e);
-    const dx = p.x - startPointer.x;
-    const dy = p.y - startPointer.y;
-    const pctPerPxX = overflowX > 0 ? 100 / overflowX : 0;
-    const pctPerPxY = overflowY > 0 ? 100 / overflowY : 0;
-    curX = Math.max(0, Math.min(100, startPos.x - dx * pctPerPxX));
-    curY = Math.max(0, Math.min(100, startPos.y - dy * pctPerPxY));
-    img.style.objectPosition = `${curX}% ${curY}%`;
+    panBy(p.x - startPointer.x, p.y - startPointer.y);
     e.preventDefault();
   }
-  function onUp() {
+  function onUp(e) {
+    const remaining = e.touches ? e.touches.length : 0;
+    if (remaining >= 2) return;
+    if (remaining === 1) {
+      // Dropped from two fingers to one — pick pan back up fresh from
+      // here instead of jumping to wherever the old drag-start was.
+      pinching = false;
+      dragging = true;
+      startPointer = pointerXY(e);
+      startPos = { x: curX, y: curY };
+      return;
+    }
     dragging = false;
+    pinching = false;
     img.style.cursor = "grab";
+  }
+  function onWheel(e) {
+    e.preventDefault();
+    setZoom(curZoom - e.deltaY * 0.0015);
   }
 
   img.addEventListener("mousedown", onDown);
@@ -12725,26 +12842,36 @@ function openRewardPhotoPositionModal(prize, onDone) {
   img.addEventListener("touchstart", onDown, { passive: false });
   window.addEventListener("touchmove", onMove, { passive: false });
   window.addEventListener("touchend", onUp);
+  window.addEventListener("touchcancel", onUp);
+  frame.addEventListener("wheel", onWheel, { passive: false });
+  content.querySelector(".rp-zoom-out").addEventListener("click", () => setZoom(curZoom - 0.15));
+  content.querySelector(".rp-zoom-in").addEventListener("click", () => setZoom(curZoom + 0.15));
 
   function cleanupListeners() {
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
     window.removeEventListener("touchmove", onMove);
     window.removeEventListener("touchend", onUp);
+    window.removeEventListener("touchcancel", onUp);
   }
+  // Closing without saving: nothing's been written to prize yet (only the
+  // local curX/curY/curZoom vars), so this is a plain cancel either way —
+  // inline mode just calls onDone() to let the caller redraw its own box
+  // back to normal; standalone mode also removes the overlay it made.
   function close() {
     cleanupListeners();
-    overlay.remove();
+    if (overlay) overlay.remove();
+    if (container) onDone?.({ saved: false });
   }
-  overlay.querySelector(".info-modal-close").addEventListener("click", close);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
-  overlay.querySelector(".rp-save").addEventListener("click", () => {
-    prize.itemPhotoPosition = { x: curX, y: curY };
+  content.querySelector(".info-modal-close").addEventListener("click", close);
+  if (overlay) overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  content.querySelector(".rp-save").addEventListener("click", () => {
+    prize.itemPhotoPosition = { x: curX, y: curY, zoom: curZoom };
     cleanupListeners();
-    overlay.remove();
-    onDone?.();
+    if (overlay) overlay.remove();
+    onDone?.({ saved: true });
   });
-  document.body.appendChild(overlay);
+  if (overlay) document.body.appendChild(overlay);
 }
 
 // Multiple concurrent reward goals (2026-09, Veronika's call): a goal can
@@ -12921,7 +13048,7 @@ function openRewardClaimCelebration(prize, today, done) {
       <div class="modal-overlay" style="position:absolute;">
         <div class="modal-box" style="max-width:340px;text-align:center;">
           <div class="milestone-celebrate-card">
-            <div class="reward-claim-photo"${prize.itemPhoto ? ` style="background-image:url('${prize.itemPhoto}');${rewardPhotoBgPositionStyle(prize)}"` : ""}>${prize.itemPhoto ? "" : "🏆"}</div>
+            <div class="reward-claim-photo">${prize.itemPhoto ? `<img src="${prize.itemPhoto}" style="${rewardPhotoImgStyle(prize)}" />` : "🏆"}</div>
             <div class="celebrate-title">You earned it!</div>
             <div class="celebrate-sub">${escapeHtml(itemLabel)} is fully funded &mdash; ${days} day${days === 1 ? "" : "s"} of showing up made this happen.</div>
             <div class="celebrate-stats">
@@ -13823,7 +13950,7 @@ function buildRewardGoalSlide(prize, today, isColdOpen) {
   const card = el(`<div class="home-reward-gold-card${stats.reached ? " reached" : ""}"></div>`);
   const banner = el(`<div class="home-reward-banner"></div>`);
   if (prize.itemPhoto) {
-    banner.appendChild(el(`<img src="${prize.itemPhoto}" style="${rewardPhotoObjectPositionStyle(prize)}" />`));
+    banner.appendChild(el(`<img src="${prize.itemPhoto}" style="${rewardPhotoImgStyle(prize)}" />`));
   } else {
     banner.appendChild(el(`
       <div class="home-reward-banner-empty">
@@ -14524,18 +14651,27 @@ function openRewardGoalDetailScreen(prize) {
       return;
     }
 
-    const banner = el(`<div class="home-hero-prize-banner"></div>`);
+    // 2026-09 (Veronika: "the pop up from tapping the reward box looks
+    // dated"): this screen still wore the old pre-multi-goal look — a
+    // square scrim-over-photo tile (.home-hero-prize-*) from before the
+    // Home banner got its gold-card redesign (see
+    // home-reward-banner-doesnt-pop). Rebuilt on the exact same
+    // .home-reward-gold-card family Home already uses — 16:11 inset
+    // photo, the same FUNDED pill, name/progress living in their own
+    // body section below instead of white text over a dark scrim — so
+    // opening a goal from Home no longer feels like a downgrade.
+    const goldCard = el(`<div class="home-reward-gold-card${stats.reached ? " reached" : ""}" style="margin-top:0;"></div>`);
+    const banner = el(`<div class="home-reward-banner" style="cursor:pointer;"></div>`);
     if (prize.itemPhoto) {
-      banner.appendChild(el(`<img src="${prize.itemPhoto}" style="${rewardPhotoObjectPositionStyle(prize)}" />`));
+      banner.appendChild(el(`<img src="${prize.itemPhoto}" style="${rewardPhotoImgStyle(prize)}" />`));
     } else {
-      banner.appendChild(el(`<div class="home-hero-prize-banner-noimg">No photo yet — tap to add one</div>`));
+      banner.appendChild(el(`
+        <div class="home-reward-banner-empty" style="cursor:pointer;">
+          <span style="font-size:12px;color:rgba(255,255,255,0.9);text-align:center;padding:0 20px;">No photo yet — tap to add one</span>
+        </div>
+      `));
     }
-    banner.appendChild(el(`
-      <div class="home-hero-prize-scrim">
-        <div class="home-hero-prize-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
-        <div class="home-hero-prize-sub">${stats.reached ? "Ready to claim" : `Targeting ${stats.targetDate}`}</div>
-      </div>
-    `));
+    banner.appendChild(el(`<div class="home-reward-badge${stats.reached ? " reached" : ""}">${stats.reached ? "✓ FUNDED" : `${stats.pct}% FUNDED`}</div>`));
     const photoInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
     banner.appendChild(photoInput);
     banner.addEventListener("click", (e) => {
@@ -14554,11 +14690,11 @@ function openRewardGoalDetailScreen(prize) {
         // Guide the crop right away instead of leaving a guessed center
         // position — this is the moment "part of my photo got cropped
         // off" actually happens if left unaddressed.
-        openRewardPhotoPositionModal(prize, () => { scheduleSave(); render(); });
+        openRewardPhotoPositionModal(prize, ({ saved }) => { if (saved) scheduleSave(); render(); }, box);
       });
     });
     const editBtn = el(`
-      <button type="button" class="home-hero-prize-edit-btn" aria-label="Edit reward">
+      <button type="button" class="home-hero-prize-edit-btn" aria-label="Edit reward" style="top:10px;right:10px;">
         ${iconSvg('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>')}
       </button>
     `);
@@ -14567,16 +14703,24 @@ function openRewardGoalDetailScreen(prize) {
     // Reposition an already-set photo any time, not just right after
     // uploading it.
     const repositionBtn = prize.itemPhoto
-      ? el(`<button type="button" class="home-hero-prize-reposition-btn">Reposition</button>`)
+      ? el(`<button type="button" class="home-hero-prize-reposition-btn" style="top:auto;bottom:10px;right:10px;">Reposition</button>`)
       : null;
     if (repositionBtn) {
       repositionBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        openRewardPhotoPositionModal(prize, () => { scheduleSave(); render(); });
+        openRewardPhotoPositionModal(prize, ({ saved }) => { if (saved) scheduleSave(); render(); }, box);
       });
       banner.appendChild(repositionBtn);
     }
-    box.appendChild(banner);
+    goldCard.appendChild(banner);
+    goldCard.appendChild(el(`
+      <div class="home-reward-body">
+        <div class="home-reward-eyebrow">Your reward</div>
+        <div class="home-reward-name">${escapeHtml(prize.itemName || "Not named yet")}</div>
+        <div class="home-reward-sub">${stats.reached ? "Ready to claim" : `Targeting ${stats.targetDate}`}</div>
+      </div>
+    `));
+    box.appendChild(goldCard);
 
     // Primary progress — earned by logging, not by the bank balance.
     // Always shown once a reward exists, linked or not.
@@ -15136,7 +15280,7 @@ function renderChallengesPage() {
   // that the gold banner is "the standard for challenges" everywhere it
   // shows progress, not a one-off Home treatment.
   function progressCard(id) {
-    return buildChallengeHeroCard(id, { linkLabel: "View challenge &rsaquo;", onClick: () => openChallengeFromHome(id) });
+    return buildChallengeHeroCard(id, { linkLabel: "View challenge ›", onClick: () => openChallengeFromHome(id) });
   }
 
   function joinCard(id) {
