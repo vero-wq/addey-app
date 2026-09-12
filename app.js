@@ -12175,11 +12175,22 @@ function trendsPairKey(r, kind) {
   return kind === "same" ? `same:${[r.appIdA, r.appIdB].sort().join("|")}` : `next:${r.appIdA}>${r.appIdB}`;
 }
 
+// Sleep's "done" signal is a protected-night outcome (hours + quality
+// clearing the bar — see sheetActiveToday/sheetNightProtected), not a flat
+// logged/not-logged action like every other Practice. Pattern sentences
+// that always said "log Sleep" were flattening that back down to a plain
+// checkbox, undoing the richer signal underneath. This is the one place
+// the wording branches by app so every pattern sentence stays honest about
+// what's actually being measured.
+function trendsVerb(appId) {
+  return appId === "sleep" ? "protect" : "log";
+}
+
 function trendsPatternCardHtml(r, labels, kind) {
   const labelFor = (id) => labels[id] || id;
   const eyebrow = kind === "same" ? "Pattern spotted" : "Next-day pattern";
-  const lead = kind === "same" ? "On days you log" : "The day after you log";
-  const verb = kind === "same" ? "also log" : "log";
+  const lead = kind === "same" ? `On days you ${trendsVerb(r.appIdA)}` : `The day after you ${trendsVerb(r.appIdA)}`;
+  const verb = kind === "same" ? `also ${trendsVerb(r.appIdB)}` : trendsVerb(r.appIdB);
   return `
     <div class="trend-insight-banner stacked">
       <div class="pattern-head">
@@ -12482,7 +12493,8 @@ function trendsLockIconSvg() {
 function trendsPatternBannerHtml(r, labels, kind) {
   const labelFor = (id) => labels[id] || id;
   const eyebrow = kind === "same" ? "Pattern spotted" : "Next-day pattern";
-  const lead = kind === "same" ? "On days you log" : "The day after you log";
+  const lead = kind === "same" ? `On days you ${trendsVerb(r.appIdA)}` : `The day after you ${trendsVerb(r.appIdA)}`;
+  const verb = kind === "same" ? `also ${trendsVerb(r.appIdB)}` : trendsVerb(r.appIdB);
   return `
     <div class="trend-insight-banner stacked">
       <div class="pattern-head">
@@ -12490,7 +12502,7 @@ function trendsPatternBannerHtml(r, labels, kind) {
         <div class="insight-hero-eyebrow">${eyebrow}</div>
       </div>
       <div class="trend-insight-text">
-        ${lead} <b>${escapeHtml(labelFor(r.appIdA))}</b>, you ${kind === "same" ? "also log" : "log"} <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
+        ${lead} <b>${escapeHtml(labelFor(r.appIdA))}</b>, you ${verb} <b>${escapeHtml(labelFor(r.appIdB))}</b> <b>${Math.round(r.rateWith * 100)}%</b> of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.
       </div>
     </div>`;
 }
@@ -12526,10 +12538,10 @@ function trendsFullGridHtml(today) {
   }
   let html = "";
   sameDay.forEach((r) => {
-    html += `<div class="trends-grid-item">On days you log <b>${escapeHtml(labels[r.appIdA] || r.appIdA)}</b>, you also log <b>${escapeHtml(labels[r.appIdB] || r.appIdB)}</b> ${Math.round(r.rateWith * 100)}% of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>`;
+    html += `<div class="trends-grid-item">On days you ${trendsVerb(r.appIdA)} <b>${escapeHtml(labels[r.appIdA] || r.appIdA)}</b>, you also ${trendsVerb(r.appIdB)} <b>${escapeHtml(labels[r.appIdB] || r.appIdB)}</b> ${Math.round(r.rateWith * 100)}% of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>`;
   });
   nextDay.forEach((r) => {
-    html += `<div class="trends-grid-item">The day after you log <b>${escapeHtml(labels[r.appIdA] || r.appIdA)}</b>, you log <b>${escapeHtml(labels[r.appIdB] || r.appIdB)}</b> ${Math.round(r.rateWith * 100)}% of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>`;
+    html += `<div class="trends-grid-item">The day after you ${trendsVerb(r.appIdA)} <b>${escapeHtml(labels[r.appIdA] || r.appIdA)}</b>, you ${trendsVerb(r.appIdB)} <b>${escapeHtml(labels[r.appIdB] || r.appIdB)}</b> ${Math.round(r.rateWith * 100)}% of the time &mdash; versus ${Math.round(r.rateWithout * 100)}% otherwise.</div>`;
   });
   return html;
 }
