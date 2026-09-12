@@ -1582,6 +1582,11 @@ function openAccountSheet() {
           <span>Plan &amp; Billing</span>
         </button>
 
+        <div class="you-list-group-title">Support</div>
+        <button type="button" class="you-list-row" id="account-feedback-btn">
+          ${iconSvg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>')}
+          <span>Send feedback</span>
+        </button>
         <div class="you-list-group-title">Session</div>
         <button type="button" class="you-list-row" id="account-password-btn">
           ${iconSvg('<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/>')}
@@ -1642,6 +1647,10 @@ function openAccountSheet() {
     close();
     openReferralModal();
   });
+  overlay.querySelector("#account-feedback-btn").addEventListener("click", () => {
+    close();
+    openFeedbackModal();
+  });
   const signOutBtn = overlay.querySelector("#account-signout-btn");
   signOutBtn.addEventListener("click", async () => {
     signOutBtn.disabled = true;
@@ -1654,6 +1663,197 @@ function openAccountSheet() {
     location.reload();
   });
   document.body.appendChild(overlay);
+}
+
+// ------------------------------------------------------------------
+// Send feedback — reached only from You → Support. Writes one row to
+// Supabase's `feedback` table, which fires an AFTER INSERT trigger → the
+// feedback-notify edge function → Resend, so a report reaches Veronika's
+// inbox instead of sitting in a table nobody opens. Same trigger/pg_net
+// shape as the waitlist signup path, which is proven in production.
+//
+// Placement is Veronika's call from design review (2026-09-12): a row in
+// the You sheet, not a floating button. The bottom nav already has a
+// raised accent circle dead center, and a second floating circle in the
+// corner would fight it on every screen, permanently — and a standing
+// "tell us what's broken" bubble tells App Store buyers the app expects
+// to be broken.
+//
+// Two things are deliberately absent, both her calls:
+//
+//   1. No category picker (Bug / Idea / Confusing). One open box. Every
+//      extra field is one more thing between a person and telling us
+//      something, and the category is readable off the text anyway.
+//   2. No line telling the person we captured the screen they're on. We
+//      do record state.activeTab, but they may well have wandered off
+//      whatever screen actually bothered them before deciding to say
+//      anything — she caught that in review. Promising a fact we can't
+//      guarantee is worse than saying nothing, so `screen` stays a
+//      private hint for triage and is never shown to the person.
+//
+// The app cannot screenshot itself — a web app has no permission to
+// capture its own screen on iOS — so the button says "Add a screenshot"
+// and opens the photo library, rather than promising a capture it can't
+// perform. Capacitor lifts that in Sprint 4 and only this one handler
+// needs to change.
+// ------------------------------------------------------------------
+function openFeedbackModal() {
+  // Resized before upload rather than after: 1400px on the long edge is
+  // plenty to read a mis-rendered chip or a wrong label, and it keeps a
+  // 12MP phone screenshot comfortably under the bucket's 5MB ceiling
+  // instead of relying on the person's photo being small enough.
+  const SHOT_MAX_DIM = 1400;
+  const SHOT_QUALITY = 0.82;
+
+  let shotBlob = null;
+  let shotName = "";
+
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal-box info-modal-box">
+        <div class="info-modal-header">
+          <h3>Send feedback</h3>
+          <button type="button" class="icon-btn info-modal-close" aria-label="Close">${closeSvg}</button>
+        </div>
+        <p class="fb-intro">Something broken, confusing, or missing? This goes straight to Veronika.</p>
+        <textarea id="fb-body" class="fb-body" rows="4" maxlength="4000" placeholder="What's going on?"></textarea>
+        <button type="button" class="fb-attach" id="fb-attach">
+          ${iconSvg('<rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path>')}
+          <span>Add a screenshot</span>
+        </button>
+        <div class="fb-thumb" id="fb-thumb" style="display:none;">
+          <img class="fb-thumb-img" id="fb-thumb-img" alt="" />
+          <span class="fb-thumb-meta"><b id="fb-thumb-name"></b><span id="fb-thumb-size"></span></span>
+          <button type="button" class="icon-btn fb-thumb-remove" id="fb-thumb-remove" aria-label="Remove screenshot">${closeSvg}</button>
+        </div>
+        <div class="fb-status" id="fb-status"></div>
+        <div class="fb-actions">
+          <button type="button" class="btn-ghost" id="fb-cancel">Cancel</button>
+          <button type="button" class="btn-primary" id="fb-send" disabled>Send</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  const body = overlay.querySelector("#fb-body");
+  const sendBtn = overlay.querySelector("#fb-send");
+  const status = overlay.querySelector("#fb-status");
+  const thumb = overlay.querySelector("#fb-thumb");
+  const attachBtn = overlay.querySelector("#fb-attach");
+  const fileInput = el(`<input type="file" accept="image/*" style="display:none;" />`);
+  overlay.querySelector(".modal-box").appendChild(fileInput);
+
+  const close = () => overlay.remove();
+  overlay.querySelector(".info-modal-close").addEventListener("click", close);
+  overlay.querySelector("#fb-cancel").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  // Nothing to send until there are words. A screenshot on its own tells
+  // us a screen looked wrong without saying what was wrong about it.
+  const syncSendState = () => {
+    sendBtn.disabled = !body.value.trim();
+  };
+  body.addEventListener("input", syncSendState);
+
+  attachBtn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    status.textContent = "";
+    status.classList.remove("err");
+    try {
+      const dataUrl = await resizeImageToDataUrl(file, SHOT_MAX_DIM, SHOT_QUALITY);
+      shotBlob = await (await fetch(dataUrl)).blob();
+      shotName = file.name || "screenshot.jpg";
+      overlay.querySelector("#fb-thumb-img").src = dataUrl;
+      overlay.querySelector("#fb-thumb-name").textContent = shotName;
+      overlay.querySelector("#fb-thumb-size").textContent = `${Math.max(1, Math.round(shotBlob.size / 1024))} KB`;
+      thumb.style.display = "flex";
+      attachBtn.style.display = "none";
+    } catch (err) {
+      console.error("Could not prepare screenshot:", err);
+      status.textContent = "That image couldn't be read. Try a different one, or send without it.";
+      status.classList.add("err");
+    }
+    // Cleared so picking the same file twice in a row still fires change.
+    fileInput.value = "";
+  });
+
+  overlay.querySelector("#fb-thumb-remove").addEventListener("click", () => {
+    shotBlob = null;
+    shotName = "";
+    thumb.style.display = "none";
+    attachBtn.style.display = "flex";
+  });
+
+  sendBtn.addEventListener("click", async () => {
+    const text = body.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Sending\u2026";
+    status.textContent = "";
+    status.classList.remove("err");
+
+    const fail = (message) => {
+      status.textContent = message;
+      status.classList.add("err");
+      sendBtn.disabled = false;
+      sendBtn.textContent = "Send";
+    };
+
+    let screenshotPath = null;
+    if (shotBlob) {
+      // Walled into the uploader's own folder — the bucket's RLS policy
+      // requires the first path segment to be their auth.uid(), so nobody
+      // can write into or read anyone else's screenshots.
+      // Matches the id shape used elsewhere in the file (see the `goal-`
+      // ids) rather than crypto.randomUUID, which is undefined on iOS
+      // Safari before 15.4 and outside a secure context — this is a PWA
+      // people install on phones, and a throw here would silently eat
+      // someone's report. Collisions don't matter: the path is already
+      // scoped to one user and the timestamp carries the ordering.
+      const path = `${currentUserId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+      const { error: upErr } = await sb.storage
+        .from("feedback-screenshots")
+        .upload(path, shotBlob, { contentType: "image/jpeg" });
+      if (upErr) {
+        console.error("Screenshot upload failed:", upErr);
+        fail("The screenshot wouldn't upload. Remove it and send the message on its own?");
+        return;
+      }
+      screenshotPath = path;
+    }
+
+    const { error } = await sb.from("feedback").insert({
+      user_id: currentUserId,
+      body: text,
+      screenshot_path: screenshotPath,
+      screen: state?.activeTab || null,
+      page_url: window.location.href,
+      user_agent: navigator.userAgent,
+    });
+
+    if (error) {
+      console.error("Feedback insert failed:", error);
+      // Don't leave an orphaned image in the bucket behind a row that
+      // never landed — best effort, and a failure here changes nothing
+      // the person can act on.
+      if (screenshotPath) {
+        sb.storage.from("feedback-screenshots").remove([screenshotPath]).catch(() => {});
+      }
+      fail("That didn't send. Check your connection and try again.");
+      return;
+    }
+
+    close();
+    showToast("Thanks \u2014 Veronika has it.");
+  });
+
+  document.body.appendChild(overlay);
+  body.focus();
 }
 
 // Reached only from Account → "Email & password". Email changes go through

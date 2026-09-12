@@ -268,6 +268,38 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .you-list-group-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 16px 0 2px; }
 .you-list-group-title:first-of-type { margin-top: 10px; }
 .account-modal-box input[type="password"] { width: 100%; box-sizing: border-box; }
+
+/* Send feedback (You -> Support). Borrows the journal textarea's shape and
+   the standard btn-ghost/btn-primary pair rather than introducing a third
+   form idiom — nothing here is a new pattern. */
+.fb-intro { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 2px 0 14px; }
+.fb-body {
+  width: 100%; box-sizing: border-box; border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-family: inherit; font-size: 13.5px; line-height: 1.55;
+  color: var(--text); background: var(--surface); resize: vertical; min-height: 92px;
+}
+.fb-body::placeholder { color: var(--muted); opacity: 0.75; }
+.fb-attach {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  font-size: 12.5px; font-weight: 600; color: var(--accent-dark);
+  background: none; border: 1px solid var(--border); border-radius: 7px; padding: 8px 11px;
+}
+.fb-attach:hover { background: var(--bg); }
+.fb-attach svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.fb-thumb {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+  border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; background: var(--surface);
+}
+.fb-thumb-img {
+  width: 34px; height: 44px; border-radius: 5px; flex-shrink: 0;
+  object-fit: cover; border: 1px solid var(--border); background: var(--bg);
+}
+.fb-thumb-meta { flex: 1; min-width: 0; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.fb-thumb-meta b { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fb-thumb-remove { flex-shrink: 0; }
+.fb-status { font-size: 12.5px; color: var(--muted); line-height: 1.45; min-height: 16px; margin: 10px 2px 0; }
+.fb-status.err { color: var(--danger); }
+.fb-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 14px; }
 .menu-item {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
   font-size: 14px; color: var(--text); cursor: pointer; background: none; border: none;
