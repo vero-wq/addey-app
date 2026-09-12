@@ -5603,8 +5603,25 @@ function activityTypesByRecency(sheet) {
     .map((x) => x.t);
 }
 // The grid's visible slice — capped so it never grows without bound.
-function activityTypesForGrid(sheet) {
-  return activityTypesByRecency(sheet).slice(0, ACTIVITY_GRID_CAP);
+// 2026-09 (Veronika, real bug): picking a type from the "Already have
+// one of these?" overflow row (or just having selected one that later
+// fell out of the top-N by recency) used to leave NOTHING visibly
+// selected — the chosen type wasn't in this slice at all, so no chip
+// anywhere showed the active state, even though ui.selectedTypeKey was
+// correctly set underneath. Fix: if the currently-selected type isn't
+// already in the top ACTIVITY_GRID_CAP, pull it to the front so it's
+// always on-screen and highlighted the moment it's picked — matches
+// Veronika's own ask that a newly-selected type "snap to the top left."
+function activityTypesForGrid(sheet, selectedKey) {
+  const ranked = activityTypesByRecency(sheet);
+  if (selectedKey) {
+    const idx = ranked.findIndex((t) => t.key === selectedKey);
+    if (idx >= ACTIVITY_GRID_CAP) {
+      const [sel] = ranked.splice(idx, 1);
+      ranked.unshift(sel);
+    }
+  }
+  return ranked.slice(0, ACTIVITY_GRID_CAP);
 }
 function activityDateShort(dateStr) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric" });
@@ -5843,8 +5860,9 @@ function renderActivitySheet(id) {
   const logCard = el(`<div class="card"></div>`);
   logCard.appendChild(el(`<div class="al-card-title">Log an activity</div>`));
   const chipRow = el(`<div class="al-chip-row"></div>`);
-  const gridTypes = activityTypesForGrid(sheet);
-  const overflowTypes = activityTypesByRecency(sheet).slice(ACTIVITY_GRID_CAP);
+  const gridTypes = activityTypesForGrid(sheet, ui.selectedTypeKey);
+  const gridKeys = new Set(gridTypes.map((t) => t.key));
+  const overflowTypes = activityTypesByRecency(sheet).filter((t) => !gridKeys.has(t.key));
   gridTypes.forEach((t) => {
     const chip = el(`<button type="button" class="al-chip${t.key === ui.selectedTypeKey ? " active" : ""}"><span class="em">${t.icon}</span>${escapeHtml(t.label)}</button>`);
     chip.addEventListener("click", () => {
