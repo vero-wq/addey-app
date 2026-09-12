@@ -1849,7 +1849,11 @@ function openFeedbackModal() {
     }
 
     close();
-    showToast("Thanks \u2014 Veronika has it.");
+    // Warm and unsigned, Veronika's call (2026-09-12). The ask names her
+    // on purpose — "this goes straight to Veronika" is why someone bothers
+    // typing — but the confirmation doesn't need to, and reads better for
+    // it once there's more than one person reading the inbox.
+    showToast("Thanks! Your feedback\u2019s appreciated.");
   });
 
   document.body.appendChild(overlay);
