@@ -13943,7 +13943,9 @@ function mostRecentGraceCoverage(today) {
   const appLookup = new Map(currentAppEntries().map((a) => [a.id, a.label]));
   for (const id of currentPracticeAppIds()) {
     if (state.grace?.coveredDates[`${id}|${yesterday}`]) {
-      return { key: id, label: appLookup.get(id) || id };
+      const coverageKey = `${id}|${yesterday}`;
+      if (state.grace.lastCelebratedCoverage === coverageKey) continue; // already shown this one
+      return { key: id, label: appLookup.get(id) || id, coverageKey };
     }
   }
   return null;
@@ -14153,6 +14155,10 @@ function renderHome() {
   // never reopens on a later re-render this same session.
   if (pendingGraceCoveredCelebration) {
     openGraceCoveredCelebration(pendingGraceCoveredCelebration);
+    if (state.grace) {
+      state.grace.lastCelebratedCoverage = pendingGraceCoveredCelebration.coverageKey;
+      doSave();
+    }
     pendingGraceCoveredCelebration = null;
   }
 
