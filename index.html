@@ -23,6 +23,7 @@
   --accent-dark: #7C5C36;
   --danger: #B3543E;
   --good: #55694A;
+  --grace: #C9A24E;
   --text-inverse: #FFFFFF;
   --intimacy: #9B5F6B;
   --intimacy-bg: #F5E7EA;
@@ -53,7 +54,7 @@ html[data-app-theme="graphite"] {
 }
 html[data-app-theme="dark"] {
   --bg: #1B1B1D; --surface: #242426; --border: #38383B; --text: #EDEAE4;
-  --muted: #9A968E; --accent: #C9A36A; --accent-dark: #E0B980; --danger: #E0897A; --good: #7FA06E;
+  --muted: #9A968E; --accent: #C9A36A; --accent-dark: #E0B980; --danger: #E0897A; --good: #7FA06E; --grace: #E0B24A;
   --text-inverse: #1B1B1D;
   --intimacy: #D89AA6; --intimacy-bg: #3A2A2E;
 }
@@ -1072,6 +1073,7 @@ td input:hover { border-color: var(--border); }
    solid strip; discrete dots keep every day legible at a glance. */
 .sc-mini i { width: 11px; height: 11px; border-radius: 50%; background: var(--border); flex: 0 0 auto; display: block; }
 .sc-mini i.on { background: var(--good); }
+.sc-mini i.grace { background: var(--grace); }
 .sc-streak { font-size: 12.5px; font-weight: 600; color: var(--accent-dark); white-space: nowrap; width: 30px; text-align: right; flex-shrink: 0; }
 
 /* Between-pillar pattern card, styled as a quiet aside rather than a data table. */
