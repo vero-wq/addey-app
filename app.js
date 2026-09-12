@@ -2076,6 +2076,17 @@ function toggleSheetVisible(id) {
     const fallback = state.sheets.find((x) => x.visible);
     activateTab(fallback ? fallback.id : "home");
   }
+  // 2026-09 (Veronika, audit): showing a hidden Practice can silently
+  // promote it straight into the Home bar (normalizeAppOrder fills the
+  // first MOBILE_PINNED_COUNT visible-Practice slots automatically) —
+  // its eye icon then disappears with zero explanation, since bar apps
+  // can't be hidden directly. That read as the row "snapping away"
+  // entirely. Not changing the promotion behavior itself (it's real,
+  // intentional product logic) — just naming what happened so it's not
+  // silent.
+  if (turningOn && appTypeForSheet(s) === "practice" && toolbarAppIds().includes(id)) {
+    showToast(`"${sheetLabel(s)}" added to your Home bar — drag it below the line in My Apps to move it off.`, { duration: 4000 });
+  }
 }
 
 // Tiered space cap — Free and Paid are real product tiers, Founder is
@@ -2413,6 +2424,7 @@ function toggleAppVisible(id) {
   if (id === "sobriety" || id === "cycle") {
     state.extraTrackers ||= {};
     state.extraTrackers.hidden ||= {};
+    const turningOn = state.extraTrackers.hidden[id];
     state.extraTrackers.hidden[id] = !state.extraTrackers.hidden[id];
     scheduleSave();
     recomputeRewardDollarPerLog();
@@ -2420,6 +2432,13 @@ function toggleAppVisible(id) {
     renderSettings();
     if (state.extraTrackers.hidden[id] && state.activeTab === id) activateTab("home");
     else renderHome();
+    // Same silent-promotion note as toggleSheetVisible — Sobriety is a
+    // real Practice type and can land in the Home bar the same way.
+    // Cycle is a Tracker, never bar-eligible, so this only ever fires
+    // for Sobriety in practice.
+    if (turningOn && id === "sobriety" && toolbarAppIds().includes(id)) {
+      showToast(`"Sobriety" added to your Home bar — drag it below the line in My Apps to move it off.`, { duration: 4000 });
+    }
     return;
   }
   toggleSheetVisible(id);
