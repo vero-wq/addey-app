@@ -99,3 +99,18 @@ is still navigable at 19k lines.
 Design tokens live as CSS custom properties on `:root` in `index.html`, with
 themes overriding only the variables (`html[data-app-theme="sage"]`, etc.).
 Type never changes between themes. Don't hardcode colors — use the tokens.
+
+## Working process — mockups before code
+
+Veronika is the product manager, not a coder. Engineering decisions (how to
+structure a fix, whether to use a table or a column, which convention to
+follow) are the dev's to make — don't hand them back to her.
+
+But **anything new and user-facing gets mockups first, reviewed, then built.**
+Where it lives, what it looks like, what the copy says. Her explicit process
+(2026-09-12), stated after a feedback feature started getting built straight
+from a board card. Bug fixes to existing UI don't need this; new surfaces do.
+
+Mockups belong in an artifact rendered in the app's real skin — Addley's own
+tokens and faces (Work Sans / Source Serif 4), the real topbar and bottom nav —
+so what she reviews is what she'll get, not an approximation.
