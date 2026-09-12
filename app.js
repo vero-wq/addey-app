@@ -14701,7 +14701,13 @@ function renderHomePracticesStrip(today, isColdOpen) {
       d.type === "practice"
         ? `<span class="sc-col">${
             i === 0 ? `<div class="sc-daylabels">${dayInitials.map((c) => `<span>${c}</span>`).join("")}</div>` : ""
-          }<span class="sc-mini">${last7.map((dt) => `<i class="${isAppLoggedToday(d.id, dt) ? "on" : ""}"></i>`).join("")}</span></span>`
+          }<span class="sc-mini">${last7
+            .map((dt) => {
+              const logged = isAppLoggedToday(d.id, dt);
+              const graced = !logged && !!(state.grace && state.grace.coveredDates[`${d.id}|${dt}`]);
+              return `<i class="${logged ? "on" : graced ? "grace" : ""}"></i>`;
+            })
+            .join("")}</span></span>`
         : `<span class="sc-col sc-col-nondot"><span class="app-type-tag app-type-tag-${d.type}">${APP_TYPE_LABEL[d.type]}</span></span>`;
     const row = el(`
       <div class="streak-chip home-practice-row${isColdOpen ? " home-app-tile-cold" : ""}" draggable="true" data-app-id="${d.id}">
