@@ -16748,13 +16748,27 @@ function renderCycleHistorySection(box, onDone) {
 
   const older = combined.slice(VISIBLE_COUNT);
   if (older.length) {
-    const olderBox = el(`<div class="cyc-hist-older" style="display:none;"></div>`);
+    // Same durability problem the History <details> itself had, one layer
+    // down: this was a bare style.display toggle held only in the DOM, so
+    // expanding older history and then saving anything re-collapsed it
+    // (render() rebuilds this whole subtree). Persisted alongside
+    // state.cycleHistoryOpen, defaulting to collapsed since that's the
+    // point of having a "show more" at all.
+    const olderOpen = state.cycleHistoryOlderOpen === true;
+    const olderBox = el(`<div class="cyc-hist-older" style="display:${olderOpen ? "block" : "none"};"></div>`);
     older.forEach((entry) => olderBox.appendChild(buildRow(entry)));
-    const toggle = el(`<button type="button" class="cyc-hist-toggle">Show ${older.length} more &darr;</button>`);
+    // Literal arrow glyphs rather than &darr;/&uarr; entities so the same
+    // strings work for both the initial render and textContent below —
+    // no reason to reach for innerHTML just to set a label.
+    const collapsedLabel = `Show ${older.length} more \u2193`;
+    const expandedLabel = "Show fewer \u2191";
+    const toggle = el(`<button type="button" class="cyc-hist-toggle">${olderOpen ? expandedLabel : collapsedLabel}</button>`);
     toggle.addEventListener("click", () => {
       const expanded = olderBox.style.display !== "none";
       olderBox.style.display = expanded ? "none" : "block";
-      toggle.textContent = expanded ? `Show ${older.length} more ↓` : "Show fewer ↑";
+      toggle.textContent = expanded ? collapsedLabel : expandedLabel;
+      state.cycleHistoryOlderOpen = !expanded;
+      scheduleSave();
     });
     details.appendChild(toggle);
     details.appendChild(olderBox);
@@ -19511,6 +19525,7 @@ async function bootInner() {
   // Collapse state for the Cycle tab's History section. Top-level, not on
   // state.cycle — see the note in renderCycleHistorySection.
   state.cycleHistoryOpen ??= true;
+  state.cycleHistoryOlderOpen ??= false;
 
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
