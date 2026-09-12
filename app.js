@@ -11925,7 +11925,11 @@ function renderPillarStreakList(panel, today) {
   practiceApps.forEach((app, i) => {
     const streak = appCurrentStreak(app.id, today);
     const dots = last7
-      .map((d) => `<i class="${isAppLoggedToday(app.id, d) ? "on" : ""}"></i>`)
+      .map((d) => {
+        const logged = isAppLoggedToday(app.id, d);
+        const graced = !logged && !!(state.grace && state.grace.coveredDates[`${app.id}|${d}`]);
+        return `<i class="${logged ? "on" : graced ? "grace" : ""}"></i>`;
+      })
       .join("");
     const daylabelsHtml =
       i === 0 ? `<div class="sc-daylabels">${dayInitials.map((c) => `<span>${c}</span>`).join("")}</div>` : "";
