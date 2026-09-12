@@ -13144,7 +13144,6 @@ function openRewardPhotoPositionModal(prize, onDone, container) {
       <div class="rp-frame">
         <img class="rp-drag-img" src="${prize.itemPhoto}" style="object-position:${curX}% ${curY}%; transform:scale(${curZoom}); transform-origin:center center;" draggable="false" />
       </div>
-      <div class="rp-frame-label">This is the Home banner's shape</div>
       <div class="rp-zoom-row">
         <button type="button" class="rp-zoom-btn rp-zoom-out" aria-label="Zoom out">&#8722;</button>
         <span class="rp-zoom-pct">${Math.round(curZoom * 100)}%</span>
@@ -15133,12 +15132,18 @@ function openRewardGoalDetailScreen(prize) {
         openRewardPhotoPositionModal(prize, ({ saved }) => { if (saved) scheduleSave(); render(); }, box);
       });
     });
+    // 2026-09 (Veronika: "I assumed this would be editing the photo" —
+    // the pencil used to double as "edit everything," which read exactly
+    // like a photo tool since it sat right next to Reposition. Now it
+    // only ever means change the photo, same action as tapping the
+    // banner itself; the real settings live inline below instead of
+    // behind an icon that looked like a photo control.
     const editBtn = el(`
-      <button type="button" class="home-hero-prize-edit-btn" aria-label="Edit reward" style="top:10px;right:10px;">
-        ${iconSvg('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>')}
+      <button type="button" class="home-hero-prize-edit-btn" aria-label="Change photo" style="top:10px;right:10px;">
+        ${iconSvg('<circle cx="12" cy="12" r="3.2"></circle><path d="M4 8l1.5-2.5h13L20 8v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z"></path>')}
       </button>
     `);
-    editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditRewardModal(prize, render); });
+    editBtn.addEventListener("click", (e) => { e.stopPropagation(); photoInput.click(); });
     banner.appendChild(editBtn);
     // Reposition an already-set photo any time, not just right after
     // uploading it.
@@ -15177,6 +15182,88 @@ function openRewardGoalDetailScreen(prize) {
         ${prize.dollarPerLog ? `<div class="account-note" style="margin-top:6px;">$${prize.dollarPerLog.toFixed(2).replace(/\.00$/, "")} earned per practice logged, each day${prize.practiceIds && prize.practiceIds.length ? ` — only from ${prize.practiceIds.map((id) => sheetLabelForPracticeId(id)).join(", ")}` : ""}.</div>` : ""}
       </div>
     `));
+
+    // 2026-09 (Veronika: "do we really need an edit reward settings to
+    // take us to an additional page — shouldn't this just BE the
+    // settings page?"): name/goal/date/practice-checklist used to live
+    // behind openEditRewardModal, reachable only through the pencil icon
+    // above (which read as a photo control, see editBtn's comment). They
+    // now live directly on this screen instead, always visible, applying
+    // live as each field changes rather than behind a separate Save —
+    // openEditRewardModal itself is kept only for setting up a brand-new
+    // goal, which has nowhere else to live before its first save.
+    function recomputeRate() {
+      if (prize.depositGoal) prize.dollarPerLog = computeDollarPerLog(prize.depositGoal, prize.cycleLengthDays, rewardGoalPillarCount(prize));
+    }
+    box.appendChild(el(`<div class="prize-divider"></div>`));
+    box.appendChild(el(`<div class="account-section-title" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 10px;">Reward details</div>`));
+
+    const nameField = el(`
+      <div style="margin-bottom:12px;">
+        <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Name</label>
+        <input type="text" value="${escapeHtml(prize.itemName || "")}" placeholder="What are you saving for?" style="width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--text);" />
+      </div>
+    `);
+    nameField.querySelector("input").addEventListener("change", (e) => { prize.itemName = e.target.value; scheduleSave(); render(); });
+    box.appendChild(nameField);
+
+    const goalField = el(`
+      <div style="margin-bottom:12px;">
+        <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Savings goal</label>
+        <div class="goal-dollar-row" style="display:flex;align-items:center;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;">
+          <span style="padding:10px 0 10px 12px;color:var(--muted);font-weight:700;">$</span>
+          <input type="number" min="1" value="${prize.depositGoal || ""}" style="border:none;padding:10px 12px 10px 4px;flex:1;min-width:0;background:transparent;font-family:inherit;font-size:14px;" />
+        </div>
+      </div>
+    `);
+    goalField.querySelector("input").addEventListener("change", (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (v > 0) { prize.depositGoal = v; recomputeRate(); scheduleSave(); render(); }
+    });
+    box.appendChild(goalField);
+
+    const dateField = el(`
+      <div style="margin-bottom:4px;">
+        <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Target date</label>
+        <input type="date" value="${addDays(prize.cycleStartDate, prize.cycleLengthDays)}" style="width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--text);-webkit-appearance:none;appearance:none;" />
+      </div>
+    `);
+    dateField.querySelector("input").addEventListener("change", (e) => {
+      if (!e.target.value) return;
+      const days = Math.max(1, Math.round((new Date(e.target.value) - new Date(prize.cycleStartDate)) / 86400000));
+      prize.cycleLengthDays = days;
+      recomputeRate();
+      scheduleSave();
+      render();
+    });
+    box.appendChild(dateField);
+
+    box.appendChild(el(`<label class="muted" style="display:block;font-size:12px;margin:14px 0 4px;">Which habits count toward this goal</label>`));
+    box.appendChild(el(`<div class="account-note" style="margin-top:0;">Leave everything checked for "any habit counts" — uncheck some to make this only about specific ones.</div>`));
+    const allPractices = currentAppEntries().filter((e) => e.type === "practice");
+    const selectedIds = new Set(prize.practiceIds && prize.practiceIds.length ? prize.practiceIds : allPractices.map((p) => p.id));
+    const practiceList = el(`<div class="reward-practice-list"></div>`);
+    allPractices.forEach((p) => {
+      const row = el(`
+        <label class="reward-practice-row">
+          <input type="checkbox" ${selectedIds.has(p.id) ? "checked" : ""} />
+          <span>${escapeHtml(p.label)}</span>
+        </label>
+      `);
+      row.querySelector("input").addEventListener("change", (e) => {
+        if (e.target.checked) selectedIds.add(p.id);
+        else selectedIds.delete(p.id);
+        // Everything checked means "general" (null) so a practice added
+        // later automatically counts too, instead of the list going stale.
+        prize.practiceIds = selectedIds.size >= allPractices.length ? null : [...selectedIds];
+        recomputeRate();
+        scheduleSave();
+        render();
+      });
+      practiceList.appendChild(row);
+    });
+    if (!allPractices.length) practiceList.appendChild(el(`<div class="account-note">No practices to assign yet.</div>`));
+    box.appendChild(practiceList);
 
     // Real bank balance — informational only from here on. Linking never
     // moves money and never changes the progress bar above; it's just an
@@ -18147,21 +18234,30 @@ function showOnboardingFlow() {
   // has already started. Asking about the reward earlier means the
   // review screen can be the one true final summary, reward included,
   // right before Day one actually starts.
-  const STEPS = ["welcome", "practices", "extras", "rewardAsk", "rewardDetails", "rewardPhoto", "rewardLink", "review"];
+  const STEPS = ["welcome", "practices", "extras", "rewardAsk", "rewardDetails", "rewardHabits", "rewardPhoto", "rewardPhotoPosition", "rewardLink", "review"];
   let stepIdx = 0;
   const freeCap = spaceCapForAccount();
   let selectedPracticeKeys = [];
   let selectedExtras = { sobriety: false, cycle: false };
 
-  // The reward ask is the one branch point in onboarding: "rewardDetails",
-  // "rewardPhoto", and "rewardLink" only get visited if she opts in on
-  // "rewardAsk" — choosing "Not right now" jumps straight to
-  // finishOnboarding, same as if those steps didn't exist.
+  // The reward ask is the one branch point in onboarding: "rewardDetails"
+  // through "rewardLink" only get visited if she opts in on "rewardAsk" —
+  // choosing "Not right now" jumps straight to finishOnboarding, same as
+  // if those steps didn't exist.
   let wantsReward = true;
   let rewardName = "";
   let rewardGoalDollars = 500;
   let rewardTargetDays = 90;
+  // null = "any habit counts" (today's only behavior, still the default
+  // here) — matches prize.practiceIds' own null-means-general convention
+  // so finishOnboarding can hand this straight to the real reward record.
+  let rewardPracticeIds = null;
   let rewardPhotoDataUrl = null;
+  // Reused as the `prize`-shaped object openRewardPhotoPositionModal
+  // expects — that function writes {x,y,zoom} onto whatever object it's
+  // given on Save, so this just needs to be a stable object across
+  // re-renders, not a real reward record.
+  const rewardPhotoDraft = { itemPhoto: null, itemPhotoPosition: null };
   // finishOnboarding can legitimately fire twice for the reward branch — a
   // successful Plaid link calls it directly, but so does the "I'll link
   // this later" skip button, and either could theoretically double-fire.
@@ -18189,7 +18285,15 @@ function showOnboardingFlow() {
     // finishOnboarding rather than hopping over array entries.
     if (stepIdx > 0) {
       box.insertAdjacentHTML("afterbegin", `<button type="button" class="onboarding-back-btn" aria-label="Back">${backChevronSvg}</button>`);
-      box.querySelector(".onboarding-back-btn").addEventListener("click", () => { stepIdx--; renderStep(); });
+      box.querySelector(".onboarding-back-btn").addEventListener("click", () => {
+        stepIdx--;
+        // Symmetric with rewardPhotoSkip jumping forward past this step
+        // when there's no photo — otherwise Back from rewardLink lands
+        // here, auto-advances forward again, and looks like Back did
+        // nothing at all.
+        if (STEPS[stepIdx] === "rewardPhotoPosition" && !rewardPhotoDataUrl) stepIdx--;
+        renderStep();
+      });
     }
     const step = STEPS[stepIdx];
 
@@ -18401,16 +18505,68 @@ function showOnboardingFlow() {
       });
     }
 
+    // 2026-09 (Veronika): doesn't exist anywhere in onboarding before this
+    // — every new reward used to default to "any habit counts" with no
+    // way to narrow it until after setup, from Settings. Fully skippable;
+    // skipping (or leaving everything checked) keeps rewardPracticeIds
+    // null, the same "general" goal every reward has always been.
+    if (step === "rewardHabits") {
+      const eligible = [
+        ...selectedPracticeKeys.map((key) => {
+          if (key === "sleep" || key === "bible") {
+            const meta = BUILTIN_SHEET_META[key];
+            return meta ? { id: key, label: meta.label } : null;
+          }
+          const tpl = SHEET_GALLERY.find((t) => t.key === key && t.type === "practice");
+          return tpl ? { id: key, label: tpl.label } : null;
+        }).filter(Boolean),
+        // Cycle is excluded on purpose — it's a Tracker, and Trackers never
+        // earn a reward deposit (see awardRewardForPracticeLog), same rule
+        // as everywhere else in the app.
+        ...(selectedExtras.sobriety ? [{ id: "sobriety", label: "Sobriety" }] : []),
+      ];
+      if (rewardPracticeIds === null) rewardPracticeIds = eligible.map((e) => e.id);
+      box.insertAdjacentHTML("beforeend", `
+        <div class="onboarding-eyebrow">Your reward</div>
+        <div class="onboarding-headline">Which habits should count?</div>
+        <div class="onboarding-subline">Leave everything on for "any habit counts," or narrow it to your focus practices. Change this anytime.</div>
+        <div class="onboarding-pillar-list" id="rewardHabitsList"></div>
+        <button type="button" class="sheet-primary-btn" id="rewardHabitsContinue">Continue</button>
+        <button type="button" class="onboarding-skip-link" id="rewardHabitsSkip">Everything counts — skip this</button>
+      `);
+      const list = box.querySelector("#rewardHabitsList");
+      function renderHabitsList() {
+        list.innerHTML = eligible.map((e) => `
+          <div class="onboarding-pillar-card selectable${rewardPracticeIds.includes(e.id) ? " sel" : ""}" data-id="${escapeHtml(e.id)}">
+            <div class="onboarding-pillar-check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+            <div><div class="onboarding-pillar-name">${escapeHtml(e.label)}</div></div>
+          </div>
+        `).join("");
+        list.querySelectorAll(".onboarding-pillar-card").forEach((card) => {
+          card.addEventListener("click", () => {
+            const id = card.dataset.id;
+            if (rewardPracticeIds.includes(id)) rewardPracticeIds = rewardPracticeIds.filter((x) => x !== id);
+            else rewardPracticeIds.push(id);
+            renderHabitsList();
+          });
+        });
+      }
+      renderHabitsList();
+      box.querySelector("#rewardHabitsContinue").addEventListener("click", () => { stepIdx++; renderStep(); });
+      box.querySelector("#rewardHabitsSkip").addEventListener("click", () => {
+        rewardPracticeIds = null;
+        stepIdx++;
+        renderStep();
+      });
+    }
+
     if (step === "rewardPhoto") {
       box.insertAdjacentHTML("beforeend", `
         <div class="onboarding-eyebrow">Your reward</div>
-        <div class="onboarding-headline">What does it look like?</div>
-        <div class="onboarding-subline">A photo of the actual thing you're working toward — makes it feel real every time you check in.</div>
+        <div class="onboarding-headline">Add a photo</div>
         <div class="photo-upload-zone" id="rewardPhotoZone">
           <div class="photo-upload-zone-inner" id="rewardPhotoZoneInner">
             <div class="plus-badge"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></div>
-            <div class="label">Add a photo</div>
-            <div class="sub">${rewardName ? `of ${escapeHtml(rewardName)}` : ""}</div>
           </div>
         </div>
         <input type="file" accept="image/*" id="rewardPhotoInput" style="display:none;" />
@@ -18437,7 +18593,27 @@ function showOnboardingFlow() {
           renderStep();
         });
       });
-      box.querySelector("#rewardPhotoSkip").addEventListener("click", () => { stepIdx++; renderStep(); });
+      // No photo chosen means nothing to position, so this jumps straight
+      // past "rewardPhotoPosition" rather than landing on an empty frame.
+      box.querySelector("#rewardPhotoSkip").addEventListener("click", () => {
+        stepIdx = STEPS.indexOf("rewardLink");
+        renderStep();
+      });
+    }
+
+    // Reuses openRewardPhotoPositionModal exactly as it already exists in
+    // Settings — same 16:11 frame, same drag/pinch/zoom, same copy — via
+    // its `container` param, which replaces just this wrapper's content
+    // rather than the whole onboarding box, so the back button/progress
+    // dots above stay put. Only reachable when a photo was actually
+    // chosen (see rewardPhotoSkip above); closing without saving still
+    // advances rather than getting stuck, same as any other skip here.
+    if (step === "rewardPhotoPosition") {
+      if (!rewardPhotoDataUrl) { stepIdx++; renderStep(); return; }
+      rewardPhotoDraft.itemPhoto = rewardPhotoDataUrl;
+      box.insertAdjacentHTML("beforeend", `<div id="rewardPositionZone"></div>`);
+      const zone = box.querySelector("#rewardPositionZone");
+      openRewardPhotoPositionModal(rewardPhotoDraft, () => { stepIdx++; renderStep(); }, zone);
     }
 
     if (step === "rewardLink") {
@@ -18530,14 +18706,26 @@ function showOnboardingFlow() {
       state.veronikasPrize.cycleStartDate = todayISO();
       state.veronikasPrize.cycleLengthDays = rewardTargetDays;
       state.veronikasPrize.earnedAmount = 0;
-      // Computed silently from the three inputs she already entered above
-      // (name, dollar goal, target date) — no extra onboarding step.
+      // rewardPracticeIds was built from selectedPracticeKeys/selectedExtras
+      // before the real sheets existed — re-validated here against the
+      // actual created practices, now that currentPracticeAppIds() reflects
+      // them. Everything selected (or the step skipped) keeps this null,
+      // same "general goal" meaning as every reward before this existed.
+      const realPracticeIds = currentPracticeAppIds();
+      state.veronikasPrize.practiceIds =
+        rewardPracticeIds && rewardPracticeIds.length && rewardPracticeIds.length < realPracticeIds.length
+          ? rewardPracticeIds.filter((id) => realPracticeIds.includes(id))
+          : null;
+      // Computed from the inputs she already entered — name/goal/date, plus
+      // now which habits count, since narrowing that changes how many
+      // "slots" the goal is divided across (see rewardGoalPillarCount).
       state.veronikasPrize.dollarPerLog = computeDollarPerLog(
         rewardGoalDollars,
         rewardTargetDays,
-        currentPracticeAppIds().length
+        rewardGoalPillarCount(state.veronikasPrize)
       );
       if (rewardPhotoDataUrl) state.veronikasPrize.itemPhoto = rewardPhotoDataUrl;
+      if (rewardPhotoDraft.itemPhotoPosition) state.veronikasPrize.itemPhotoPosition = rewardPhotoDraft.itemPhotoPosition;
       // A bank linked during this flow already snapshotted its own
       // cycleStartBalance in startPlaidLink's onSuccess handler — that
       // balance is shown as an informational comparison only now; it
