@@ -16689,14 +16689,33 @@ function renderCycleHistorySection(box, onDone) {
   });
   if (!combined.length) return;
 
+  // 2026-09 (Veronika): this was hardcoded `open` with nothing
+  // remembering a manual collapse, so History sprang back open on every
+  // single save — saving a daily log calls buildCycleDailyLogCard's
+  // onDone, which is renderCyclePanel's own render(), which wipes the
+  // panel and rebuilds this <details> from scratch. Collapsing it was
+  // therefore never durable for more than one interaction. Persisted the
+  // same way every other collapsible in the app already is (see
+  // state.goalsOpen, state.bibleOpenBooks, sheet.openCategories): read
+  // the remembered value on render, write it back on toggle, default to
+  // open so nothing changes for anyone who never collapses it.
+  //
+  // Deliberately stored top-level rather than on state.cycle — that
+  // object is merged across devices by mergeLastWriteWins against
+  // state.cycle.updatedAt, and a UI preference has no business bumping
+  // the field that arbitrates real cycle-data conflicts.
   const details = el(`
-    <details class="card cyc-recent-details" open>
+    <details class="card cyc-recent-details" ${state.cycleHistoryOpen === false ? "" : "open"}>
       <summary class="book-summary">
         <span class="home-section-title-group"><span class="subsection-title" style="margin:0;">History</span></span>
         <span class="wardrobe-chevron">${iconSvg('<polyline points="6 9 12 15 18 9"></polyline>').replace('class="tab-icon" width="20" height="20"', 'width="15" height="15"')}</span>
       </summary>
     </details>
   `);
+  details.addEventListener("toggle", () => {
+    state.cycleHistoryOpen = details.open;
+    scheduleSave();
+  });
 
   const buildRow = (entry) => {
     if (entry.kind === "period") {
@@ -19489,6 +19508,9 @@ async function bootInner() {
   state.cycle ||= { periods: [], manualCycleLengthDays: null, manualPeriodLengthDays: null };
   state.cycle.periods ||= [];
   state.cycle.dailyLogs ||= {};
+  // Collapse state for the Cycle tab's History section. Top-level, not on
+  // state.cycle — see the note in renderCycleHistorySection.
+  state.cycleHistoryOpen ??= true;
 
   budgetView = state.budgetView;
   budgetShowHidden = state.budgetShowHidden;
